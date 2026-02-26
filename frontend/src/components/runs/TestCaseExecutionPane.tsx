@@ -1,0 +1,391 @@
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { X, CheckCircle2, XCircle, Clock, FileWarning, Image as ImageIcon, Loader2 } from 'lucide-react';
+import api from '../../lib/api';
+
+// Types
+interface TestStep {
+    step_id: number;
+    order: number;
+    action: string;
+    data?: string;
+    expected_result?: string;
+    status: string; // "Untested" | "Passed" | "Failed"
+    actual_result?: string;
+    step_result_id?: number | null;
+}
+
+interface TestResultDetail {
+    id: number;
+    run_id: number;
+    case_id: number;
+    status: string;
+    jira_bug_id?: string;
+    attachment_url?: string;
+    comment?: string;
+    test_case: {
+        title: string;
+        description?: string;
+        preconditions?: string;
+        priority: string;
+    };
+    steps: TestStep[];
+}
+
+interface Props {
+    resultId: number | null;
+    onClose: () => void;
+    onUpdated: () => void; // Triggered when overall case status changes
+}
+
+export default function TestCaseExecutionPane({ resultId, onClose, onUpdated }: Props) {
+    const [detail, setDetail] = useState<TestResultDetail | null>(null);
+    const [isLoading, setIsLoading] = useState(false);
+
+    // Resizing state
+    const [width, setWidth] = useState(600);
+    const [isResizing, setIsResizing] = useState(false);
+    const sidebarRef = useRef<HTMLDivElement>(null);
+
+    // Form states for bug tracking
+    const [jiraBugId, setJiraBugId] = useState('');
+    const [attachmentUrl, setAttachmentUrl] = useState('');
+
+    useEffect(() => {
+        if (!resultId) return;
+
+        const fetchDetails = async () => {
+            setIsLoading(true);
+            try {
+                const res = await api.get(`/results/${resultId}/details`);
+                setDetail(res.data);
+                setJiraBugId(res.data.jira_bug_id || '');
+                setAttachmentUrl(res.data.attachment_url || '');
+            } catch (error) {
+                console.error("Failed to load result details", error);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchDetails();
+    }, [resultId]);
+
+    // Resizer Logic
+    const startResizing = useCallback((e: React.MouseEvent) => {
+        e.preventDefault();
+        setIsResizing(true);
+    }, []);
+
+    const resize = useCallback((e: MouseEvent) => {
+        if (isResizing && sidebarRef.current) {
+            // Screen width - mouse X position = new width
+            const newWidth = window.innerWidth - e.clientX;
+            if (newWidth > 300 && newWidth < 1200) {
+                setWidth(newWidth);
+            }
+        }
+    }, [isResizing]);
+
+    const stopResizing = useCallback(() => {
+        setIsResizing(false);
+    }, []);
+
+    useEffect(() => {
+        if (isResizing) {
+            window.addEventListener('mousemove', resize);
+            window.addEventListener('mouseup', stopResizing);
+        }
+        return () => {
+            window.removeEventListener('mousemove', resize);
+            window.removeEventListener('mouseup', stopResizing);
+        };
+    }, [isResizing, resize, stopResizing]);
+
+    const handleStepUpdate = async (stepId: number, status: string, actualResult?: string) => {
+        if (!detail) return;
+
+        // Optimistic update
+        setDetail(prev => {
+            if (!prev) return prev;
+            return {
+                ...prev,
+                steps: prev.steps.map(s => s.step_id === stepId ? { ...s, status, actual_result: actualResult !== undefined ? actualResult : s.actual_result } : s)
+            };
+        });
+
+        try {
+            await api.put(`/results/${detail.id}/steps/${stepId}`, {
+                status,
+                actual_result: actualResult
+            });
+            // Auto fail the whole case if a step fails
+            if (status === 'Failed' && detail.status !== 'Failed') {
+                handleCaseUpdate('Failed');
+            }
+        } catch (error) {
+            console.error("Failed to update step", error);
+        }
+    };
+
+    const handleCaseUpdate = async (status: string) => {
+        if (!detail) return;
+
+        // Optimistic update
+        setDetail(prev => prev ? { ...prev, status } : prev);
+
+        try {
+            await api.put(`/results/${detail.id}`, {
+                status,
+                jira_bug_id: jiraBugId || undefined,
+                attachment_url: attachmentUrl || undefined,
+                duration_ms: 1000 // mock
+            });
+            onUpdated();
+        } catch (error) {
+            console.error("Failed to update case result", error);
+        }
+    };
+
+    const saveBugDetails = async () => {
+        if (!detail) return;
+        try {
+            await api.put(`/results/${detail.id}`, {
+                jira_bug_id: jiraBugId || undefined,
+                attachment_url: attachmentUrl || undefined
+            });
+            alert('Bug details saved');
+            onUpdated();
+        } catch (error) {
+            console.error("Failed to save bug details", error);
+        }
+    };
+
+    if (!resultId) return null;
+
+    return (
+        <>
+            {/* Backdrop */}
+            <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-40" onClick={onClose} />
+
+            {/* Slide-over */}
+            <div
+                ref={sidebarRef}
+                style={{ width: `${width}px` }}
+                className={`fixed top-0 right-0 h-full bg-white shadow-2xl z-50 flex flex-col transform transition-transform duration-300 ease-in-out ${isResizing ? 'transition-none' : ''}`}
+            >
+                {/* Resizer Handle */}
+                <div
+                    onMouseDown={startResizing}
+                    className="absolute top-0 left-0 w-1.5 h-full cursor-col-resize hover:bg-primary-300 active:bg-primary-500 z-50 opacity-0 hover:opacity-100 -translate-x-1/2 transition-opacity"
+                />
+
+                <div className="flex items-center justify-between p-6 border-b border-slate-200">
+                    <div className="flex items-center gap-3">
+                        <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded-md text-slate-500">
+                            <X className="w-5 h-5" />
+                        </button>
+                        <h2 className="text-xl font-bold text-slate-900">Execute Test Case</h2>
+                    </div>
+                    {detail && (
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => handleCaseUpdate('Passed')}
+                                className={`px-4 py-2 rounded-md font-medium text-sm flex items-center gap-2 transition-colors ${detail.status === 'Passed' ? 'bg-green-600 text-white shadow-sm' : 'bg-green-50 text-green-700 hover:bg-green-100'
+                                    }`}
+                            >
+                                <CheckCircle2 className="w-4 h-4" /> Pass All
+                            </button>
+                            <button
+                                onClick={() => handleCaseUpdate('Failed')}
+                                className={`px-4 py-2 rounded-md font-medium text-sm flex items-center gap-2 transition-colors ${detail.status === 'Failed' ? 'bg-red-600 text-white shadow-sm' : 'bg-red-50 text-red-700 hover:bg-red-100'
+                                    }`}
+                            >
+                                <XCircle className="w-4 h-4" /> Fail
+                            </button>
+                        </div>
+                    )}
+                </div>
+
+                <div className="flex-1 overflow-y-auto bg-slate-50/50">
+                    {isLoading || !detail ? (
+                        <div className="flex items-center justify-center p-12">
+                            <Loader2 className="w-8 h-8 animate-spin text-primary-500" />
+                        </div>
+                    ) : (
+                        <div className="p-6 space-y-6">
+                            {/* Case Context */}
+                            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <span className="px-2.5 py-1 bg-indigo-50 text-indigo-700 text-xs font-semibold rounded uppercase tracking-wider">
+                                        TC-{detail.case_id}
+                                    </span>
+                                    <span className={`px-2.5 py-1 text-xs font-semibold rounded uppercase tracking-wider ${detail.test_case.priority === 'High' ? 'bg-orange-50 text-orange-700' : 'bg-slate-100 text-slate-700'}`}>
+                                        {detail.test_case.priority} priority
+                                    </span>
+                                </div>
+                                <h3 className="text-xl font-bold text-slate-900 mb-4">{detail.test_case.title}</h3>
+
+                                {detail.test_case.preconditions && (
+                                    <div className="mb-4">
+                                        <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Preconditions</h4>
+                                        <p className="text-sm text-slate-700 bg-slate-50 p-3 rounded-md border border-slate-100">{detail.test_case.preconditions}</p>
+                                    </div>
+                                )}
+
+                                {detail.test_case.description && (
+                                    <div>
+                                        <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Description</h4>
+                                        <p className="text-sm text-slate-700 bg-slate-50 p-3 rounded-md border border-slate-100 whitespace-pre-wrap">{detail.test_case.description}</p>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Steps Execution */}
+                            <div>
+                                <h4 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2">
+                                    <Clock className="w-4 h-4 text-slate-400" />
+                                    Test Steps ({detail.steps.length})
+                                </h4>
+
+                                {detail.steps.length === 0 ? (
+                                    <div className="text-center p-8 bg-white border border-slate-200 border-dashed rounded-xl">
+                                        <p className="text-sm text-slate-500">No steps defined for this test case.</p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-4">
+                                        {detail.steps.map((step, index) => (
+                                            <div key={step.step_id} className={`bg-white border rounded-xl overflow-hidden transition-all ${step.status === 'Passed' ? 'border-green-200 shadow-sm shadow-green-100/50' :
+                                                step.status === 'Failed' ? 'border-red-200 shadow-sm shadow-red-100/50' :
+                                                    'border-slate-200'
+                                                }`}>
+                                                <div className="p-4 flex gap-4">
+                                                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center font-bold text-sm">
+                                                        {index + 1}
+                                                    </div>
+                                                    <div className="flex-1 space-y-3">
+                                                        <div>
+                                                            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Action</div>
+                                                            <div className="text-sm text-slate-900">{step.action}</div>
+                                                        </div>
+                                                        {step.data && (
+                                                            <div>
+                                                                <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Data</div>
+                                                                <code className="text-xs bg-slate-50 text-slate-700 px-2 py-1 rounded block">{step.data}</code>
+                                                            </div>
+                                                        )}
+                                                        {step.expected_result && (
+                                                            <div>
+                                                                <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Expected Result</div>
+                                                                <div className="text-sm text-slate-600">{step.expected_result}</div>
+                                                            </div>
+                                                        )}
+
+                                                        {/* Step Failure Input */}
+                                                        {step.status === 'Failed' && (
+                                                            <div className="mt-4 p-3 bg-red-50/50 border border-red-100 rounded-lg">
+                                                                <label className="text-xs font-semibold text-red-800 mb-1.5 block">Actual Result (Failure Reason)</label>
+                                                                <textarea
+                                                                    value={step.actual_result || ''}
+                                                                    onChange={(e) => {
+                                                                        // Update local state without API call until blur? For simplicity, we trigger API on blur
+                                                                        const val = e.target.value;
+                                                                        setDetail(prev => prev ? {
+                                                                            ...prev,
+                                                                            steps: prev.steps.map(s => s.step_id === step.step_id ? { ...s, actual_result: val } : s)
+                                                                        } : prev);
+                                                                    }}
+                                                                    onBlur={(e) => handleStepUpdate(step.step_id, 'Failed', e.target.value)}
+                                                                    className="w-full text-sm p-2 rounded-md border-red-200 min-h-[60px] focus:ring-red-500 focus:border-red-500"
+                                                                    placeholder="Describe what actually happened..."
+                                                                />
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex-shrink-0 flex flex-col gap-2">
+                                                        <button
+                                                            onClick={() => handleStepUpdate(step.step_id, 'Passed')}
+                                                            title="Pass Step"
+                                                            className={`p-2 rounded-md transition-colors ${step.status === 'Passed' ? 'bg-green-100 text-green-700' : 'bg-slate-50 text-slate-400 hover:bg-green-50 hover:text-green-600'}`}
+                                                        >
+                                                            <CheckCircle2 className="w-5 h-5" />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleStepUpdate(step.step_id, 'Failed')}
+                                                            title="Fail Step"
+                                                            className={`p-2 rounded-md transition-colors ${step.status === 'Failed' ? 'bg-red-100 text-red-700' : 'bg-slate-50 text-slate-400 hover:bg-red-50 hover:text-red-600'}`}
+                                                        >
+                                                            <XCircle className="w-5 h-5" />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Bug Report Section (Visible if any failure, or always visible) */}
+                            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                                <h4 className="text-sm font-bold text-slate-900 mb-4 flex items-center gap-2">
+                                    <FileWarning className="w-4 h-4 text-orange-500" />
+                                    Defect Tracking
+                                </h4>
+
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-xs font-semibold text-slate-600 mb-1.5">Jira Bug ID (e.g., PROJ-1234)</label>
+                                        <input
+                                            type="text"
+                                            value={jiraBugId}
+                                            onChange={(e) => setJiraBugId(e.target.value)}
+                                            className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-primary-500"
+                                            placeholder="Link a bug"
+                                        />
+                                        {jiraBugId && (
+                                            <div className="mt-1.5 pl-1 text-[13px]">
+                                                <a
+                                                    href={`https://kkday.atlassian.net/browse/${jiraBugId}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-primary-600 hover:text-primary-700 hover:underline inline-flex items-center gap-1"
+                                                >
+                                                    https://kkday.atlassian.net/browse/{jiraBugId}
+                                                </a>
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-semibold text-slate-600 mb-1.5 flex items-center gap-1.5">
+                                            <ImageIcon className="w-3.5 h-3.5" /> Attachment URL
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={attachmentUrl}
+                                            onChange={(e) => setAttachmentUrl(e.target.value)}
+                                            className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-primary-500"
+                                            placeholder="https://imgur.com/... or internal URL"
+                                        />
+                                        {attachmentUrl && (
+                                            <div className="mt-3 relative h-32 w-full rounded-md overflow-hidden bg-slate-100 border border-slate-200 flex items-center justify-center">
+                                                <img src={attachmentUrl} alt="Attachment" className="max-h-full max-w-full object-contain" />
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <button
+                                        onClick={saveBugDetails}
+                                        className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-md text-sm transition-colors"
+                                    >
+                                        Save Defect Details
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="h-10"></div> {/* Spacer */}
+                        </div>
+                    )}
+                </div>
+            </div>
+        </>
+    );
+}
