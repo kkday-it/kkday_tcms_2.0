@@ -1,26 +1,24 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Layers, PlayCircle, Loader2, Bug, AlertTriangle, CheckCircle2, XCircle, Clock } from 'lucide-react';
+import { Layers, PlayCircle, Loader2, Bug, AlertTriangle, CheckCircle2, XCircle, Clock, Zap, Target, Activity } from 'lucide-react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from 'recharts';
 import api from '../lib/api';
 
+// --- Interfaces: Overview ---
 interface SummaryCards {
     total_cases: number;
     active_runs: number;
     total_defects: number;
 }
-
 interface RunTypeDistribution {
     name: string;
     value: number;
 }
-
 interface RunTypePassFail {
     run_type: string;
     passed: number;
     failed: number;
 }
-
 interface RecentRun {
     id: number;
     title: string;
@@ -30,12 +28,10 @@ interface RecentRun {
     failed: number;
     total: number;
 }
-
 interface TopFailingCase {
     title: string;
     fail_count: number;
 }
-
 interface DashboardSummary {
     summary_cards: SummaryCards;
     run_types_distribution: RunTypeDistribution[];
@@ -44,230 +40,464 @@ interface DashboardSummary {
     top_failing_cases: TopFailingCase[];
 }
 
-const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#64748b'];
+// --- Interfaces: My Space ---
+interface AssignedRun {
+    id: number;
+    title: string;
+    status: string;
+    passed: number;
+    failed: number;
+    untested: number;
+    total: number;
+}
+interface DashboardMetrics {
+    cases_owned: number;
+    cases_automated: number;
+    recent_executions_7d: number;
+}
+interface MyDashboardData {
+    assigned_runs: AssignedRun[];
+    metrics: DashboardMetrics;
+}
+
+const COLORS = ['#00bcd4', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#64748b'];
 
 export default function Dashboard() {
     const navigate = useNavigate();
-    const [summary, setSummary] = useState<DashboardSummary | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
+    const [activeTab, setActiveTab] = useState<'my_space' | 'overview'>('my_space');
+
+    // Overview State
+    const [overviewData, setOverviewData] = useState<DashboardSummary | null>(null);
+    const [isOverviewLoading, setIsOverviewLoading] = useState(true);
+
+    // My Space State
+    const [myData, setMyData] = useState<MyDashboardData | null>(null);
+    const [isMyDataLoading, setIsMyDataLoading] = useState(true);
+
+    // Hardcode user_id=1 for now as there is no central Auth context yet
+    const currentUserId = 1;
 
     useEffect(() => {
-        const fetchSummary = async () => {
+        const fetchOverview = async () => {
             try {
                 const response = await api.get('/dashboard/summary');
-                setSummary(response.data);
+                setOverviewData(response.data);
             } catch (error) {
-                console.error("Failed to fetch dashboard summary", error);
+                console.error("Failed to fetch overview summary", error);
             } finally {
-                setIsLoading(false);
+                setIsOverviewLoading(false);
             }
         };
 
-        fetchSummary();
+        const fetchMyData = async () => {
+            try {
+                const response = await api.get(`/dashboard/me?user_id=${currentUserId}`);
+                setMyData(response.data);
+            } catch (error) {
+                console.error("Failed to fetch my dashboard data", error);
+            } finally {
+                setIsMyDataLoading(false);
+            }
+        };
+
+        fetchOverview();
+        fetchMyData();
     }, []);
 
-    if (isLoading || !summary) {
+    // --- Render: My Space ---
+    const renderMySpace = () => {
+        if (isMyDataLoading || !myData) {
+            return (
+                <div className="flex-1 flex items-center justify-center py-20">
+                    <Loader2 className="w-8 h-8 animate-spin text-primary-500" />
+                </div>
+            );
+        }
+
+        const metrics = myData.metrics;
+        const automationRate = metrics.cases_owned > 0 ? Math.round((metrics.cases_automated / metrics.cases_owned) * 100) : 0;
+
         return (
-            <div className="flex-1 flex items-center justify-center bg-slate-50">
-                <Loader2 className="w-8 h-8 animate-spin text-primary-500" />
-            </div>
-        );
-    }
+            <div className="animate-in fade-in duration-300">
+                {/* ── KPI Cards ──────────────────────────────────────────────────────── */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+                    {/* Active Assignments */}
+                    <div onClick={() => { }} className="bg-white p-6 rounded-2xl border border-slate-200 flex flex-col hover:border-primary-300 hover:shadow-md transition-all shadow-sm relative overflow-hidden group focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500">
+                        <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                            <Target className="w-20 h-20 text-indigo-600" />
+                        </div>
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
+                                <Target className="w-5 h-5 text-indigo-600" />
+                            </div>
+                            <span className="text-slate-600 font-bold tracking-wide uppercase text-xs">Active Assignments</span>
+                        </div>
+                        <div className="flex items-end gap-2">
+                            <span className="text-4xl font-extrabold text-slate-900">{myData.assigned_runs.length}</span>
+                            <span className="text-sm text-slate-500 mb-1">Runs To Do</span>
+                        </div>
+                    </div>
 
-    return (
-        <div className="flex-1 p-8 overflow-y-auto bg-slate-50">
-            <h1 className="text-2xl font-bold text-slate-900 mb-6">Dashboard</h1>
+                    {/* My Output */}
+                    <div className="bg-white p-6 rounded-2xl border border-slate-200 flex flex-col hover:border-primary-300 hover:shadow-md transition-all shadow-sm relative overflow-hidden group">
+                        <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                            <Activity className="w-20 h-20 text-emerald-600" />
+                        </div>
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center">
+                                <Activity className="w-5 h-5 text-emerald-600" />
+                            </div>
+                            <span className="text-slate-600 font-bold tracking-wide uppercase text-xs">My Output (7 days)</span>
+                        </div>
+                        <div className="flex items-end gap-2">
+                            <span className="text-4xl font-extrabold text-slate-900">{metrics.recent_executions_7d}</span>
+                            <span className="text-sm text-slate-500 mb-1">Tests Executed</span>
+                        </div>
+                    </div>
 
-            {/* 1. Summary Cards (Top Row) */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                <div onClick={() => navigate('/project/1')} className="bg-white p-6 rounded-xl border border-slate-200 flex flex-col hover:border-slate-300 hover:shadow-md transition-all cursor-pointer shadow-sm relative overflow-hidden group">
-                    <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                        <Layers className="w-16 h-16 text-indigo-600" />
-                    </div>
-                    <div className="flex items-center gap-2 mb-3">
-                        <Layers className="w-5 h-5 text-indigo-500" />
-                        <span className="text-slate-600 font-medium">Total Test Cases</span>
-                    </div>
-                    <span className="text-4xl font-bold text-slate-900">{summary.summary_cards.total_cases}</span>
-                </div>
-
-                <div onClick={() => navigate('/runs')} className="bg-white p-6 rounded-xl border border-slate-200 flex flex-col hover:border-slate-300 hover:shadow-md transition-all cursor-pointer shadow-sm relative overflow-hidden group">
-                    <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                        <PlayCircle className="w-16 h-16 text-primary-600" />
-                    </div>
-                    <div className="flex items-center gap-2 mb-3">
-                        <PlayCircle className="w-5 h-5 text-primary-500" />
-                        <span className="text-slate-600 font-medium">Active Test Runs</span>
-                    </div>
-                    <span className="text-4xl font-bold text-slate-900">{summary.summary_cards.active_runs}</span>
-                </div>
-
-                <div className="bg-white p-6 rounded-xl border border-slate-200 flex flex-col shadow-sm relative overflow-hidden group">
-                    <div className="absolute top-0 right-0 p-4 opacity-10 transition-opacity">
-                        <Bug className="w-16 h-16 text-orange-600" />
-                    </div>
-                    <div className="flex items-center gap-2 mb-3">
-                        <Bug className="w-5 h-5 text-orange-500" />
-                        <span className="text-slate-600 font-medium">Defects Logged (Jira)</span>
-                    </div>
-                    <span className="text-4xl font-bold text-slate-900">{summary.summary_cards.total_defects}</span>
-                </div>
-            </div>
-
-            {/* 2. Charts Row */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-                {/* Donut Chart: Runs by Type */}
-                <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm flex flex-col">
-                    <h3 className="text-base font-bold text-slate-900 mb-4">Test Runs by Type</h3>
-                    <div className="flex-1 w-full min-h-[300px]">
-                        {summary.run_types_distribution.length > 0 ? (
-                            <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
-                                    <Pie
-                                        data={summary.run_types_distribution}
-                                        cx="50%"
-                                        cy="50%"
-                                        innerRadius={80}
-                                        outerRadius={110}
-                                        paddingAngle={5}
-                                        dataKey="value"
-                                    >
-                                        {summary.run_types_distribution.map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                        ))}
-                                    </Pie>
-                                    <RechartsTooltip
-                                        formatter={(value: any) => [value, 'Runs']}
-                                        contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                                    />
-                                    <Legend verticalAlign="bottom" height={36} iconType="circle" />
-                                </PieChart>
-                            </ResponsiveContainer>
-                        ) : (
-                            <div className="h-full flex items-center justify-center text-slate-400 text-sm">No run data available</div>
-                        )}
+                    {/* Automation Coverage */}
+                    <div className="bg-white p-6 rounded-2xl border border-slate-200 flex flex-col hover:border-primary-300 hover:shadow-md transition-all shadow-sm relative overflow-hidden group">
+                        <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                            <Zap className="w-20 h-20 text-amber-500" />
+                        </div>
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
+                                <Zap className="w-5 h-5 text-amber-600" />
+                            </div>
+                            <span className="text-slate-600 font-bold tracking-wide uppercase text-xs">My Automation Coverage</span>
+                        </div>
+                        <div className="flex items-center gap-4">
+                            <span className="text-4xl font-extrabold text-slate-900">{automationRate}%</span>
+                            <div className="flex flex-col text-xs text-slate-500 font-medium">
+                                <span>{metrics.cases_automated} Automated</span>
+                                <span>{metrics.cases_owned} Total Owned</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                {/* Grouped Bar Chart: Pass/Fail Rate by Run Type */}
-                <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm flex flex-col">
-                    <h3 className="text-base font-bold text-slate-900 mb-4">Pass / Fail by Run Type</h3>
-                    <div className="flex-1 w-full min-h-[300px]">
-                        {summary.run_type_pass_fail.length > 0 ? (
-                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart
-                                    data={summary.run_type_pass_fail}
-                                    margin={{ top: 20, right: 30, left: 0, bottom: 5 }}
-                                >
-                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                                    <XAxis dataKey="run_type" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} dy={10} />
-                                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} dx={-10} />
-                                    <RechartsTooltip
-                                        cursor={{ fill: '#f8fafc' }}
-                                        contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                                    />
-                                    <Legend verticalAlign="top" height={36} iconType="circle" wrapperStyle={{ paddingBottom: '20px' }} />
-                                    <Bar dataKey="passed" name="Passed" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={50} />
-                                    <Bar dataKey="failed" name="Failed" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={50} />
-                                </BarChart>
-                            </ResponsiveContainer>
-                        ) : (
-                            <div className="h-full flex items-center justify-center text-slate-400 text-sm">No pass/fail data available</div>
-                        )}
+                {/* ── Active Work Queue ──────────────────────────────────────────────── */}
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col min-h-[400px]">
+                    <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                        <div className="flex items-center gap-2">
+                            <Clock className="w-5 h-5 text-slate-400" />
+                            <h2 className="text-lg font-bold text-slate-900">Up Next For You</h2>
+                        </div>
+                        <p className="text-sm text-slate-500 mt-1">Test runs assigned to you that are currently pending or in progress.</p>
                     </div>
-                </div>
-            </div>
 
-            {/* 3. Tables Row */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Recent Test Runs */}
-                <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden flex flex-col">
-                    <div className="p-5 border-b border-slate-100 flex items-center gap-2 bg-slate-50/50">
-                        <Clock className="w-5 h-5 text-primary-500" />
-                        <h3 className="text-base font-bold text-slate-900">Recent Test Runs</h3>
-                    </div>
                     <div className="p-0 flex-1 overflow-x-auto">
-                        <table className="w-full text-left border-collapse">
-                            <thead>
-                                <tr className="border-b border-slate-200">
-                                    <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Run</th>
-                                    <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Type</th>
-                                    <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Progress</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {summary.recent_runs.length === 0 ? (
-                                    <tr><td colSpan={3} className="px-5 py-8 text-center text-sm text-slate-400">No recent runs</td></tr>
-                                ) : (
-                                    summary.recent_runs.map(run => {
+                        {myData.assigned_runs.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center h-full min-h-[300px] text-slate-400">
+                                <CheckCircle2 className="w-16 h-16 text-emerald-100 mb-4" />
+                                <p className="text-lg font-medium text-slate-600">You're all caught up!</p>
+                                <p className="text-sm">There are no test runs assigned to you right now.</p>
+                            </div>
+                        ) : (
+                            <table className="w-full text-left border-collapse">
+                                <thead>
+                                    <tr className="border-b border-slate-200 bg-slate-50/50">
+                                        <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Run Title</th>
+                                        <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+                                        <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Progress</th>
+                                        <th className="px-6 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 bg-white">
+                                    {myData.assigned_runs.map((run) => {
                                         const passPct = run.total > 0 ? (run.passed / run.total) * 100 : 0;
                                         const failPct = run.total > 0 ? (run.failed / run.total) * 100 : 0;
+
                                         return (
-                                            <tr key={run.id} onClick={() => navigate(`/runs/${run.id}`)} className="hover:bg-slate-50 cursor-pointer transition-colors">
-                                                <td className="px-5 py-3">
-                                                    <div className="text-sm font-semibold text-slate-900 truncate max-w-[200px]">{run.title}</div>
-                                                    <div className="text-xs text-slate-500">{run.status}</div>
+                                            <tr key={run.id} className="hover:bg-slate-50 transition-colors group">
+                                                <td className="px-6 py-5">
+                                                    <div className="text-sm font-bold text-slate-900">{run.title}</div>
+                                                    <div className="text-xs text-slate-500 mt-1">Assigned Run #{run.id}</div>
                                                 </td>
-                                                <td className="px-5 py-3">
-                                                    <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-indigo-50 text-indigo-700 border border-indigo-100 whitespace-nowrap">
-                                                        {run.run_type || 'Feature Test'}
+                                                <td className="px-6 py-5">
+                                                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${run.status === 'Testing' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-slate-100 text-slate-600 border-slate-200'
+                                                        }`}>
+                                                        {run.status}
                                                     </span>
                                                 </td>
-                                                <td className="px-5 py-3 w-40">
-                                                    <div className="flex items-center justify-between text-[11px] font-medium text-slate-500 mb-1">
-                                                        <span className="text-emerald-600 flex items-center gap-0.5"><CheckCircle2 className="w-3 h-3" /> {run.passed}</span>
-                                                        <span className="text-rose-600 flex items-center gap-0.5"><XCircle className="w-3 h-3" /> {run.failed}</span>
+                                                <td className="px-6 py-5 w-64">
+                                                    <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 mb-1.5 px-0.5">
+                                                        <span className="text-emerald-600 flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> {run.passed}</span>
+                                                        <span className="text-rose-600 flex items-center gap-1"><XCircle className="w-3.5 h-3.5" /> {run.failed}</span>
+                                                        <span className="text-slate-400">{run.total} Total</span>
                                                     </div>
-                                                    <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden flex">
-                                                        <div style={{ width: `${passPct}%` }} className="bg-emerald-500 h-full"></div>
-                                                        <div style={{ width: `${failPct}%` }} className="bg-rose-500 h-full"></div>
+                                                    <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden flex">
+                                                        <div style={{ width: `${passPct}%` }} className="bg-emerald-500 h-full transition-all duration-500"></div>
+                                                        <div style={{ width: `${failPct}%` }} className="bg-rose-500 h-full transition-all duration-500"></div>
                                                     </div>
+                                                </td>
+                                                <td className="px-6 py-5 text-right w-48">
+                                                    <button
+                                                        onClick={() => navigate(`/runs/${run.id}`)}
+                                                        className="inline-flex items-center justify-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-bold text-primary-600 shadow-sm ring-1 ring-inset ring-slate-300 hover:bg-slate-50 hover:text-primary-700 transition-all opacity-0 group-hover:opacity-100 focus:opacity-100"
+                                                    >
+                                                        <PlayCircle className="w-4 h-4" />
+                                                        Continue
+                                                    </button>
                                                 </td>
                                             </tr>
                                         )
-                                    })
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                {/* Top Failing Test Cases */}
-                <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden flex flex-col">
-                    <div className="p-5 border-b border-slate-100 flex items-center gap-2 bg-slate-50/50">
-                        <AlertTriangle className="w-5 h-5 text-rose-500" />
-                        <h3 className="text-base font-bold text-slate-900">Top Failing Cases</h3>
-                    </div>
-                    <div className="p-0 flex-1 overflow-x-auto">
-                        <table className="w-full text-left border-collapse">
-                            <thead>
-                                <tr className="border-b border-slate-200">
-                                    <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Test Case Title</th>
-                                    <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">Failures</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {summary.top_failing_cases.length === 0 ? (
-                                    <tr><td colSpan={2} className="px-5 py-8 text-center text-sm text-slate-400">No failing cases recorded yet</td></tr>
-                                ) : (
-                                    summary.top_failing_cases.map((tc, i) => (
-                                        <tr key={i} className="hover:bg-slate-50 transition-colors">
-                                            <td className="px-5 py-4">
-                                                <div className="text-sm font-medium text-slate-800 line-clamp-2">{tc.title}</div>
-                                            </td>
-                                            <td className="px-5 py-4 text-right">
-                                                <span className="inline-flex items-center justify-center px-2.5 py-1 rounded bg-rose-50 text-rose-700 text-xs font-bold border border-rose-100">
-                                                    {tc.fail_count}
-                                                </span>
-                                            </td>
-                                        </tr>
-                                    ))
-                                )}
-                            </tbody>
-                        </table>
+                                    })}
+                                </tbody>
+                            </table>
+                        )}
                     </div>
                 </div>
             </div>
+        );
+    };
+
+    // --- Render: Overview ---
+    const renderOverview = () => {
+        if (isOverviewLoading || !overviewData) {
+            return (
+                <div className="flex-1 flex items-center justify-center py-20">
+                    <Loader2 className="w-8 h-8 animate-spin text-primary-500" />
+                </div>
+            );
+        }
+
+        const summary = overviewData;
+
+        return (
+            <div className="animate-in fade-in duration-300">
+                {/* 1. Summary Cards (Top Row) */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                    <div onClick={() => navigate('/project/1')} className="bg-white p-6 rounded-2xl border border-slate-200 flex flex-col hover:border-slate-300 hover:shadow-md transition-all cursor-pointer shadow-sm relative overflow-hidden group">
+                        <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                            <Layers className="w-20 h-20 text-indigo-600" />
+                        </div>
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
+                                <Layers className="w-5 h-5 text-indigo-500" />
+                            </div>
+                            <span className="text-slate-600 font-bold tracking-wide uppercase text-xs">Total Test Cases</span>
+                        </div>
+                        <span className="text-4xl font-extrabold text-slate-900">{summary.summary_cards.total_cases}</span>
+                    </div>
+
+                    <div onClick={() => navigate('/runs')} className="bg-white p-6 rounded-2xl border border-slate-200 flex flex-col hover:border-slate-300 hover:shadow-md transition-all cursor-pointer shadow-sm relative overflow-hidden group">
+                        <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                            <PlayCircle className="w-20 h-20 text-primary-600" />
+                        </div>
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center">
+                                <PlayCircle className="w-5 h-5 text-primary-500" />
+                            </div>
+                            <span className="text-slate-600 font-bold tracking-wide uppercase text-xs">Active Test Runs</span>
+                        </div>
+                        <span className="text-4xl font-extrabold text-slate-900">{summary.summary_cards.active_runs}</span>
+                    </div>
+
+                    <div className="bg-white p-6 rounded-2xl border border-slate-200 flex flex-col shadow-sm relative overflow-hidden group">
+                        <div className="absolute top-0 right-0 p-4 opacity-10 transition-opacity">
+                            <Bug className="w-20 h-20 text-orange-600" />
+                        </div>
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center">
+                                <Bug className="w-5 h-5 text-orange-500" />
+                            </div>
+                            <span className="text-slate-600 font-bold tracking-wide uppercase text-xs">Defects Logged (Jira)</span>
+                        </div>
+                        <span className="text-4xl font-extrabold text-slate-900">{summary.summary_cards.total_defects}</span>
+                    </div>
+                </div>
+
+                {/* 2. Charts Row */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                    {/* Donut Chart: Runs by Type */}
+                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col">
+                        <h3 className="text-base font-bold text-slate-900 mb-4">Test Runs by Type</h3>
+                        <div className="flex-1 w-full min-h-[300px]">
+                            {summary.run_types_distribution.length > 0 ? (
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <PieChart>
+                                        <Pie
+                                            data={summary.run_types_distribution}
+                                            cx="50%"
+                                            cy="50%"
+                                            innerRadius={80}
+                                            outerRadius={110}
+                                            paddingAngle={5}
+                                            dataKey="value"
+                                        >
+                                            {summary.run_types_distribution.map((entry, index) => (
+                                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                            ))}
+                                        </Pie>
+                                        <RechartsTooltip
+                                            formatter={(value: any) => [value, 'Runs']}
+                                            contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                        />
+                                        <Legend verticalAlign="bottom" height={36} iconType="circle" />
+                                    </PieChart>
+                                </ResponsiveContainer>
+                            ) : (
+                                <div className="h-full flex items-center justify-center text-slate-400 text-sm">No run data available</div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Grouped Bar Chart: Pass/Fail Rate by Run Type */}
+                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col">
+                        <h3 className="text-base font-bold text-slate-900 mb-4">Pass / Fail by Run Type</h3>
+                        <div className="flex-1 w-full min-h-[300px]">
+                            {summary.run_type_pass_fail.length > 0 ? (
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart
+                                        data={summary.run_type_pass_fail}
+                                        margin={{ top: 20, right: 30, left: 0, bottom: 5 }}
+                                    >
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                                        <XAxis dataKey="run_type" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} dy={10} />
+                                        <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} dx={-10} />
+                                        <RechartsTooltip
+                                            cursor={{ fill: '#f8fafc' }}
+                                            contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                        />
+                                        <Legend verticalAlign="top" height={36} iconType="circle" wrapperStyle={{ paddingBottom: '20px' }} />
+                                        <Bar dataKey="passed" name="Passed" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={50} />
+                                        <Bar dataKey="failed" name="Failed" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={50} />
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            ) : (
+                                <div className="h-full flex items-center justify-center text-slate-400 text-sm">No pass/fail data available</div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+
+                {/* 3. Tables Row */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Recent Test Runs */}
+                    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden flex flex-col">
+                        <div className="p-5 border-b border-slate-100 flex items-center gap-2 bg-slate-50/50">
+                            <Clock className="w-5 h-5 text-primary-500" />
+                            <h3 className="text-base font-bold text-slate-900">Recent Test Runs</h3>
+                        </div>
+                        <div className="p-0 flex-1 overflow-x-auto">
+                            <table className="w-full text-left border-collapse">
+                                <thead>
+                                    <tr className="border-b border-slate-200">
+                                        <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Run</th>
+                                        <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Type</th>
+                                        <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Progress</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {summary.recent_runs.length === 0 ? (
+                                        <tr><td colSpan={3} className="px-5 py-8 text-center text-sm text-slate-400">No recent runs</td></tr>
+                                    ) : (
+                                        summary.recent_runs.map(run => {
+                                            const passPct = run.total > 0 ? (run.passed / run.total) * 100 : 0;
+                                            const failPct = run.total > 0 ? (run.failed / run.total) * 100 : 0;
+                                            return (
+                                                <tr key={run.id} onClick={() => navigate(`/runs/${run.id}`)} className="hover:bg-slate-50 cursor-pointer transition-colors">
+                                                    <td className="px-5 py-3">
+                                                        <div className="text-sm font-semibold text-slate-900 truncate max-w-[200px]">{run.title}</div>
+                                                        <div className="text-xs text-slate-500">{run.status}</div>
+                                                    </td>
+                                                    <td className="px-5 py-3">
+                                                        <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-indigo-50 text-indigo-700 border border-indigo-100 whitespace-nowrap">
+                                                            {run.run_type || 'Feature Test'}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-5 py-3 w-40">
+                                                        <div className="flex items-center justify-between text-[11px] font-medium text-slate-500 mb-1">
+                                                            <span className="text-emerald-600 flex items-center gap-0.5"><CheckCircle2 className="w-3 h-3" /> {run.passed}</span>
+                                                            <span className="text-rose-600 flex items-center gap-0.5"><XCircle className="w-3 h-3" /> {run.failed}</span>
+                                                        </div>
+                                                        <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden flex">
+                                                            <div style={{ width: `${passPct}%` }} className="bg-emerald-500 h-full"></div>
+                                                            <div style={{ width: `${failPct}%` }} className="bg-rose-500 h-full"></div>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            )
+                                        })
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    {/* Top Failing Test Cases */}
+                    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden flex flex-col">
+                        <div className="p-5 border-b border-slate-100 flex items-center gap-2 bg-slate-50/50">
+                            <AlertTriangle className="w-5 h-5 text-rose-500" />
+                            <h3 className="text-base font-bold text-slate-900">Top Failing Cases</h3>
+                        </div>
+                        <div className="p-0 flex-1 overflow-x-auto">
+                            <table className="w-full text-left border-collapse">
+                                <thead>
+                                    <tr className="border-b border-slate-200">
+                                        <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Test Case Title</th>
+                                        <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">Failures</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {summary.top_failing_cases.length === 0 ? (
+                                        <tr><td colSpan={2} className="px-5 py-8 text-center text-sm text-slate-400">No failing cases recorded yet</td></tr>
+                                    ) : (
+                                        summary.top_failing_cases.map((tc, i) => (
+                                            <tr key={i} className="hover:bg-slate-50 transition-colors">
+                                                <td className="px-5 py-4">
+                                                    <div className="text-sm font-medium text-slate-800 line-clamp-2">{tc.title}</div>
+                                                </td>
+                                                <td className="px-5 py-4 text-right">
+                                                    <span className="inline-flex items-center justify-center px-2.5 py-1 rounded bg-rose-50 text-rose-700 text-xs font-bold border border-rose-100">
+                                                        {tc.fail_count}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    return (
+        <div className="flex-1 p-8 overflow-y-auto bg-slate-50 w-full h-full">
+            <div className="mb-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+                <div>
+                    <h1 className="text-3xl font-bold text-slate-900">Dashboard</h1>
+                    <p className="text-slate-500 mt-2">Welcome back! Here is an overview of your testing velocity and project health.</p>
+                </div>
+
+                {/* Tabs */}
+                <div className="flex bg-slate-100 p-1 rounded-xl w-fit">
+                    <button
+                        onClick={() => setActiveTab('my_space')}
+                        className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'my_space'
+                                ? 'bg-white text-primary-600 shadow-sm'
+                                : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+                            }`}
+                    >
+                        My Space
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('overview')}
+                        className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'overview'
+                                ? 'bg-white text-primary-600 shadow-sm'
+                                : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+                            }`}
+                    >
+                        Project Overview
+                    </button>
+                </div>
+            </div>
+
+            {activeTab === 'my_space' ? renderMySpace() : renderOverview()}
 
             <div className="h-10"></div>
         </div>

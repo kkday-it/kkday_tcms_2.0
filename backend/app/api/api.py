@@ -27,3 +27,6 @@ router.include_router(test_plans_router, prefix="/plans", tags=["Test Plans"])
 
 from app.api.test_plan_folders import router as test_plan_folders_router
 router.include_router(test_plan_folders_router, prefix="/plan-folders", tags=["Test Plan Folders"])
+
+from app.api.uploads import router as uploads_router
+router.include_router(uploads_router, prefix="/uploads", tags=["Uploads"])

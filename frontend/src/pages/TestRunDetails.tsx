@@ -177,7 +177,7 @@ export default function TestRunDetails() {
                         <ArrowLeft className="w-5 h-5" />
                     </Link>
                     <h1 className="text-2xl font-bold text-slate-900">{testRun?.title || 'Test Run Execution'}</h1>
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-medium border bg-indigo-50 text-indigo-700 border-indigo-200">
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-medium border bg-primary-50 text-primary-700 border-primary-200">
                         {testRun?.run_type || 'Feature Test'}
                     </span>
                     <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium border ${testRun?.status === 'Done' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-primary-50 text-primary-700 border-primary-200'}`}>
@@ -295,7 +295,7 @@ export default function TestRunDetails() {
                                             <span className="text-xs font-mono text-slate-400">
                                                 TC-{res.case_id}
                                                 {res.test_case?.external_id && (
-                                                    <span className="ml-1 px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded whitespace-nowrap">
+                                                    <span className="ml-1 px-1.5 py-0.5 bg-primary-50 text-primary-600 rounded whitespace-nowrap">
                                                         {res.test_case.external_id}
                                                     </span>
                                                 )}

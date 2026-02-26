@@ -7,7 +7,7 @@ from app.db.database import get_db
 from app.models.test_case import TestCase
 from app.models.test_run import TestRun
 from app.models.test_result import TestResult
-from sqlalchemy import desc, text
+from sqlalchemy import desc, text, case
 
 router = APIRouter()
 
@@ -111,4 +111,62 @@ async def get_dashboard_summary(db: AsyncSession = Depends(get_db)):
         "run_type_pass_fail": run_type_pass_fail,
         "recent_runs": recent_runs,
         "top_failing_cases": top_failing_cases
+    }
+
+from datetime import datetime, timedelta, timezone
+
+@router.get("/me")
+async def get_my_dashboard(user_id: int, db: AsyncSession = Depends(get_db)):
+    # 1. Assigned Active Test Runs
+    # Runs explicitly assigned to this user that are not Done
+    assigned_runs_query = select(TestRun).where(
+        (TestRun.assignee_id == user_id) & 
+        (TestRun.status.in_(["Pending", "Testing"]))
+    ).order_by(desc(TestRun.created_at)).limit(10)
+    
+    assigned_runs_res = await db.execute(assigned_runs_query)
+    assigned_runs = []
+    
+    for run in assigned_runs_res.scalars().all():
+        p = (await db.execute(select(func.count(TestResult.id)).where(TestResult.run_id == run.id, TestResult.status == 'Passed'))).scalar() or 0
+        f = (await db.execute(select(func.count(TestResult.id)).where(TestResult.run_id == run.id, TestResult.status == 'Failed'))).scalar() or 0
+        tot = (await db.execute(select(func.count(TestResult.id)).where(TestResult.run_id == run.id))).scalar() or 0
+        assigned_runs.append({
+            "id": run.id,
+            "title": run.title,
+            "status": run.status,
+            "passed": p,
+            "failed": f,
+            "untested": tot - p - f,
+            "total": tot
+        })
+        
+    # 2. My Automation Coverage
+    # Cases owned by this user
+    my_cases_query = select(
+        func.count(TestCase.id).label("total"),
+        func.sum(case((TestCase.automation_status == 'Automated', 1), else_=0)).label("automated")
+    ).where(TestCase.default_owner_id == user_id)
+    
+    my_cases_res = await db.execute(my_cases_query)
+    my_cases_row = my_cases_res.first()
+    my_cases_total = my_cases_row.total if my_cases_row else 0
+    my_cases_automated = my_cases_row.automated if my_cases_row else 0
+    
+    # 3. My Recent Executions (Last 7 days)
+    seven_days_ago = datetime.now(timezone.utc) - timedelta(days=7)
+    recent_exec_query = select(func.count(TestResult.id)).where(
+        (TestResult.assignee_id == user_id) &
+        (TestResult.executed_at >= seven_days_ago)
+    )
+    recent_exec_res = await db.execute(recent_exec_query)
+    recent_executions_count = recent_exec_res.scalar() or 0
+    
+    return {
+        "assigned_runs": assigned_runs,
+        "metrics": {
+            "cases_owned": my_cases_total,
+            "cases_automated": my_cases_automated,
+            "recent_executions_7d": recent_executions_count
+        }
     }

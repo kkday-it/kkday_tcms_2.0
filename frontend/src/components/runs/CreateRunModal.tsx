@@ -20,6 +20,12 @@ interface TestRunFolder {
     parent_id?: number | null;
 }
 
+interface User {
+    id: number;
+    username: string;
+    full_name: string;
+}
+
 interface CreateRunModalProps {
     isOpen: boolean;
     onClose: () => void;
@@ -34,10 +40,12 @@ export default function CreateRunModal({ isOpen, onClose, projectId, initialTitl
     const [title, setTitle] = useState('');
     const [runType, setRunType] = useState('Feature Test');
     const [folderId, setFolderId] = useState<number | ''>('');
+    const [assigneeId, setAssigneeId] = useState<number | ''>('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [suites, setSuites] = useState<TestSuite[]>([]);
     const [cases, setCases] = useState<TestCase[]>([]);
     const [folders, setFolders] = useState<TestRunFolder[]>([]);
+    const [users, setUsers] = useState<User[]>([]);
     const [isLoadingData, setIsLoadingData] = useState(false);
 
     // UI state
@@ -55,6 +63,7 @@ export default function CreateRunModal({ isOpen, onClose, projectId, initialTitl
             setTitle('');
             setRunType('Feature Test');
             setFolderId('');
+            setAssigneeId('');
             setSelectedCaseIds(new Set());
             setSearchQuery('');
             setExpandedSuites(new Set());
@@ -64,16 +73,18 @@ export default function CreateRunModal({ isOpen, onClose, projectId, initialTitl
     const fetchData = async () => {
         setIsLoadingData(true);
         try {
-            const [suitesRes, casesRes, foldersRes] = await Promise.all([
+            const [suitesRes, casesRes, foldersRes, usersRes] = await Promise.all([
                 api.get(`/suites/project/${projectId}`),
                 api.get(`/cases/project/${projectId}`),
-                api.get(`/run-folders/project/${projectId}`)
+                api.get(`/run-folders/project/${projectId}`),
+                api.get(`/users`)
             ]);
 
             const fetchedSuites = suitesRes.data;
             setSuites(fetchedSuites);
             setCases(casesRes.data);
             setFolders(foldersRes.data);
+            setUsers(usersRes.data);
 
             if (initialCaseIds) {
                 // If duplicating, only select the previously attached cases
@@ -105,6 +116,7 @@ export default function CreateRunModal({ isOpen, onClose, projectId, initialTitl
                 description: '',
                 project_id: projectId,
                 folder_id: folderId === '' ? null : Number(folderId),
+                assignee_id: assigneeId === '' ? null : Number(assigneeId),
                 status: 'Active',
                 case_ids: Array.from(selectedCaseIds)
             });
@@ -320,6 +332,22 @@ export default function CreateRunModal({ isOpen, onClose, projectId, initialTitl
                                 <option value="">None (Top Level)</option>
                                 {folders.map(f => (
                                     <option key={f.id} value={f.id}>{f.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1.5">Assign To</label>
+                            <select
+                                value={assigneeId}
+                                onChange={(e) => setAssigneeId(e.target.value === '' ? '' : Number(e.target.value))}
+                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all bg-white"
+                            >
+                                <option value="">Unassigned</option>
+                                {users.map(u => (
+                                    <option key={u.id} value={u.id}>{u.full_name || u.username}</option>
                                 ))}
                             </select>
                         </div>

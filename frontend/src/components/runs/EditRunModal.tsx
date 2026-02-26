@@ -13,6 +13,13 @@ interface TestRun {
     title: string;
     run_type?: string;
     folder_id?: number | null;
+    assignee_id?: number | null;
+}
+
+interface User {
+    id: number;
+    username: string;
+    full_name: string;
 }
 
 interface EditRunModalProps {
@@ -27,13 +34,20 @@ export default function EditRunModal({ isOpen, onClose, run, folders, onUpdated 
     const [title, setTitle] = useState('');
     const [runType, setRunType] = useState('Feature Test');
     const [folderId, setFolderId] = useState<number | ''>('');
+    const [assigneeId, setAssigneeId] = useState<number | ''>('');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [users, setUsers] = useState<User[]>([]);
+
+    useEffect(() => {
+        api.get('/users').then(res => setUsers(res.data)).catch(console.error);
+    }, []);
 
     useEffect(() => {
         if (isOpen && run) {
             setTitle(run.title);
             setRunType(run.run_type || 'Feature Test');
             setFolderId(run.folder_id ?? '');
+            setAssigneeId(run.assignee_id ?? '');
         }
     }, [isOpen, run]);
 
@@ -47,7 +61,8 @@ export default function EditRunModal({ isOpen, onClose, run, folders, onUpdated 
             await api.put(`/runs/${run.id}`, {
                 title: title.trim(),
                 run_type: runType,
-                folder_id: folderId === '' ? null : folderId
+                folder_id: folderId === '' ? null : folderId,
+                assignee_id: assigneeId === '' ? null : Number(assigneeId)
             });
             onUpdated();
             onClose();
@@ -113,6 +128,20 @@ export default function EditRunModal({ isOpen, onClose, run, folders, onUpdated 
                                 <option value="">(No Folder)</option>
                                 {folders.map(f => (
                                     <option key={f.id} value={f.id}>{f.name}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-semibold text-slate-700 mb-1.5">Assign To</label>
+                            <select
+                                value={assigneeId}
+                                onChange={(e) => setAssigneeId(e.target.value === '' ? '' : Number(e.target.value))}
+                                className="w-full px-3 py-2 border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-primary-500 transition-shadow bg-white"
+                            >
+                                <option value="">Unassigned</option>
+                                {users.map(u => (
+                                    <option key={u.id} value={u.id}>{u.full_name || u.username}</option>
                                 ))}
                             </select>
                         </div>

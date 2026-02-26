@@ -7,6 +7,7 @@ class TestRunBase(BaseModel):
     run_type: Optional[str] = "Feature Test"
     description: Optional[str] = None
     status: Optional[str] = "Pending"
+    assignee_id: Optional[int] = None
 
 class TestRunCreate(TestRunBase):
     project_id: int

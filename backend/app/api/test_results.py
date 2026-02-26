@@ -34,6 +34,7 @@ async def get_results_by_run(run_id: int, db: AsyncSession = Depends(get_db)):
             "status": test_result.status,
             "duration_ms": test_result.duration_ms,
             "comment": test_result.comment,
+            "assignee_id": test_result.assignee_id,
             "executed_at": test_result.executed_at.isoformat() if test_result.executed_at else None,
             "test_case": {
                 "title": title,
@@ -89,6 +90,7 @@ async def get_result_details(result_id: int, db: AsyncSession = Depends(get_db))
         "jira_bug_id": result.jira_bug_id,
         "attachment_url": result.attachment_url,
         "comment": result.comment,
+        "assignee_id": result.assignee_id,
         "test_case": {
             "title": test_case.title,
             "description": test_case.description,

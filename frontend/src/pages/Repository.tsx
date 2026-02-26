@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 // import { useParams } from 'react-router-dom';
 import { Plus, Search, Filter, Loader2, Upload, Trash2 } from 'lucide-react';
-import { DndContext, DragEndEvent, closestCenter, useDroppable } from '@dnd-kit/core';
+import { DndContext, DragEndEvent, closestCenter, useDroppable, useSensor, useSensors, PointerSensor } from '@dnd-kit/core';
 import TestCaseEditor from '../components/cases/TestCaseEditor';
 import EditSuiteModal from '../components/suites/EditSuiteModal';
 import SuiteNode from '../components/suites/SuiteNode';
@@ -254,6 +254,14 @@ export default function Repository() {
         (tc.external_id && tc.external_id.toLowerCase().includes(searchQuery.toLowerCase()))
     );
 
+    const sensors = useSensors(
+        useSensor(PointerSensor, {
+            activationConstraint: {
+                distance: 5,
+            },
+        })
+    );
+
     if (isLoading) {
         return (
             <div className="flex-1 flex items-center justify-center h-full">
@@ -358,7 +366,7 @@ export default function Repository() {
                     </button>
                 </div>
 
-                <DndContext onDragEnd={handleDragEnd} collisionDetection={closestCenter}>
+                <DndContext onDragEnd={handleDragEnd} collisionDetection={closestCenter} sensors={sensors}>
                     <RootDroppableArea>
                         <div className="space-y-0.5">
                             {isAddingSuite && (
@@ -512,9 +520,9 @@ export default function Repository() {
                                             />
                                         </td>
                                         <td className="py-3.5 px-4 font-medium text-slate-900 group-hover:text-primary-600 transition-colors">
-                                            <div className="flex flex-col gap-0.5">
-                                                <span className="text-xs font-mono text-slate-400">TC-{tc.id} {tc.external_id && <span className="ml-1 px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded whitespace-nowrap">{tc.external_id}</span>}</span>
-                                                <span>{tc.title}</span>
+                                            <div className="flex flex-col gap-1 w-full max-w-[400px]">
+                                                <span className="text-xs font-mono text-slate-400">TC-{tc.id} {tc.external_id && <span className="ml-1 px-1.5 py-0.5 bg-primary-50 text-primary-600 rounded whitespace-nowrap">{tc.external_id}</span>}</span>
+                                                <span className="text-sm font-semibold text-slate-900 truncate" title={tc.title}>{tc.title}</span>
                                             </div>
                                         </td>
                                         <td className="py-3.5 px-4">

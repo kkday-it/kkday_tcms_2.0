@@ -84,7 +84,7 @@ export default function PlanFolderNode({
                     {onAddSubFolder && (
                         <button
                             onClick={(e) => { e.stopPropagation(); onAddSubFolder(folder.id); setIsExpanded(true); }}
-                            className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
+                            className="p-1 text-slate-400 hover:text-primary-600 hover:bg-primary-50 rounded transition-colors"
                             title="Add subfolder"
                         >
                             <Plus className="w-3.5 h-3.5" />

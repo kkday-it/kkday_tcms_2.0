@@ -41,6 +41,55 @@ export default function TestCaseExecutionPane({ resultId, onClose, onUpdated }: 
     const [detail, setDetail] = useState<TestResultDetail | null>(null);
     const [isLoading, setIsLoading] = useState(false);
 
+    // Basic Markdown Image & Link Renderer
+    const renderMarkdown = (text: string | undefined) => {
+        if (!text) return null;
+
+        // Clean up basic HTML tags that might come from XML import
+        let processedText = String(text).replace(/<br\s*\/?>/gi, '\n')
+            .replace(/<p>/gi, '')
+            .replace(/<\/p>/gi, '\n')
+            .replace(/&nbsp;/gi, ' ')
+            .replace(/<img[^>]+src=["']([^"']+)["'][^>]*>/gi, '![Image]($1)');
+
+        // Strip any remaining HTML tags (like <strong>, <span style="...">, etc.)
+        processedText = processedText.replace(/<[^>]+>/g, '');
+        // Unescape basic HTML entities
+        processedText = processedText.replace(/&gt;/g, '>').replace(/&lt;/g, '<').replace(/&amp;/g, '&').replace(/&quot;/g, '"');
+
+        // Simple regex to find markdown images ![alt](url)
+        const imgRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+        const parts = [];
+        let lastIndex = 0;
+        let match;
+
+        while ((match = imgRegex.exec(processedText)) !== null) {
+            if (match.index > lastIndex) {
+                parts.push(<span key={`text-${lastIndex}`}>{processedText.substring(lastIndex, match.index)}</span>);
+            }
+            parts.push(
+                <div key={`link-${match.index}`} className="mt-2 p-2 bg-blue-50/50 border border-blue-100 rounded text-sm break-all flex items-start gap-1">
+                    <span className="text-slate-500 font-medium whitespace-nowrap">📎 Attachment:</span>
+                    <a
+                        href={match[2]}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1"
+                    >
+                        {match[2]}
+                    </a>
+                </div>
+            );
+            lastIndex = match.index + match[0].length;
+        }
+
+        if (lastIndex < processedText.length) {
+            parts.push(<span key={`text-${lastIndex}`}>{processedText.substring(lastIndex)}</span>);
+        }
+
+        return <div className="whitespace-pre-wrap">{parts}</div>;
+    };
+
     // Resizing state
     const [width, setWidth] = useState(600);
     const [isResizing, setIsResizing] = useState(false);
@@ -216,7 +265,7 @@ export default function TestCaseExecutionPane({ resultId, onClose, onUpdated }: 
                             {/* Case Context */}
                             <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
                                 <div className="flex items-center gap-2 mb-3">
-                                    <span className="px-2.5 py-1 bg-indigo-50 text-indigo-700 text-xs font-semibold rounded uppercase tracking-wider">
+                                    <span className="px-2.5 py-1 bg-primary-50 text-primary-700 text-xs font-semibold rounded uppercase tracking-wider">
                                         TC-{detail.case_id}
                                     </span>
                                     <span className={`px-2.5 py-1 text-xs font-semibold rounded uppercase tracking-wider ${detail.test_case.priority === 'High' ? 'bg-orange-50 text-orange-700' : 'bg-slate-100 text-slate-700'}`}>
@@ -265,18 +314,18 @@ export default function TestCaseExecutionPane({ resultId, onClose, onUpdated }: 
                                                     <div className="flex-1 space-y-3">
                                                         <div>
                                                             <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Action</div>
-                                                            <div className="text-sm text-slate-900">{step.action}</div>
+                                                            <div className="text-sm text-slate-900">{renderMarkdown(step.action)}</div>
                                                         </div>
                                                         {step.data && (
                                                             <div>
                                                                 <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Data</div>
-                                                                <code className="text-xs bg-slate-50 text-slate-700 px-2 py-1 rounded block">{step.data}</code>
+                                                                <code className="text-xs bg-slate-50 text-slate-700 px-2 py-1 rounded block whitespace-pre-wrap break-words">{step.data}</code>
                                                             </div>
                                                         )}
                                                         {step.expected_result && (
                                                             <div>
                                                                 <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Expected Result</div>
-                                                                <div className="text-sm text-slate-600">{step.expected_result}</div>
+                                                                <div className="text-sm text-slate-600">{renderMarkdown(step.expected_result)}</div>
                                                             </div>
                                                         )}
 

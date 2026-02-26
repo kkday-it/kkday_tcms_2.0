@@ -64,7 +64,7 @@ function DraggableRunCard({ run, onClick, onEdit, onDuplicate, onDelete }: { run
             <div className="flex-1 relative z-10 pointer-events-none">
                 <div className="flex items-center gap-3 mb-2">
                     <h3 className="text-lg font-bold text-slate-900">{run.title}</h3>
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-medium border bg-indigo-50 text-indigo-700 border-indigo-200">
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-medium border bg-primary-50 text-primary-700 border-primary-200">
                         {run.run_type || 'Feature Test'}
                     </span>
                     <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium border ${run.status === 'Active' ? 'bg-primary-50 text-primary-700 border-primary-200' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
@@ -102,7 +102,7 @@ function DraggableRunCard({ run, onClick, onEdit, onDuplicate, onDelete }: { run
                     </button>
                     <button
                         onClick={onDuplicate}
-                        className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors group relative"
+                        className="p-2 text-slate-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors group relative"
                         title="Duplicate Run"
                     >
                         <Copy className="w-4 h-4" />

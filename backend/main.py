@@ -37,8 +37,15 @@ async def startup_event():
         await conn.run_sync(Base.metadata.create_all)
     logger.info("Database tables initialized.")
 
+from fastapi.staticfiles import StaticFiles
+import os
+
 @app.get("/api/v1/health")
 async def health_check():
     return {"status": "ok", "project": settings.PROJECT_NAME}
+
+# Mount static files for user uploads
+os.makedirs("uploads", exist_ok=True)
+app.mount("/api/v1/uploads/static", StaticFiles(directory="uploads"), name="uploads_static")
 
 app.include_router(api_router, prefix="/api/v1")
