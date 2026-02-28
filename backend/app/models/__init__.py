@@ -1,6 +1,7 @@
 from app.models.project import Project
 from app.models.test_suite import TestSuite
 from app.models.test_case import TestCase
+from app.models.test_case_history import TestCaseHistory
 from app.models.test_step import TestStep
 from app.models.test_run import TestRun
 from app.models.test_run_folder import TestRunFolder

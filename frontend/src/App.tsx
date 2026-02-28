@@ -5,6 +5,7 @@ import Repository from './pages/Repository';
 import TestRuns from './pages/TestRuns';
 import TestRunDetails from './pages/TestRunDetails';
 import Users from './pages/Users';
+import Settings from './pages/Settings';
 import TestPlans from './pages/TestPlans';
 import TestPlanDetails from './pages/TestPlanDetails';
 import Login from './pages/Login';
@@ -41,6 +42,7 @@ function App() {
           <Route path="/runs" element={<TestRuns />} />
           <Route path="/runs/:runId" element={<TestRunDetails />} />
           <Route path="/users" element={<Users />} />
+          <Route path="/settings" element={<Settings />} />
           <Route path="/plans" element={<TestPlans />} />
           <Route path="/plans/:planId" element={<TestPlanDetails />} />
 

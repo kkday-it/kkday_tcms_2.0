@@ -28,6 +28,7 @@ class TestCase(Base):
     # Zephyr / Legacy Integration Fields
     external_id = Column(String, index=True, nullable=True)
     tags = Column(String, nullable=True) # Stored as JSON string or comma-separated
+    labels = Column(String, nullable=True) # Stored as JSON string or comma-separated
     jira_keys = Column(String, nullable=True) # Stored as comma-separated
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())

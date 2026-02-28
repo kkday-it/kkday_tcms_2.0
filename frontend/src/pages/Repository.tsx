@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 // import { useParams } from 'react-router-dom';
-import { Plus, Search, Filter, Loader2, Upload, Trash2 } from 'lucide-react';
+import { Plus, Search, Filter, Loader2, Upload, Trash2, FolderOpen } from 'lucide-react';
 import { DndContext, DragEndEvent, closestCenter, useDroppable, useSensor, useSensors, PointerSensor } from '@dnd-kit/core';
 import TestCaseEditor from '../components/cases/TestCaseEditor';
+import TestCasePreviewPane from '../components/cases/TestCasePreviewPane';
 import EditSuiteModal from '../components/suites/EditSuiteModal';
 import SuiteNode from '../components/suites/SuiteNode';
 import api from '../lib/api';
@@ -35,7 +36,11 @@ interface TestCase {
     automation_status: string;
     external_id?: string;
     tags?: string;
+    labels?: string;
     jira_keys?: string;
+    default_owner_id?: number;
+    type?: string;
+    layer?: string;
 }
 
 export default function Repository() {
@@ -47,8 +52,45 @@ export default function Repository() {
     const [activeSuiteId, setActiveSuiteId] = useState<number | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
+    const [sidebarWidth, setSidebarWidth] = useState(288);
+    const isResizing = useRef(false);
+
+    useEffect(() => {
+        const handleMouseMove = (e: MouseEvent) => {
+            if (!isResizing.current) return;
+            setSidebarWidth(Math.max(200, Math.min(800, e.clientX)));
+        };
+
+        const handleMouseUp = () => {
+            if (isResizing.current) {
+                isResizing.current = false;
+                document.body.style.cursor = 'default';
+                document.body.style.userSelect = 'auto';
+            }
+        };
+
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
+
+        return () => {
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, []);
+
+    const handleMouseDown = (e: React.MouseEvent) => {
+        e.preventDefault();
+        isResizing.current = true;
+        document.body.style.cursor = 'ew-resize';
+        document.body.style.userSelect = 'none';
+    };
+
     const [isEditorOpen, setIsEditorOpen] = useState(false);
     const [editingCaseId, setEditingCaseId] = useState<number | null>(null);
+
+    const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+    const [previewingCaseId, setPreviewingCaseId] = useState<number | null>(null);
+    const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
 
     // Users for batch owner
     const [users, setUsers] = useState<{ id: number; username: string }[]>([]);
@@ -64,9 +106,7 @@ export default function Repository() {
         try {
             const response = await api.get(`/suites/project/${projectId}`);
             setSuites(response.data);
-            if (response.data.length > 0 && activeSuiteId === null) {
-                setActiveSuiteId(response.data[0].id);
-            }
+            // Removed auto-selection logic to show empty state by default
         } catch (error) {
             console.error("Failed to fetch suites:", error);
         } finally {
@@ -177,6 +217,8 @@ export default function Repository() {
     const handleSaved = () => {
         fetchCases();
         fetchSuites();
+        // Force the preview pane to re-fetch the latest case data after editing
+        setPreviewRefreshKey(k => k + 1);
     };
 
     const handleCreateCase = () => {
@@ -184,7 +226,12 @@ export default function Repository() {
         setIsEditorOpen(true);
     };
 
-    const handleEditCase = (id: number) => {
+    const handlePreviewCase = (id: number) => {
+        setPreviewingCaseId(id);
+        setIsPreviewOpen(true);
+    };
+
+    const handleEditFromPreview = (id: number) => {
         setEditingCaseId(id);
         setIsEditorOpen(true);
     };
@@ -247,12 +294,58 @@ export default function Repository() {
 
     const activeSuite = suites.find(s => s.id === activeSuiteId);
 
-    // Filter cases based on search query
+    // Filter states
     const [searchQuery, setSearchQuery] = useState('');
-    const filteredCases = cases.filter(tc =>
-        tc.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (tc.external_id && tc.external_id.toLowerCase().includes(searchQuery.toLowerCase()))
-    );
+    const [isFilterOpen, setIsFilterOpen] = useState(false);
+    const [filterStatus, setFilterStatus] = useState('');
+    const [filterPriority, setFilterPriority] = useState('');
+    const [filterAutomation, setFilterAutomation] = useState('');
+    const [filterTags, setFilterTags] = useState('');
+    const [filterLabels, setFilterLabels] = useState('');
+    const [filterAssignee, setFilterAssignee] = useState('');
+    const [filterType, setFilterType] = useState('');
+    const [filterLayer, setFilterLayer] = useState('');
+
+    const clearFilters = () => {
+        setFilterStatus('');
+        setFilterPriority('');
+        setFilterAutomation('');
+        setFilterTags('');
+        setFilterLabels('');
+        setFilterAssignee('');
+        setFilterType('');
+        setFilterLayer('');
+    };
+
+    // Filter cases based on search query and filters
+    const filteredCases = cases.filter(tc => {
+        const matchesSearch = tc.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            (tc.external_id && tc.external_id.toLowerCase().includes(searchQuery.toLowerCase()));
+
+        if (!matchesSearch) return false;
+
+        if (filterStatus && tc.status !== filterStatus) return false;
+        if (filterPriority && tc.priority !== filterPriority) return false;
+        if (filterAutomation && tc.automation_status !== filterAutomation) return false;
+        if (filterAssignee) {
+            if (filterAssignee === 'unassigned' && tc.default_owner_id != null) return false;
+            if (filterAssignee !== 'unassigned' && String(tc.default_owner_id) !== filterAssignee) return false;
+        }
+        if (filterTags) {
+            const tcTags = tc.tags ? tc.tags.toLowerCase() : '';
+            const searchTags = filterTags.toLowerCase().split(',').map(t => t.trim()).filter(Boolean);
+            if (searchTags.length > 0 && !searchTags.some(st => tcTags.includes(st))) return false;
+        }
+        if (filterLabels) {
+            const tcLabels = tc.labels ? tc.labels.toLowerCase() : '';
+            const searchLabels = filterLabels.toLowerCase().split(',').map(l => l.trim()).filter(Boolean);
+            if (searchLabels.length > 0 && !searchLabels.some(sl => tcLabels.includes(sl))) return false;
+        }
+        if (filterType && tc.type !== filterType) return false;
+        if (filterLayer && tc.layer !== filterLayer) return false;
+
+        return true;
+    });
 
     const sensors = useSensors(
         useSensor(PointerSensor, {
@@ -339,6 +432,14 @@ export default function Repository() {
 
     return (
         <div className="flex-1 flex h-full overflow-hidden">
+            <TestCasePreviewPane
+                isOpen={isPreviewOpen}
+                onClose={() => setIsPreviewOpen(false)}
+                caseId={previewingCaseId}
+                onEditClick={handleEditFromPreview}
+                refreshKey={previewRefreshKey}
+            />
+
             <TestCaseEditor
                 isOpen={isEditorOpen}
                 onClose={() => setIsEditorOpen(false)}
@@ -354,7 +455,15 @@ export default function Repository() {
                 onSaved={fetchSuites}
             />
             {/* Suites Tree Sidebar */}
-            <div className="w-72 bg-slate-50 border-r border-slate-200 h-full flex flex-col">
+            <div
+                className="bg-slate-50 border-r border-slate-200 h-full flex flex-col relative shrink-0"
+                style={{ width: `${sidebarWidth}px` }}
+            >
+                {/* Drag Handle */}
+                <div
+                    className="absolute top-0 -right-1.5 w-3 h-full cursor-ew-resize hover:bg-primary-300 z-50 transition-colors"
+                    onMouseDown={handleMouseDown}
+                />
                 <div className="px-5 py-4 flex items-center justify-between">
                     <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Project Suites</h2>
                     <button
@@ -406,151 +515,286 @@ export default function Repository() {
             </div>
 
             {/* Cases List Main Area */}
-            <div className="flex-1 flex flex-col h-full bg-white relative">
-                {/* Header */}
-                <div className="px-8 py-5 border-b border-slate-200 flex items-center justify-between bg-white z-10">
-                    <div>
-                        <h2 className="text-xl font-bold text-slate-900">{activeSuite ? activeSuite.name : 'Select a Suite'}</h2>
-                        <p className="text-sm text-slate-500 mt-1">{filteredCases.length} test cases in this suite</p>
+            <div className="flex-1 flex flex-col h-full bg-slate-50 relative">
+                {!activeSuiteId ? (
+                    <div className="flex-1 flex flex-col items-center justify-center h-full text-slate-400">
+                        <div className="w-16 h-16 mb-4 rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center justify-center">
+                            <FolderOpen className="w-8 h-8 text-slate-300" />
+                        </div>
+                        <h3 className="text-lg font-bold text-slate-900 mb-1">Select a folder</h3>
+                        <p className="text-sm text-center max-w-sm">
+                            Click on a folder in the sidebar to view or manage its test cases.
+                        </p>
                     </div>
-                    <div className="flex items-center gap-3">
-                        <input type="file" accept=".xml" ref={fileInputRef} style={{ display: 'none' }} onChange={handleImportZephyr} />
-                        <button
-                            onClick={() => fileInputRef.current?.click()}
-                            disabled={isImporting}
-                            className="bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm disabled:opacity-50"
-                        >
-                            {isImporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                            {isImporting ? 'Importing...' : 'Import XML'}
-                        </button>
-                        <button className="btn-secondary flex items-center gap-2 shadow-sm">
-                            <Filter className="w-4 h-4" /> Filter
-                        </button>
-                        <button onClick={handleCreateCase} disabled={!activeSuiteId} className="btn-primary flex items-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
-                            <Plus className="w-4 h-4" /> Create Case
-                        </button>
-                    </div>
-                </div>
+                ) : (
+                    <div className="flex-1 flex flex-col h-full bg-white relative">
+                        {/* Header */}
+                        <div className="px-8 py-5 border-b border-slate-200 flex items-center justify-between bg-white z-10">
+                            <div>
+                                <h2 className="text-xl font-bold text-slate-900">{activeSuite ? activeSuite.name : 'Unknown Suite'}</h2>
+                                <p className="text-sm text-slate-500 mt-1">{filteredCases.length} test cases in this suite</p>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <input type="file" accept=".xml" ref={fileInputRef} style={{ display: 'none' }} onChange={handleImportZephyr} />
+                                <button
+                                    onClick={() => fileInputRef.current?.click()}
+                                    disabled={isImporting}
+                                    className="bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm disabled:opacity-50"
+                                >
+                                    {isImporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                                    {isImporting ? 'Importing...' : 'Import XML'}
+                                </button>
+                                <button
+                                    onClick={() => setIsFilterOpen(!isFilterOpen)}
+                                    className={`flex items-center gap-2 shadow-sm ${isFilterOpen ? 'bg-primary-50 border-primary-200 text-primary-700 px-3 py-2 rounded-lg text-sm font-medium' : 'btn-secondary'}`}
+                                >
+                                    <Filter className="w-4 h-4" /> Filter
+                                </button>
+                                <button onClick={handleCreateCase} className="btn-primary flex items-center gap-2 shadow-sm">
+                                    <Plus className="w-4 h-4" /> Create Case
+                                </button>
+                            </div>
+                        </div>
 
-                {/* Search / Toolbar */}
-                <div className="px-8 py-3 border-b border-slate-100 flex items-center gap-4 bg-slate-50/50">
-                    <div className="relative flex-1 max-w-md">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                        <input
-                            type="text"
-                            placeholder="Search test cases or Zephyr IDs..."
-                            className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all shadow-sm"
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                        />
-                    </div>
-                </div>
+                        {/* Search + Integrated Filter Bar */}
+                        <div className="px-8 py-3 bg-white border-b border-slate-100 flex flex-col gap-3">
+                            <div className="flex items-center gap-4">
+                                <div className="relative flex-1 max-w-md">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                    <input
+                                        type="text"
+                                        placeholder="Search test cases or Zephyr IDs..."
+                                        className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                    />
+                                </div>
+                                {isFilterOpen && (
+                                    <div className="px-3 py-1 bg-primary-50 text-primary-700 text-xs font-bold rounded-full border border-primary-100 uppercase tracking-wider">
+                                        Advanced Filters On
+                                    </div>
+                                )}
+                            </div>
+                        </div>
 
-                {/* Batch action bar */}
-                {selectedCases.size > 0 && (
-                    <div className="flex items-center gap-3 px-8 py-3 bg-primary-50 border-b border-primary-100">
-                        <span className="text-sm font-semibold text-primary-700">{selectedCases.size} selected</span>
-                        <div className="flex items-center gap-2 ml-auto">
-                            <span className="text-sm text-slate-600 font-medium">Set Owner:</span>
-                            <select
-                                value={batchOwnerId}
-                                onChange={e => setBatchOwnerId(e.target.value)}
-                                className="text-sm rounded-md border-slate-300 py-1.5 pl-2 pr-8 shadow-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
-                            >
-                                <option value="">— Unassign —</option>
-                                {users.map(u => <option key={u.id} value={u.id}>{u.username}</option>)}
-                            </select>
-                            <button
-                                onClick={handleBatchAssignOwner}
-                                className="px-4 py-1.5 text-sm font-semibold text-white bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors shadow-sm"
-                            >
-                                Apply
-                            </button>
-                            <button
-                                onClick={() => setSelectedCases(new Set())}
-                                className="px-3 py-1.5 text-sm font-medium text-slate-500 bg-white border border-slate-200 rounded-lg hover:bg-slate-50"
-                            >
-                                Clear
-                            </button>
+                        {/* Filter Panel */}
+                        {isFilterOpen && (
+                            <div className="px-8 py-4 bg-white border-b border-slate-200 shadow-inner grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 animate-in slide-in-from-top-2">
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-500 mb-1">Status</label>
+                                    <select
+                                        value={filterStatus}
+                                        onChange={(e) => setFilterStatus(e.target.value)}
+                                        className="w-full text-sm rounded-md border-slate-200 py-1.5 shadow-sm focus:border-primary-500 focus:ring-primary-500"
+                                    >
+                                        <option value="">All</option>
+                                        <option value="Active">Active</option>
+                                        <option value="Draft">Draft</option>
+                                        <option value="Deprecated">Deprecated</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-500 mb-1">Layer</label>
+                                    <select
+                                        value={filterLayer}
+                                        onChange={(e) => setFilterLayer(e.target.value)}
+                                        className="w-full text-sm rounded-md border-slate-200 py-1.5 shadow-sm focus:border-primary-500 focus:ring-primary-500"
+                                    >
+                                        <option value="">All</option>
+                                        <option value="E2E">E2E</option>
+                                        <option value="API">API</option>
+                                        <option value="Unit">Unit</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-500 mb-1">Type</label>
+                                    <select
+                                        value={filterType}
+                                        onChange={(e) => setFilterType(e.target.value)}
+                                        className="w-full text-sm rounded-md border-slate-200 py-1.5 shadow-sm focus:border-primary-500 focus:ring-primary-500"
+                                    >
+                                        <option value="">All</option>
+                                        <option value="Functional">Functional</option>
+                                        <option value="Scenario">Scenario</option>
+                                        <option value="Smoke">Smoke</option>
+                                        <option value="Regression">Regression</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-500 mb-1">Priority</label>
+                                    <select
+                                        value={filterPriority}
+                                        onChange={(e) => setFilterPriority(e.target.value)}
+                                        className="w-full text-sm rounded-md border-slate-200 py-1.5 shadow-sm focus:border-primary-500 focus:ring-primary-500"
+                                    >
+                                        <option value="">All</option>
+                                        <option value="High">High</option>
+                                        <option value="Medium">Medium</option>
+                                        <option value="Low">Low</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-500 mb-1">Automation</label>
+                                    <select
+                                        value={filterAutomation}
+                                        onChange={(e) => setFilterAutomation(e.target.value)}
+                                        className="w-full text-sm rounded-md border-slate-200 py-1.5 shadow-sm focus:border-primary-500 focus:ring-primary-500"
+                                    >
+                                        <option value="">All</option>
+                                        <option value="Automated">Automated</option>
+                                        <option value="Manual">Manual</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-500 mb-1">Assignee</label>
+                                    <select
+                                        value={filterAssignee}
+                                        onChange={(e) => setFilterAssignee(e.target.value)}
+                                        className="w-full text-sm rounded-md border-slate-200 py-1.5 shadow-sm focus:border-primary-500 focus:ring-primary-500"
+                                    >
+                                        <option value="">All Users</option>
+                                        <option value="unassigned">Unassigned</option>
+                                        {users.map(u => <option key={u.id} value={u.id}>{u.username}</option>)}
+                                    </select>
+                                </div>
+                                <div className="md:col-span-2 lg:col-span-3">
+                                    <label className="block text-xs font-semibold text-slate-500 mb-1">Tags</label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. core, api"
+                                        value={filterTags}
+                                        onChange={(e) => setFilterTags(e.target.value)}
+                                        className="w-full text-sm rounded-md border-slate-200 py-1.5 shadow-sm focus:border-primary-500 focus:ring-primary-500"
+                                    />
+                                </div>
+                                <div className="md:col-span-1 lg:col-span-2">
+                                    <label className="block text-xs font-semibold text-slate-500 mb-1">Labels</label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. regression"
+                                        value={filterLabels}
+                                        onChange={(e) => setFilterLabels(e.target.value)}
+                                        className="w-full text-sm rounded-md border-slate-200 py-1.5 shadow-sm focus:border-primary-500 focus:ring-primary-500"
+                                    />
+                                </div>
+                                <div className="flex items-end justify-end">
+                                    <button
+                                        onClick={clearFilters}
+                                        className="h-9 px-4 text-sm font-medium text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-all flex items-center justify-center gap-1"
+                                    >
+                                        Reset
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Batch action bar */}
+                        {selectedCases.size > 0 && (
+                            <div className="flex items-center gap-3 px-8 py-3 bg-primary-50 border-b border-primary-100">
+                                <span className="text-sm font-semibold text-primary-700">{selectedCases.size} selected</span>
+                                <div className="flex items-center gap-2 ml-auto">
+                                    <span className="text-sm text-slate-600 font-medium">Set Owner:</span>
+                                    <select
+                                        value={batchOwnerId}
+                                        onChange={e => setBatchOwnerId(e.target.value)}
+                                        className="text-sm rounded-md border-slate-300 py-1.5 pl-2 pr-8 shadow-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+                                    >
+                                        <option value="">— Unassign —</option>
+                                        {users.map(u => <option key={u.id} value={u.id}>{u.username}</option>)}
+                                    </select>
+                                    <button
+                                        onClick={handleBatchAssignOwner}
+                                        className="px-4 py-1.5 text-sm font-semibold text-white bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors shadow-sm"
+                                    >
+                                        Apply
+                                    </button>
+                                    <button
+                                        onClick={() => setSelectedCases(new Set())}
+                                        className="px-3 py-1.5 text-sm font-medium text-slate-500 bg-white border border-slate-200 rounded-lg hover:bg-slate-50"
+                                    >
+                                        Clear
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Table */}
+                        <div className="flex-1 overflow-y-auto w-full">
+                            {filteredCases.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center h-full text-slate-500">
+                                    <p className="mb-4">No test cases found in this suite.</p>
+                                    <button onClick={handleCreateCase} className="btn-primary flex items-center gap-2 shadow-sm">
+                                        <Plus className="w-4 h-4" /> Create First Case
+                                    </button>
+                                </div>
+                            ) : (
+                                <table className="w-full text-left border-collapse min-w-max">
+                                    <thead className="sticky top-0 bg-white z-10 before:content-[''] before:absolute before:bottom-0 before:left-0 before:right-0 before:h-px before:bg-slate-200">
+                                        <tr className="text-xs text-slate-500 uppercase tracking-wider">
+                                            <th className="py-3 px-4 w-10 border-b border-slate-200">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedCases.size === filteredCases.length && filteredCases.length > 0}
+                                                    onChange={toggleAllCases}
+                                                    className="size-4 rounded border-slate-300 text-primary-600 focus:ring-primary-600"
+                                                />
+                                            </th>
+                                            <th className="py-3 font-semibold px-4 border-b border-slate-200">Case Title</th>
+                                            <th className="py-3 font-semibold px-4 w-32 border-b border-slate-200">Status</th>
+                                            <th className="py-3 font-semibold px-4 w-32 border-b border-slate-200">Priority</th>
+                                            <th className="py-3 font-semibold px-4 w-32 border-b border-slate-200">Automation</th>
+                                            <th className="py-3 font-semibold px-8 w-24 text-right border-b border-slate-200">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {filteredCases.map((tc) => (
+                                            <tr
+                                                key={tc.id}
+                                                onClick={() => handlePreviewCase(tc.id)}
+                                                className={`hover:bg-slate-50/80 cursor-pointer group transition-colors ${selectedCases.has(tc.id) ? 'bg-primary-50/40' : ''}`}
+                                            >
+                                                <td className="py-3.5 px-4 w-10" onClick={e => { e.stopPropagation(); toggleCase(tc.id); }}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={selectedCases.has(tc.id)}
+                                                        onChange={() => toggleCase(tc.id)}
+                                                        className="size-4 rounded border-slate-300 text-primary-600 focus:ring-primary-600"
+                                                    />
+                                                </td>
+                                                <td className="py-3.5 px-4 font-medium text-slate-900 group-hover:text-primary-600 transition-colors">
+                                                    <div className="flex flex-col gap-1 w-full max-w-[400px]">
+                                                        <span className="text-xs font-mono text-slate-400">TC-{tc.id} {tc.external_id && <span className="ml-1 px-1.5 py-0.5 bg-primary-50 text-primary-600 rounded whitespace-nowrap">{tc.external_id}</span>}</span>
+                                                        <span className="text-sm font-semibold text-slate-900 truncate" title={tc.title}>{tc.title}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="py-3.5 px-4">
+                                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${tc.status === 'Active' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-slate-50 text-slate-600 border border-slate-200'}`}>
+                                                        {tc.status}
+                                                    </span>
+                                                </td>
+                                                <td className="py-3.5 px-4 text-sm text-slate-600">{tc.priority}</td>
+                                                <td className="py-3.5 px-4">
+                                                    <span className={`text-xs px-2.5 py-1 rounded-full border ${tc.automation_status === 'Automated' ? 'border-primary-200 text-primary-700 bg-primary-50' : 'border-slate-200 text-slate-500 bg-white'}`}>
+                                                        {tc.automation_status}
+                                                    </span>
+                                                </td>
+                                                <td className="py-3.5 px-8 text-right">
+                                                    <button
+                                                        onClick={(e) => handleDeleteCase(e, tc.id)}
+                                                        className="text-slate-400 hover:text-rose-500 p-1.5 rounded-md hover:bg-rose-50 opacity-0 group-hover:opacity-100 transition-all"
+                                                        title="Delete Case"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            )}
                         </div>
                     </div>
                 )}
-
-                {/* Table */}
-                <div className="flex-1 overflow-y-auto w-full">
-                    {filteredCases.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center h-full text-slate-500">
-                            <p className="mb-4">No test cases found in this suite.</p>
-                            <button onClick={handleCreateCase} className="btn-primary flex items-center gap-2 shadow-sm">
-                                <Plus className="w-4 h-4" /> Create First Case
-                            </button>
-                        </div>
-                    ) : (
-                        <table className="w-full text-left border-collapse min-w-max">
-                            <thead className="sticky top-0 bg-white z-10 before:content-[''] before:absolute before:bottom-0 before:left-0 before:right-0 before:h-px before:bg-slate-200">
-                                <tr className="text-xs text-slate-500 uppercase tracking-wider">
-                                    <th className="py-3 px-4 w-10 border-b border-slate-200">
-                                        <input
-                                            type="checkbox"
-                                            checked={selectedCases.size === filteredCases.length && filteredCases.length > 0}
-                                            onChange={toggleAllCases}
-                                            className="size-4 rounded border-slate-300 text-primary-600 focus:ring-primary-600"
-                                        />
-                                    </th>
-                                    <th className="py-3 font-semibold px-4 border-b border-slate-200">Case Title</th>
-                                    <th className="py-3 font-semibold px-4 w-32 border-b border-slate-200">Status</th>
-                                    <th className="py-3 font-semibold px-4 w-32 border-b border-slate-200">Priority</th>
-                                    <th className="py-3 font-semibold px-4 w-32 border-b border-slate-200">Automation</th>
-                                    <th className="py-3 font-semibold px-8 w-24 text-right border-b border-slate-200">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {filteredCases.map((tc) => (
-                                    <tr
-                                        key={tc.id}
-                                        onClick={() => handleEditCase(tc.id)}
-                                        className={`hover:bg-slate-50/80 cursor-pointer group transition-colors ${selectedCases.has(tc.id) ? 'bg-primary-50/40' : ''}`}
-                                    >
-                                        <td className="py-3.5 px-4 w-10" onClick={e => { e.stopPropagation(); toggleCase(tc.id); }}>
-                                            <input
-                                                type="checkbox"
-                                                checked={selectedCases.has(tc.id)}
-                                                onChange={() => toggleCase(tc.id)}
-                                                className="size-4 rounded border-slate-300 text-primary-600 focus:ring-primary-600"
-                                            />
-                                        </td>
-                                        <td className="py-3.5 px-4 font-medium text-slate-900 group-hover:text-primary-600 transition-colors">
-                                            <div className="flex flex-col gap-1 w-full max-w-[400px]">
-                                                <span className="text-xs font-mono text-slate-400">TC-{tc.id} {tc.external_id && <span className="ml-1 px-1.5 py-0.5 bg-primary-50 text-primary-600 rounded whitespace-nowrap">{tc.external_id}</span>}</span>
-                                                <span className="text-sm font-semibold text-slate-900 truncate" title={tc.title}>{tc.title}</span>
-                                            </div>
-                                        </td>
-                                        <td className="py-3.5 px-4">
-                                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${tc.status === 'Active' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-slate-50 text-slate-600 border border-slate-200'}`}>
-                                                {tc.status}
-                                            </span>
-                                        </td>
-                                        <td className="py-3.5 px-4 text-sm text-slate-600">{tc.priority}</td>
-                                        <td className="py-3.5 px-4">
-                                            <span className={`text-xs px-2.5 py-1 rounded-full border ${tc.automation_status === 'Automated' ? 'border-primary-200 text-primary-700 bg-primary-50' : 'border-slate-200 text-slate-500 bg-white'}`}>
-                                                {tc.automation_status}
-                                            </span>
-                                        </td>
-                                        <td className="py-3.5 px-8 text-right">
-                                            <button
-                                                onClick={(e) => handleDeleteCase(e, tc.id)}
-                                                className="text-slate-400 hover:text-rose-500 p-1.5 rounded-md hover:bg-rose-50 opacity-0 group-hover:opacity-100 transition-all"
-                                                title="Delete Case"
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    )}
-                </div>
             </div>
         </div>
     );

@@ -2,12 +2,23 @@ from typing import List, Optional
 from pydantic import BaseModel
 from datetime import datetime
 
+class AssigneeInfo(BaseModel):
+    id: int
+    username: str
+    full_name: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
 class TestRunBase(BaseModel):
     title: str
     run_type: Optional[str] = "Feature Test"
     description: Optional[str] = None
     status: Optional[str] = "Pending"
+    # Legacy single-assignee kept for backward compat
     assignee_id: Optional[int] = None
+    # New: list of user IDs to assign to this run
+    assignee_ids: Optional[List[int]] = None
 
 class TestRunCreate(TestRunBase):
     project_id: int
@@ -20,6 +31,7 @@ class TestRunUpdate(TestRunBase):
     status: Optional[str] = None
     folder_id: Optional[int] = None
     test_plan_id: Optional[int] = None
+    case_ids: Optional[List[int]] = None
 
 class TestRunResponse(TestRunBase):
     id: int
@@ -27,10 +39,14 @@ class TestRunResponse(TestRunBase):
     folder_id: Optional[int] = None
     test_plan_id: Optional[int] = None
     created_at: datetime
-    completed_at: Optional[datetime]
+    completed_at: Optional[datetime] = None
     passed: Optional[int] = 0
     failed: Optional[int] = 0
+    blocked: Optional[int] = 0
     untested: Optional[int] = 0
+    total: Optional[int] = 0
+    # Resolved assignee info
+    assignees: Optional[List[AssigneeInfo]] = []
 
     class Config:
         from_attributes = True

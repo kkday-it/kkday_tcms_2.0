@@ -30,7 +30,7 @@ export default function RunFolderNode({
     onDelete,
     childrenNodes
 }: RunFolderNodeProps) {
-    const [isExpanded, setIsExpanded] = useState(true);
+    const [isExpanded, setIsExpanded] = useState(false);
 
     const { attributes, listeners, setNodeRef: setDraggableRef, transform, isDragging } = useDraggable({
         id: `folder-${folder.id}`,

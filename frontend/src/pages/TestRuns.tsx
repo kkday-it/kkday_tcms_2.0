@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Play, CheckCircle2, XCircle, SkipForward, Clock, Loader2, Trash2, Copy, Search, Plus, Folder as FolderIcon, Pencil } from 'lucide-react';
+import { Play, CheckCircle2, XCircle, SkipForward, Clock, Loader2, Trash2, Copy, Search, Plus, Folder as FolderIcon, Pencil, Ban } from 'lucide-react';
 import { DndContext, DragEndEvent, closestCenter, useDroppable, useSensor, useSensors, PointerSensor, useDraggable } from '@dnd-kit/core';
 import api from '../lib/api';
 import CreateRunModal from '../components/runs/CreateRunModal';
@@ -33,10 +33,14 @@ function DraggableRunCard({ run, onClick, onEdit, onDuplicate, onDelete }: { run
 
     const passed = run.passed || 0;
     const failed = run.failed || 0;
-    const unt = run.unt || 0;
-    const total = passed + failed + unt;
-    const passPct = total > 0 ? Math.round((passed / total) * 100) : 0;
-    const failPct = total > 0 ? Math.round((failed / total) * 100) : 0;
+    const blocked = run.blocked || 0;
+    const unt = run.untested || 0;
+    const total = run.total || (passed + failed + blocked + unt);
+
+    // Use float for CSS width to avoid rounding gaps
+    const passPct = total > 0 ? (passed / total) * 100 : 0;
+    const failPct = total > 0 ? (failed / total) * 100 : 0;
+    const blockedPct = total > 0 ? (blocked / total) * 100 : 0;
 
     return (
         <div
@@ -75,6 +79,24 @@ function DraggableRunCard({ run, onClick, onEdit, onDuplicate, onDelete }: { run
                 <div className="flex items-center gap-4 text-sm text-slate-500">
                     <span className="flex items-center gap-1.5"><Clock className="w-4 h-4" /> {new Date(run.created_at).toLocaleDateString()}</span>
                     <span>{total} cases</span>
+                    {run.assignees && run.assignees.length > 0 && (
+                        <div className="flex items-center flex-wrap gap-1.5">
+                            {run.assignees.slice(0, 4).map(a => (
+                                <span
+                                    key={a.id}
+                                    className="flex items-center gap-1 px-2 py-0.5 bg-slate-100 border border-slate-200 rounded-full text-xs text-slate-700 font-medium"
+                                >
+                                    <span className="w-4 h-4 rounded-full bg-primary-200 text-primary-800 flex items-center justify-center text-[9px] font-bold shrink-0">
+                                        {(a.full_name || a.username).charAt(0).toUpperCase()}
+                                    </span>
+                                    {a.username}
+                                </span>
+                            ))}
+                            {run.assignees.length > 4 && (
+                                <span className="text-xs text-slate-400 font-medium">+{run.assignees.length - 4}</span>
+                            )}
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -84,11 +106,14 @@ function DraggableRunCard({ run, onClick, onEdit, onDuplicate, onDelete }: { run
                     <div className="flex items-center justify-between text-xs font-semibold mb-1.5">
                         <span className="text-green-600 flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> {passed}</span>
                         <span className="text-red-500 flex items-center gap-1"><XCircle className="w-3.5 h-3.5" /> {failed}</span>
+                        <span className="text-amber-500 flex items-center gap-1"><Ban className="w-3.5 h-3.5" /> {blocked}</span>
                         <span className="text-slate-400 flex items-center gap-1"><SkipForward className="w-3.5 h-3.5" /> {unt}</span>
                     </div>
-                    <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden flex">
-                        <div style={{ width: `${passPct}%` }} className="bg-green-500 h-full"></div>
-                        <div style={{ width: `${failPct}%` }} className="bg-red-500 h-full"></div>
+                    <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden flex shadow-inner border border-slate-200/30">
+                        <div style={{ width: `${passPct}%` }} className="bg-emerald-500 h-full transition-all duration-500 ease-out"></div>
+                        <div style={{ width: `${failPct}%` }} className="bg-rose-500 h-full transition-all duration-500 ease-out border-l border-white/10"></div>
+                        <div style={{ width: `${blockedPct}%` }} className="bg-amber-400 h-full transition-all duration-500 ease-out border-l border-white/10"></div>
+                        <div style={{ width: `${(100 - passPct - failPct - blockedPct)}%` }} className="bg-slate-200 h-full transition-all duration-500 ease-out border-l border-white/10"></div>
                     </div>
                 </div>
 
@@ -122,6 +147,7 @@ function DraggableRunCard({ run, onClick, onEdit, onDuplicate, onDelete }: { run
 
 interface TestRun {
     id: number;
+    project_id: number;
     title: string;
     description?: string;
     status: string;
@@ -129,8 +155,12 @@ interface TestRun {
     created_at: string;
     passed?: number;
     failed?: number;
-    unt?: number;
+    blocked?: number;
+    untested?: number;
+    total?: number;
+    unt?: number; // Keep for backward compat during mapping
     folder_id?: number | null;
+    assignees?: { id: number; username: string; full_name?: string }[];
 }
 
 interface TestRunFolder {
@@ -164,13 +194,9 @@ export default function TestRuns() {
     const [editingFolder, setEditingFolder] = useState<TestRunFolder | null>(null);
 
     // Initialize DndKit sensors to ignore small clicks
-    const sensors = useSensors(
-        useSensor(PointerSensor, {
-            activationConstraint: {
-                distance: 5,
-            },
-        })
-    );
+    const sensors = useSensors(useSensor(PointerSensor, {
+        activationConstraint: { distance: 5 }
+    }));
 
     // Sidebar resize state
     const [sidebarWidth, setSidebarWidth] = useState(256);
@@ -232,7 +258,9 @@ export default function TestRuns() {
                 ...r,
                 passed: r.passed ?? 0,
                 failed: r.failed ?? 0,
-                unt: r.untested ?? 0
+                blocked: r.blocked ?? 0,
+                untested: r.untested ?? 0,
+                total: r.total ?? 0
             }));
 
             // Filter by selected folder if any

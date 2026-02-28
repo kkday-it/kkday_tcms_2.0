@@ -37,6 +37,7 @@ class TestCaseBase(BaseModel):
     # Zephyr / Legacy Integration Fields
     external_id: Optional[str] = None
     tags: Optional[str] = None
+    labels: Optional[str] = None
     jira_keys: Optional[str] = None
     
     default_owner_id: Optional[int] = None

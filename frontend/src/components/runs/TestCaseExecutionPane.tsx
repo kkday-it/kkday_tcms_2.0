@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { X, CheckCircle2, XCircle, Clock, FileWarning, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { X, CheckCircle2, XCircle, Ban, Clock, FileWarning, Image as ImageIcon, Loader2 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import rehypeRaw from 'rehype-raw';
 import api from '../../lib/api';
 
 // Types
@@ -22,11 +24,16 @@ interface TestResultDetail {
     jira_bug_id?: string;
     attachment_url?: string;
     comment?: string;
+    assignee_id?: number;
     test_case: {
         title: string;
         description?: string;
         preconditions?: string;
         priority: string;
+        status: string;
+        automation_status: string;
+        tags?: string;
+        labels?: string;
     };
     steps: TestStep[];
 }
@@ -40,54 +47,29 @@ interface Props {
 export default function TestCaseExecutionPane({ resultId, onClose, onUpdated }: Props) {
     const [detail, setDetail] = useState<TestResultDetail | null>(null);
     const [isLoading, setIsLoading] = useState(false);
+    const [users, setUsers] = useState<{ id: number; username: string; full_name?: string }[]>([]);
+
+    // Fetch users once for assignee name resolution
+    useEffect(() => {
+        api.get('/users/').then(r => setUsers(r.data)).catch(() => { });
+    }, []);
+
+    const resolveAssignee = (id?: number) => {
+        if (!id) return null;
+        const u = users.find(x => x.id === id);
+        return u ? (u.full_name || u.username) : `#${id}`;
+    };
 
     // Basic Markdown Image & Link Renderer
     const renderMarkdown = (text: string | undefined) => {
         if (!text) return null;
-
-        // Clean up basic HTML tags that might come from XML import
-        let processedText = String(text).replace(/<br\s*\/?>/gi, '\n')
-            .replace(/<p>/gi, '')
-            .replace(/<\/p>/gi, '\n')
-            .replace(/&nbsp;/gi, ' ')
-            .replace(/<img[^>]+src=["']([^"']+)["'][^>]*>/gi, '![Image]($1)');
-
-        // Strip any remaining HTML tags (like <strong>, <span style="...">, etc.)
-        processedText = processedText.replace(/<[^>]+>/g, '');
-        // Unescape basic HTML entities
-        processedText = processedText.replace(/&gt;/g, '>').replace(/&lt;/g, '<').replace(/&amp;/g, '&').replace(/&quot;/g, '"');
-
-        // Simple regex to find markdown images ![alt](url)
-        const imgRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
-        const parts = [];
-        let lastIndex = 0;
-        let match;
-
-        while ((match = imgRegex.exec(processedText)) !== null) {
-            if (match.index > lastIndex) {
-                parts.push(<span key={`text-${lastIndex}`}>{processedText.substring(lastIndex, match.index)}</span>);
-            }
-            parts.push(
-                <div key={`link-${match.index}`} className="mt-2 p-2 bg-blue-50/50 border border-blue-100 rounded text-sm break-all flex items-start gap-1">
-                    <span className="text-slate-500 font-medium whitespace-nowrap">📎 Attachment:</span>
-                    <a
-                        href={match[2]}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1"
-                    >
-                        {match[2]}
-                    </a>
-                </div>
-            );
-            lastIndex = match.index + match[0].length;
-        }
-
-        if (lastIndex < processedText.length) {
-            parts.push(<span key={`text-${lastIndex}`}>{processedText.substring(lastIndex)}</span>);
-        }
-
-        return <div className="whitespace-pre-wrap">{parts}</div>;
+        return (
+            <div className="text-sm text-slate-700 leading-relaxed font-mono prose prose-sm max-w-none">
+                <ReactMarkdown rehypePlugins={[rehypeRaw]}>
+                    {text}
+                </ReactMarkdown>
+            </div>
+        );
     };
 
     // Resizing state
@@ -251,6 +233,13 @@ export default function TestCaseExecutionPane({ resultId, onClose, onUpdated }: 
                             >
                                 <XCircle className="w-4 h-4" /> Fail
                             </button>
+                            <button
+                                onClick={() => handleCaseUpdate('Blocked')}
+                                className={`px-4 py-2 rounded-md font-medium text-sm flex items-center gap-2 transition-colors ${detail.status === 'Blocked' ? 'bg-amber-500 text-white shadow-sm' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'
+                                    }`}
+                            >
+                                <Ban className="w-4 h-4" /> Blocked
+                            </button>
                         </div>
                     )}
                 </div>
@@ -273,6 +262,52 @@ export default function TestCaseExecutionPane({ resultId, onClose, onUpdated }: 
                                     </span>
                                 </div>
                                 <h3 className="text-xl font-bold text-slate-900 mb-4">{detail.test_case.title}</h3>
+
+                                {/* Metadata Badges */}
+                                <div className="flex flex-wrap gap-x-4 gap-y-2 mb-4 p-3 bg-slate-50/50 rounded-lg border border-slate-100">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Status:</span>
+                                        <span className={`px-2 py-0.5 text-xs font-medium rounded-md ${detail.test_case.status === 'Active' ? 'bg-green-100 text-green-700' :
+                                            detail.test_case.status === 'Draft' ? 'bg-slate-200 text-slate-700' :
+                                                'bg-yellow-100 text-yellow-700'
+                                            }`}>{detail.test_case.status}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Automation:</span>
+                                        <span className="text-sm text-slate-700">{detail.test_case.automation_status}</span>
+                                    </div>
+                                    {detail.test_case.tags && (
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Tags:</span>
+                                            <div className="flex flex-wrap gap-1">
+                                                {detail.test_case.tags.split(',').map((tag, idx) => (
+                                                    <span key={idx} className="px-1.5 py-0.5 bg-blue-50 text-blue-700 border border-blue-100 rounded text-xs">{tag.trim()}</span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                    {detail.test_case.labels && (
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Labels:</span>
+                                            <div className="flex flex-wrap gap-1">
+                                                {detail.test_case.labels.split(',').map((label, idx) => (
+                                                    <span key={idx} className="px-1.5 py-0.5 bg-purple-50 text-purple-700 border border-purple-100 rounded text-xs">{label.trim()}</span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                    {detail.assignee_id && (
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Assignee:</span>
+                                            <span className="flex items-center gap-1.5 text-sm text-slate-700 font-medium">
+                                                <span className="w-5 h-5 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center text-[10px] font-bold">
+                                                    {(resolveAssignee(detail.assignee_id) || '?').charAt(0).toUpperCase()}
+                                                </span>
+                                                {resolveAssignee(detail.assignee_id)}
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
 
                                 {detail.test_case.preconditions && (
                                     <div className="mb-4">

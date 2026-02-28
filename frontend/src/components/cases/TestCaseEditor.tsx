@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, Plus, Trash2, Save, Loader2, ImagePlus } from 'lucide-react';
 import api from '../../lib/api';
+import TagInput from '../common/TagInput';
 
 interface TestStep {
     action: string;
@@ -27,19 +28,26 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
     const [defaultOwnerId, setDefaultOwnerId] = useState<number | ''>('');
     const [priority, setPriority] = useState('Medium');
     const [automationStatus, setAutomationStatus] = useState('Manual');
+    const [type, setType] = useState('Functional');
+    const [layer, setLayer] = useState('E2E');
     const [preconditions, setPreconditions] = useState('');
     const [externalId, setExternalId] = useState('');
     const [tags, setTags] = useState('');
+    const [labels, setLabels] = useState('');
     const [jiraKeys, setJiraKeys] = useState('');
     const [steps, setSteps] = useState<TestStep[]>([{ action: '', data: '', expected_result: '' }]);
     const [isSaving, setIsSaving] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [users, setUsers] = useState<AppUser[]>([]);
+    const [availableLabels, setAvailableLabels] = useState<string[]>([]);
 
     useEffect(() => {
         if (isOpen) {
             // Fetch users for the assignee dropdown
             api.get('/users/').then(res => setUsers(res.data)).catch(console.error);
+            // Fetch available labels for autocomplete
+            api.get('/cases/labels/all').then(res => setAvailableLabels(res.data)).catch(console.error);
+
             if (caseId) {
                 // Fetch existing case
                 setIsLoading(true);
@@ -70,6 +78,8 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
                         setDefaultOwnerId(data.default_owner_id || '');
                         setPriority(data.priority || 'Medium');
                         setAutomationStatus(data.automation_status || 'Manual');
+                        setType(data.type || 'Functional');
+                        setLayer(data.layer || 'E2E');
                         setPreconditions(cleanHtml(data.preconditions));
                         setExternalId(data.external_id || '');
 
@@ -82,6 +92,17 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
                             }
                         } catch {
                             setTags(data.tags || '');
+                        }
+
+                        // Parse JSON labels back to comma string if needed
+                        try {
+                            if (data.labels && data.labels.startsWith('[')) {
+                                setLabels(JSON.parse(data.labels).join(', '));
+                            } else {
+                                setLabels(data.labels || '');
+                            }
+                        } catch {
+                            setLabels(data.labels || '');
                         }
 
                         setJiraKeys(data.jira_keys || '');
@@ -105,9 +126,12 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
                 setDefaultOwnerId('');
                 setPriority('Medium');
                 setAutomationStatus('Manual');
+                setType('Functional');
+                setLayer('E2E');
                 setPreconditions('');
                 setExternalId('');
                 setTags('');
+                setLabels('');
                 setJiraKeys('');
                 setSteps([{ action: '', data: '', expected_result: '' }]);
             }
@@ -232,15 +256,26 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
                 tagsJson = '';
             }
 
+            let labelsJson = labels;
+            if (labels.trim()) {
+                const labelArray = labels.split(',').map(l => l.trim()).filter(Boolean);
+                labelsJson = JSON.stringify(labelArray);
+            } else {
+                labelsJson = '';
+            }
+
             const payload = {
                 title,
                 lifecycle_status: lifecycleStatus,
                 default_owner_id: defaultOwnerId ? Number(defaultOwnerId) : null,
                 priority,
                 automation_status: automationStatus,
+                type,
+                layer,
                 preconditions,
                 external_id: externalId || null,
                 tags: tagsJson || null,
+                labels: labelsJson || null,
                 jira_keys: jiraKeys || null,
                 suite_id: suiteId,
                 steps: steps.filter(s => s.action.trim() || s.expected_result.trim()) // filter out empty steps
@@ -268,10 +303,8 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex justify-end">
-            <div className="absolute inset-0 bg-slate-900/10 backdrop-blur-[1px]" onClick={onClose} />
-
-            <div className="relative w-full max-w-3xl bg-white h-full border-l border-slate-200 shadow-xl flex flex-col animate-in slide-in-from-right">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-100 animate-in fade-in duration-200">
+            <div className="relative w-full h-full bg-white flex flex-col overflow-hidden max-w-7xl mx-auto xl:shadow-2xl xl:my-4 xl:rounded-xl xl:h-[calc(100vh-2rem)] border border-slate-200">
                 {/* Header */}
                 <div className="flex items-center justify-between px-8 py-5 border-b border-slate-200 bg-white">
                     <h2 className="text-xl font-bold text-slate-900">{caseId ? `Edit TC-${caseId}` : 'Create Test Case'}</h2>
@@ -351,10 +384,39 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
                                         </select>
                                     </div>
                                 </div>
+
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
+                                    <div>
+                                        <label className="block text-sm font-semibold text-slate-900 mb-1.5">Layer</label>
+                                        <select
+                                            value={layer}
+                                            onChange={(e) => setLayer(e.target.value)}
+                                            className="w-full rounded-md border border-slate-200 py-2 px-3 text-slate-900 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 sm:text-sm bg-white"
+                                        >
+                                            <option value="E2E">E2E</option>
+                                            <option value="API">API</option>
+                                            <option value="Unit">Unit</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-slate-900 mb-1.5">Type</label>
+                                        <select
+                                            value={type}
+                                            onChange={(e) => setType(e.target.value)}
+                                            className="w-full rounded-md border border-slate-200 py-2 px-3 text-slate-900 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 sm:text-sm bg-white"
+                                        >
+                                            <option value="Other">Other</option>
+                                            <option value="Functional">Functional</option>
+                                            <option value="Smoke">Smoke</option>
+                                            <option value="Regression">Regression</option>
+                                            <option value="Scenario">Scenario</option>
+                                        </select>
+                                    </div>
+                                </div>
                             </section>
 
                             {/* Zephyr / External Fields */}
-                            <section className="grid grid-cols-1 md:grid-cols-3 gap-5 border-t border-slate-100 pt-5">
+                            <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 border-t border-slate-100 pt-5">
                                 <div>
                                     <label className="block text-sm font-semibold text-slate-900 mb-1.5">External ID (Zephyr)</label>
                                     <input
@@ -365,18 +427,26 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
                                         onChange={(e) => setExternalId(e.target.value)}
                                     />
                                 </div>
-                                <div>
-                                    <label className="block text-sm font-semibold text-slate-900 mb-1.5">Tags (Comma separated)</label>
-                                    <input
-                                        type="text"
-                                        className="w-full rounded-md border border-slate-200 py-2 px-3 text-slate-900 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 sm:text-sm"
+                                <div className="self-end" style={{ zIndex: 30 }}>
+                                    <TagInput
+                                        label="Tags"
                                         placeholder="Web, Regression"
                                         value={tags}
-                                        onChange={(e) => setTags(e.target.value)}
+                                        onChange={setTags}
+                                        availableOptions={[]} // Tags have no backend suggestions currently
+                                    />
+                                </div>
+                                <div className="self-end" style={{ zIndex: 20 }}>
+                                    <TagInput
+                                        label="Labels"
+                                        placeholder="B2C, Core"
+                                        value={labels}
+                                        onChange={setLabels}
+                                        availableOptions={availableLabels}
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-semibold text-slate-900 mb-1.5">Jira Keys (Comma separated)</label>
+                                    <label className="block text-sm font-semibold text-slate-900 mb-1.5">Jira Keys</label>
                                     <input
                                         type="text"
                                         className="w-full rounded-md border border-slate-200 py-2 px-3 text-slate-900 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 sm:text-sm"

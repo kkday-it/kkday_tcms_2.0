@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Loader2, Search, Folder, ChevronRight, ChevronDown } from 'lucide-react';
+import { X, Loader2, Search, Folder, ChevronRight, ChevronDown, Filter } from 'lucide-react';
 import api from '../../lib/api';
 
 interface TestSuite {
@@ -12,6 +12,12 @@ interface TestCase {
     id: number;
     title: string;
     suite_id: number;
+    status: string;
+    priority: string;
+    automation_status: string;
+    assignee_id?: number | null;
+    tags?: string;
+    labels?: string;
 }
 
 interface TestRunFolder {
@@ -33,15 +39,17 @@ interface CreateRunModalProps {
     initialTitle?: string;
     initialCaseIds?: number[];
     initialFolderId?: number | null;
+    initialAssigneeIds?: number[];
     onCreated: (runId: number) => void;
 }
 
-export default function CreateRunModal({ isOpen, onClose, projectId, initialTitle, initialCaseIds, initialFolderId, onCreated }: CreateRunModalProps) {
+export default function CreateRunModal({ isOpen, onClose, projectId, initialTitle, initialCaseIds, initialFolderId, initialAssigneeIds, onCreated }: CreateRunModalProps) {
     const [title, setTitle] = useState('');
     const [runType, setRunType] = useState('Feature Test');
     const [folderId, setFolderId] = useState<number | ''>('');
-    const [assigneeId, setAssigneeId] = useState<number | ''>('');
+    const [assigneeIds, setAssigneeIds] = useState<number[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
+
     const [suites, setSuites] = useState<TestSuite[]>([]);
     const [cases, setCases] = useState<TestCase[]>([]);
     const [folders, setFolders] = useState<TestRunFolder[]>([]);
@@ -52,53 +60,120 @@ export default function CreateRunModal({ isOpen, onClose, projectId, initialTitl
     const [searchQuery, setSearchQuery] = useState('');
     const [expandedSuites, setExpandedSuites] = useState<Set<number>>(new Set());
     const [selectedCaseIds, setSelectedCaseIds] = useState<Set<number>>(new Set());
+    const [isFilterOpen, setIsFilterOpen] = useState(false);
+
+    // Advanced Filters
+    const [filterStatus, setFilterStatus] = useState<string>('');
+    const [filterPriority, setFilterPriority] = useState<string>('');
+    const [filterAutomation, setFilterAutomation] = useState<string>('');
+    const [filterAssignee, setFilterAssignee] = useState<string>('');
+    const [filterTags, setFilterTags] = useState<string>('');
+    const [filterLabels, setFilterLabels] = useState<string>('');
 
     useEffect(() => {
         if (isOpen) {
             setTitle(initialTitle || '');
             setFolderId(initialFolderId || '');
-            fetchData();
+
+            // Clear advanced filters on open
+            clearFilters();
+
+            fetchData('Feature Test');
         } else {
             // Reset state when closed
             setTitle('');
             setRunType('Feature Test');
             setFolderId('');
-            setAssigneeId('');
+            setAssigneeIds(initialAssigneeIds || []);
             setSelectedCaseIds(new Set());
             setSearchQuery('');
             setExpandedSuites(new Set());
+            clearFilters();
         }
     }, [isOpen, initialTitle, initialCaseIds, initialFolderId]);
 
-    const fetchData = async () => {
+    // When Run Type changes, re-fetch cases to apply exclusions automatically
+    useEffect(() => {
+        if (isOpen) {
+            fetchCasesForRunType(runType);
+        }
+    }, [runType, isOpen]);
+
+    const clearFilters = () => {
+        setFilterStatus('');
+        setFilterPriority('');
+        setFilterAutomation('');
+        setFilterAssignee('');
+        setFilterTags('');
+        setFilterLabels('');
+    };
+
+    const fetchData = async (initialRunType: string) => {
         setIsLoadingData(true);
         try {
-            const [suitesRes, casesRes, foldersRes, usersRes] = await Promise.all([
+            const [suitesRes, foldersRes, usersRes] = await Promise.all([
                 api.get(`/suites/project/${projectId}`),
-                api.get(`/cases/project/${projectId}`),
                 api.get(`/run-folders/project/${projectId}`),
                 api.get(`/users`)
             ]);
 
             const fetchedSuites = suitesRes.data;
             setSuites(fetchedSuites);
-            setCases(casesRes.data);
             setFolders(foldersRes.data);
             setUsers(usersRes.data);
 
-            if (initialCaseIds) {
-                // If duplicating, only select the previously attached cases
-                setSelectedCaseIds(new Set(initialCaseIds));
-            } else {
-                // By default, select all cases
-                setSelectedCaseIds(new Set(casesRes.data.map((c: any) => c.id)));
-            }
+            // Fetch cases (this will apply the initial Run Type filtering)
+            await fetchCasesForRunType(initialRunType, true);
 
             // By default, expand all root suites
             const rootSuiteIds = fetchedSuites.filter((s: TestSuite) => s.parent_suite_id === null).map((s: TestSuite) => s.id);
             setExpandedSuites(new Set(rootSuiteIds));
         } catch (error) {
-            console.error("Failed to fetch suites or cases:", error);
+            console.error("Failed to fetch layout data:", error);
+        } finally {
+            setIsLoadingData(false);
+        }
+    };
+
+    // The `isInitialLoad` flag tells us whether we should automatically select all visible cases
+    const fetchCasesForRunType = async (type: string, isInitialLoad: boolean = false) => {
+        setIsLoadingData(true);
+        try {
+            // Build query params based on run type
+            let queryStr = "";
+            if (type === 'Feature Test') {
+                // If Feature test, drop Regression cases
+                queryStr = "?exclude_tags=Regression&exclude_labels=Regression";
+            }
+
+            const casesRes = await api.get(`/cases/project/${projectId}${queryStr}`);
+            const fetchedCases = casesRes.data;
+            setCases(fetchedCases);
+
+            if (isInitialLoad) {
+                if (initialCaseIds) {
+                    // If duplicating, only select the previously attached cases
+                    setSelectedCaseIds(new Set(initialCaseIds));
+                } else {
+                    // By default, select all cases that were fetched
+                    setSelectedCaseIds(new Set(fetchedCases.map((c: any) => c.id)));
+                }
+            } else {
+                // Important: if the user manually switched Run Type, the fetched cases changed. 
+                // Any newly hidden cases shouldn't cause errors, but we might want to automatically
+                // remove them from `selectedCaseIds` so they aren't accidentally included in the run.
+                // Let's do a set intersection:
+                const visibleCaseIds = new Set(fetchedCases.map((c: any) => c.id));
+                setSelectedCaseIds(prev => {
+                    const next = new Set<number>();
+                    prev.forEach(id => {
+                        if (visibleCaseIds.has(id)) next.add(id);
+                    });
+                    return next;
+                });
+            }
+        } catch (error) {
+            console.error("Failed to fetch cases for run type:", error);
         } finally {
             setIsLoadingData(false);
         }
@@ -116,7 +191,7 @@ export default function CreateRunModal({ isOpen, onClose, projectId, initialTitl
                 description: '',
                 project_id: projectId,
                 folder_id: folderId === '' ? null : Number(folderId),
-                assignee_id: assigneeId === '' ? null : Number(assigneeId),
+                assignee_ids: assigneeIds,
                 status: 'Active',
                 case_ids: Array.from(selectedCaseIds)
             });
@@ -130,14 +205,43 @@ export default function CreateRunModal({ isOpen, onClose, projectId, initialTitl
         }
     };
 
-    // --- Tree Logic ---
+    // --- Filter & Tree Logic ---
 
-    // Filter cases by search query
+    // Apply advanced filters and search query
     const filteredCases = useMemo(() => {
-        if (!searchQuery) return cases;
-        const lowerQ = searchQuery.toLowerCase();
-        return cases.filter(c => c.title.toLowerCase().includes(lowerQ) || c.id.toString().includes(lowerQ));
-    }, [cases, searchQuery]);
+        return cases.filter(c => {
+            // Text Search
+            if (searchQuery) {
+                const lowerQ = searchQuery.toLowerCase();
+                const textMatch = c.title.toLowerCase().includes(lowerQ) || c.id.toString().includes(lowerQ);
+                if (!textMatch) return false;
+            }
+
+            // Advanced Filters
+            if (filterStatus && c.status !== filterStatus) return false;
+            if (filterPriority && c.priority !== filterPriority) return false;
+            if (filterAutomation && c.automation_status !== filterAutomation) return false;
+
+            if (filterAssignee) {
+                if (filterAssignee === 'unassigned' && c.assignee_id != null) return false;
+                if (filterAssignee !== 'unassigned' && c.assignee_id !== Number(filterAssignee)) return false;
+            }
+
+            if (filterTags) {
+                const searchTags = filterTags.toLowerCase().split(',').map(t => t.trim()).filter(Boolean);
+                const caseTags = (c.tags || '').toLowerCase();
+                if (!searchTags.some(t => caseTags.includes(t))) return false;
+            }
+
+            if (filterLabels) {
+                const searchLabels = filterLabels.toLowerCase().split(',').map(l => l.trim()).filter(Boolean);
+                const caseLabels = (c.labels || '').toLowerCase();
+                if (!searchLabels.some(l => caseLabels.includes(l))) return false;
+            }
+
+            return true;
+        });
+    }, [cases, searchQuery, filterStatus, filterPriority, filterAutomation, filterAssignee, filterTags, filterLabels]);
 
     const toggleSuiteExpanded = (e: React.MouseEvent, suiteId: number) => {
         e.stopPropagation();
@@ -190,9 +294,10 @@ export default function CreateRunModal({ isOpen, onClose, projectId, initialTitl
         const childSuites = suites.filter(s => s.parent_suite_id === suite.id);
         const childCases = filteredCases.filter(c => c.suite_id === suite.id);
 
-        // Hide suite if searching and it has no matching elements recursively
+        // Hide suite if searching/filtering and it has no matching elements recursively
         const hasMatchingContent = () => {
-            if (!searchQuery) return true;
+            const hasFilters = searchQuery || filterStatus || filterPriority || filterAutomation || filterAssignee || filterTags || filterLabels;
+            if (!hasFilters) return true;
             if (childCases.length > 0) return true;
             for (const cs of childSuites) {
                 const subCases = getCasesRecursively(cs.id);
@@ -217,7 +322,8 @@ export default function CreateRunModal({ isOpen, onClose, projectId, initialTitl
             }
         }
 
-        const isExpanded = expandedSuites.has(suite.id) || !!searchQuery;
+        const hasFilters = searchQuery || filterStatus || filterPriority || filterAutomation || filterAssignee || filterTags || filterLabels;
+        const isExpanded = expandedSuites.has(suite.id) || !!hasFilters;
         const paddingLeft = level * 20 + 8;
 
         return (
@@ -282,7 +388,7 @@ export default function CreateRunModal({ isOpen, onClose, projectId, initialTitl
 
     return (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
-            <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl flex flex-col max-h-[90vh]">
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-5xl flex flex-col max-h-[90vh]">
                 <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
                     <h2 className="text-xl font-bold text-slate-900">Start New Test Run</h2>
                     <button
@@ -338,46 +444,172 @@ export default function CreateRunModal({ isOpen, onClose, projectId, initialTitl
                     </div>
 
                     <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1.5">Assign To</label>
-                            <select
-                                value={assigneeId}
-                                onChange={(e) => setAssigneeId(e.target.value === '' ? '' : Number(e.target.value))}
-                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all bg-white"
-                            >
-                                <option value="">Unassigned</option>
-                                {users.map(u => (
-                                    <option key={u.id} value={u.id}>{u.full_name || u.username}</option>
-                                ))}
-                            </select>
+                        <div className="mb-6">
+                            <label className="block text-sm font-medium text-slate-700 mb-2">Assign To</label>
+                            <div className="flex flex-wrap items-center gap-2 min-h-[36px] p-2 border border-slate-200 rounded-lg bg-white focus-within:ring-2 focus-within:ring-primary-500 focus-within:border-transparent transition-all">
+                                {assigneeIds.map(id => {
+                                    const u = users.find(x => x.id === id);
+                                    if (!u) return null;
+                                    return (
+                                        <span
+                                            key={id}
+                                            className="flex items-center gap-1.5 pl-1.5 pr-1 py-0.5 bg-primary-50 border border-primary-200 text-primary-800 rounded-full text-xs font-medium"
+                                        >
+                                            <span className="w-4 h-4 rounded-full bg-primary-600 text-white flex items-center justify-center text-[9px] font-bold shrink-0">
+                                                {u.username.charAt(0).toUpperCase()}
+                                            </span>
+                                            {u.username}
+                                            <button
+                                                type="button"
+                                                onClick={() => setAssigneeIds(prev => prev.filter(x => x !== id))}
+                                                className="ml-0.5 w-3.5 h-3.5 rounded-full bg-primary-200 hover:bg-primary-400 text-primary-700 hover:text-white flex items-center justify-center transition-colors shrink-0"
+                                                title={`Remove ${u.username}`}
+                                            >
+                                                ×
+                                            </button>
+                                        </span>
+                                    );
+                                })}
+                                {users.filter(u => !assigneeIds.includes(u.id)).length > 0 && (
+                                    <select
+                                        value=""
+                                        onChange={e => {
+                                            const id = Number(e.target.value);
+                                            if (id) setAssigneeIds(prev => [...prev, id]);
+                                        }}
+                                        className="flex-1 min-w-32 text-sm text-slate-400 border-0 focus:ring-0 outline-none bg-transparent cursor-pointer py-0.5"
+                                    >
+                                        <option value="" disabled>+ Add assignee...</option>
+                                        {users.filter(u => !assigneeIds.includes(u.id)).map(u => (
+                                            <option key={u.id} value={u.id}>{u.full_name || u.username}</option>
+                                        ))}
+                                    </select>
+                                )}
+                            </div>
                         </div>
                     </div>
 
-                    <div className="flex-1 flex flex-col min-h-0 border border-slate-200 rounded-lg overflow-hidden">
-                        <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                    <div className="flex-1 flex flex-col min-h-0 border border-slate-200 rounded-lg overflow-hidden bg-white">
+                        <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between z-10">
                             <h3 className="font-semibold text-slate-800 text-sm">Select Test Cases</h3>
-                            <div className="text-sm text-slate-500">
-                                {selectedCaseIds.size} / {cases.length} cases selected
+                            <div className="flex items-center gap-4">
+                                <span className="text-sm font-medium text-primary-700 bg-primary-50 px-2 py-0.5 rounded">
+                                    {selectedCaseIds.size} / {cases.length} selected
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => setIsFilterOpen(!isFilterOpen)}
+                                    className={`flex items-center gap-1.5 text-sm px-2.5 py-1.5 rounded-md transition-colors ${isFilterOpen ? 'bg-primary-100 text-primary-700' : 'text-slate-600 hover:bg-slate-200'}`}
+                                >
+                                    <Filter className="w-4 h-4" /> Filter
+                                </button>
                             </div>
                         </div>
 
+                        {/* Advanced Filters Panel */}
+                        {isFilterOpen && (
+                            <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3 z-10 shadow-inner">
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-500 mb-1">Status</label>
+                                    <select
+                                        value={filterStatus}
+                                        onChange={(e) => setFilterStatus(e.target.value)}
+                                        className="w-full text-xs rounded border-slate-300 py-1"
+                                    >
+                                        <option value="">All</option>
+                                        <option value="Active">Active</option>
+                                        <option value="Draft">Draft</option>
+                                        <option value="Deprecated">Deprecated</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-500 mb-1">Priority</label>
+                                    <select
+                                        value={filterPriority}
+                                        onChange={(e) => setFilterPriority(e.target.value)}
+                                        className="w-full text-xs rounded border-slate-300 py-1"
+                                    >
+                                        <option value="">All</option>
+                                        <option value="High">High</option>
+                                        <option value="Medium">Medium</option>
+                                        <option value="Low">Low</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-500 mb-1">Automation</label>
+                                    <select
+                                        value={filterAutomation}
+                                        onChange={(e) => setFilterAutomation(e.target.value)}
+                                        className="w-full text-xs rounded border-slate-300 py-1"
+                                    >
+                                        <option value="">All</option>
+                                        <option value="Automated">Automated</option>
+                                        <option value="Manual">Manual</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-500 mb-1">Assignee</label>
+                                    <select
+                                        value={filterAssignee}
+                                        onChange={(e) => setFilterAssignee(e.target.value)}
+                                        className="w-full text-xs rounded border-slate-300 py-1"
+                                    >
+                                        <option value="">All</option>
+                                        <option value="unassigned">Unassigned</option>
+                                        {users.map(u => <option key={u.id} value={u.id}>{u.username}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-500 mb-1">Tags</label>
+                                    <input
+                                        type="text"
+                                        placeholder="Comma separated..."
+                                        value={filterTags}
+                                        onChange={(e) => setFilterTags(e.target.value)}
+                                        className="w-full text-xs rounded border-slate-300 py-1 px-2"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-500 mb-1">Labels</label>
+                                    <input
+                                        type="text"
+                                        placeholder="Comma separated..."
+                                        value={filterLabels}
+                                        onChange={(e) => setFilterLabels(e.target.value)}
+                                        className="w-full text-xs rounded border-slate-300 py-1 px-2"
+                                    />
+                                </div>
+                                <div className="col-span-full flex justify-end">
+                                    <button
+                                        type="button"
+                                        onClick={clearFilters}
+                                        className="text-xs font-medium text-slate-500 hover:text-slate-800"
+                                    >
+                                        Clear Filters
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
                         {isLoadingData ? (
-                            <div className="flex-1 flex items-center justify-center">
+                            <div className="flex-1 flex items-center justify-center bg-white">
                                 <Loader2 className="w-8 h-8 animate-spin text-primary-500" />
                             </div>
                         ) : (
-                            <div className="flex-1 flex bg-white overflow-hidden">
-                                <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-1">
-                                    <div className="relative mb-4">
+                            <div className="flex-1 flex flex-col bg-white overflow-hidden">
+                                <div className="px-4 pt-4 pb-2">
+                                    <div className="relative">
                                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                                         <input
                                             type="text"
-                                            placeholder="Search cases & folders..."
+                                            placeholder="Search case title or ID..."
                                             className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                                             value={searchQuery}
                                             onChange={(e) => setSearchQuery(e.target.value)}
                                         />
                                     </div>
+                                </div>
+                                <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-1">
                                     {rootSuites.map(s => renderSuite(s, 0))}
                                     {rootCases.map(c => (
                                         <label
@@ -395,6 +627,11 @@ export default function CreateRunModal({ isOpen, onClose, projectId, initialTitl
                                             <span className="text-sm text-slate-700 truncate">{c.title}</span>
                                         </label>
                                     ))}
+                                    {filteredCases.length === 0 && (
+                                        <div className="text-center text-sm text-slate-500 mt-8">
+                                            No cases found matching filters.
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         )}

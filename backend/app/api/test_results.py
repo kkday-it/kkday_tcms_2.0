@@ -16,17 +16,17 @@ router = APIRouter()
 
 @router.get("/run/{run_id}", response_model=List[dict])
 async def get_results_by_run(run_id: int, db: AsyncSession = Depends(get_db)):
-    # Join TestResult and TestCase to return result data + case details
     query = (
-        select(TestResult, TestCase.title, TestCase.external_id, TestCase.priority)
+        select(TestResult, TestCase.title, TestCase.external_id, TestCase.priority,
+               TestCase.labels, TestCase.tags, TestCase.suite_id)
         .join(TestCase, TestResult.case_id == TestCase.id)
         .where(TestResult.run_id == run_id)
     )
     result = await db.execute(query)
     rows = result.all()
-    
+
     response_list = []
-    for test_result, title, external_id, priority in rows:
+    for test_result, title, external_id, priority, labels, tags, suite_id in rows:
         response_list.append({
             "id": test_result.id,
             "run_id": test_result.run_id,
@@ -39,10 +39,13 @@ async def get_results_by_run(run_id: int, db: AsyncSession = Depends(get_db)):
             "test_case": {
                 "title": title,
                 "external_id": external_id,
-                "priority": priority
+                "priority": priority,
+                "labels": labels,
+                "tags": tags,
+                "suite_id": suite_id,
             }
         })
-    
+
     return response_list
 
 @router.get("/{result_id}/details")
@@ -95,7 +98,11 @@ async def get_result_details(result_id: int, db: AsyncSession = Depends(get_db))
             "title": test_case.title,
             "description": test_case.description,
             "preconditions": test_case.preconditions,
-            "priority": test_case.priority
+            "priority": test_case.priority,
+            "status": test_case.status,
+            "automation_status": test_case.automation_status,
+            "tags": test_case.tags,
+            "labels": test_case.labels
         },
         "steps": steps_data
     }

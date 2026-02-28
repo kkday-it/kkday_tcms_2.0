@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Loader2, ClipboardList, PlayCircle, FileText, CheckCircle2, XCircle, Clock } from 'lucide-react';
+import { ArrowLeft, Loader2, ClipboardList, PlayCircle, FileText, CheckCircle2, XCircle, Clock, Edit2 } from 'lucide-react';
 import api from '../lib/api';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend } from 'recharts';
+import EditPlanModal from '../components/plans/EditPlanModal';
 
 interface TestPlan {
     id: number;
@@ -51,6 +52,12 @@ export default function TestPlanDetails() {
     const [isLoading, setIsLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<'runs' | 'cases'>('runs');
 
+    // Edit modal
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [folders, setFolders] = useState<any[]>([]);
+    const [allRuns, setAllRuns] = useState<any[]>([]);
+    const [allCases, setAllCases] = useState<any[]>([]);
+
     const fetchData = async () => {
         setIsLoading(true);
         try {
@@ -58,11 +65,20 @@ export default function TestPlanDetails() {
             const planData: TestPlan = planRes.data;
             setPlan(planData);
 
-            // Fetch all runs for project, then filter by plan's run_ids
+            // Always fetch folders, runs, cases for the Edit modal (and cases/runs for the metrics)
+            const [foldersRes, runsRes, casesRes] = await Promise.all([
+                api.get(`/plan-folders/project/1`),
+                api.get(`/runs/project/1`),
+                api.get(`/cases/project/1`),
+            ]);
+
+            setFolders(foldersRes.data);
+            setAllRuns(runsRes.data);
+            setAllCases(casesRes.data);
+
             if (planData.run_ids?.length) {
-                const runsRes = await api.get(`/runs/project/1`);
                 const linkedRuns = (runsRes.data as any[])
-                    .filter(r => planData.run_ids.includes(r.id))
+                    .filter(r => planData.run_ids!.includes(r.id))
                     .map(r => ({
                         ...r,
                         passed: r.passed ?? 0,
@@ -74,11 +90,9 @@ export default function TestPlanDetails() {
                 setRuns([]);
             }
 
-            // Fetch linked cases
             if (planData.case_ids?.length) {
-                const casesRes = await api.get(`/cases/project/1`);
                 const linkedCases = (casesRes.data as any[])
-                    .filter(c => planData.case_ids.includes(c.id));
+                    .filter(c => planData.case_ids!.includes(c.id));
                 setCases(linkedCases);
             } else {
                 setCases([]);
@@ -139,9 +153,18 @@ export default function TestPlanDetails() {
                         <h1 className="text-2xl font-bold text-slate-900 truncate">{plan.title}</h1>
                         <p className="text-sm text-slate-500 mt-0.5">{plan.description || 'No description provided.'}</p>
                     </div>
-                    <span className={`shrink-0 px-3 py-1 rounded-full text-xs font-semibold border ${STATUS_PILL[plan.status] ?? STATUS_PILL.Draft}`}>
-                        {plan.status}
-                    </span>
+                    <div className="flex items-center gap-3">
+                        <span className={`shrink-0 px-3 py-1 rounded-full text-xs font-semibold border ${STATUS_PILL[plan.status] ?? STATUS_PILL.Draft}`}>
+                            {plan.status}
+                        </span>
+                        <button
+                            onClick={() => setIsEditModalOpen(true)}
+                            className="p-1.5 rounded-md text-slate-400 hover:text-primary-600 hover:bg-primary-50 transition-colors"
+                            title="Edit test plan"
+                        >
+                            <Edit2 className="w-5 h-5" />
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -284,6 +307,17 @@ export default function TestPlanDetails() {
                     </div>
                 </div>
             </div>
+
+            {isEditModalOpen && (
+                <EditPlanModal
+                    plan={plan}
+                    folders={folders}
+                    runs={allRuns}
+                    cases={allCases}
+                    onClose={() => setIsEditModalOpen(false)}
+                    onSaved={fetchData}
+                />
+            )}
         </div>
     );
 }

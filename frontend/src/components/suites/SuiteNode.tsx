@@ -34,7 +34,7 @@ export default function SuiteNode({
     onDelete,
     childrenNodes
 }: SuiteNodeProps) {
-    const [isExpanded, setIsExpanded] = useState(true);
+    const [isExpanded, setIsExpanded] = useState(false);
 
     const { attributes, listeners, setNodeRef: setDraggableRef, transform, isDragging } = useDraggable({
         id: suite.id,

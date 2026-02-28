@@ -7,6 +7,7 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True, nullable=False)
+    full_name = Column(String, nullable=True)
     email = Column(String, unique=True, index=True, nullable=False)
     role = Column(String, default="QA") # Admin, QA, RD, Tester
     hashed_password = Column(String, nullable=True) # Optional for now to not break existing data

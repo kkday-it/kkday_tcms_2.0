@@ -55,17 +55,23 @@ async def get_dashboard_summary(db: AsyncSession = Depends(get_db)):
 
     # 4. Pass/Fail by Run Type
     # Since we use SQLite, we can use conditional aggregation or just fetch all and group in Python for simplicity/compatibility.
-    pf_query = select(TestRun.run_type, TestResult.status, func.count(TestResult.id)).join(TestRun).where(TestResult.status.in_(['Passed', 'Failed'])).group_by(TestRun.run_type, TestResult.status)
+    pf_query = select(
+        TestRun.run_type, 
+        TestResult.status, 
+        func.count(TestResult.id)
+    ).join(TestRun).where(TestResult.status.in_(['Passed', 'Failed', 'Blocked'])).group_by(TestRun.run_type, TestResult.status)
     pf_res = await db.execute(pf_query)
     pf_data = {}
     for run_type, status, count in pf_res.all():
         rt = run_type or "Unspecified"
         if rt not in pf_data:
-            pf_data[rt] = {"run_type": rt, "passed": 0, "failed": 0}
+            pf_data[rt] = {"run_type": rt, "passed": 0, "failed": 0, "blocked": 0}
         if status == 'Passed':
             pf_data[rt]["passed"] = count
         elif status == 'Failed':
             pf_data[rt]["failed"] = count
+        elif status == 'Blocked':
+            pf_data[rt]["blocked"] = count
     
     run_type_pass_fail = list(pf_data.values())
 
@@ -74,18 +80,25 @@ async def get_dashboard_summary(db: AsyncSession = Depends(get_db)):
     recent_runs_res = await db.execute(recent_runs_query)
     recent_runs = []
     for run in recent_runs_res.scalars().all():
-        # Get pas/fail for this run
-        p = (await db.execute(select(func.count(TestResult.id)).where(TestResult.run_id == run.id, TestResult.status == 'Passed'))).scalar() or 0
-        f = (await db.execute(select(func.count(TestResult.id)).where(TestResult.run_id == run.id, TestResult.status == 'Failed'))).scalar() or 0
-        tot = (await db.execute(select(func.count(TestResult.id)).where(TestResult.run_id == run.id))).scalar() or 0
+        # Use single query for all counts
+        stats_query = select(
+            func.sum(case((TestResult.status == 'Passed', 1), else_=0)).label('p'),
+            func.sum(case((TestResult.status == 'Failed', 1), else_=0)).label('f'),
+            func.sum(case((TestResult.status == 'Blocked', 1), else_=0)).label('b'),
+            func.count(TestResult.id).label('tot')
+        ).where(TestResult.run_id == run.id)
+        stats_res = await db.execute(stats_query)
+        p, f, b, tot = stats_res.one()
+        
         recent_runs.append({
             "id": run.id,
             "title": run.title,
             "status": run.status,
             "run_type": run.run_type,
-            "passed": p,
-            "failed": f,
-            "total": tot
+            "passed": p or 0,
+            "failed": f or 0,
+            "blocked": b or 0,
+            "total": tot or 0
         })
 
     # 6. Top Failing Test Cases
@@ -128,16 +141,24 @@ async def get_my_dashboard(user_id: int, db: AsyncSession = Depends(get_db)):
     assigned_runs = []
     
     for run in assigned_runs_res.scalars().all():
-        p = (await db.execute(select(func.count(TestResult.id)).where(TestResult.run_id == run.id, TestResult.status == 'Passed'))).scalar() or 0
-        f = (await db.execute(select(func.count(TestResult.id)).where(TestResult.run_id == run.id, TestResult.status == 'Failed'))).scalar() or 0
-        tot = (await db.execute(select(func.count(TestResult.id)).where(TestResult.run_id == run.id))).scalar() or 0
+        stats_query = select(
+            func.sum(case((TestResult.status == 'Passed', 1), else_=0)).label('p'),
+            func.sum(case((TestResult.status == 'Failed', 1), else_=0)).label('f'),
+            func.sum(case((TestResult.status == 'Blocked', 1), else_=0)).label('b'),
+            func.count(TestResult.id).label('tot')
+        ).where(TestResult.run_id == run.id)
+        stats_res = await db.execute(stats_query)
+        p, f, b, tot = stats_res.one()
+        p, f, b, tot = p or 0, f or 0, b or 0, tot or 0
+
         assigned_runs.append({
             "id": run.id,
             "title": run.title,
             "status": run.status,
             "passed": p,
             "failed": f,
-            "untested": tot - p - f,
+            "blocked": b,
+            "untested": tot - p - f - b,
             "total": tot
         })
         

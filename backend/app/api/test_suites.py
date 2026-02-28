@@ -13,7 +13,7 @@ router = APIRouter()
 
 @router.get("/project/{project_id}", response_model=List[TestSuiteResponse])
 async def list_suites_by_project(project_id: int, db: AsyncSession = Depends(get_db)):
-    # We need to join with TestCase to get the count
+    # We need to join with TestCase to get the direct count first
     stmt = (
         select(
             TestSuite,
@@ -27,10 +27,31 @@ async def list_suites_by_project(project_id: int, db: AsyncSession = Depends(get
     
     # Map raw rows to Pydantic-compatible dicts
     suites = []
+    suite_dicts = {}
+    
     for suite, case_count in result.all():
         suite_dict = suite.__dict__.copy()
         suite_dict["cases"] = case_count
+        suite_dicts[suite.id] = suite_dict
         suites.append(suite_dict)
+        
+    # Calculate cumulative cases
+    def get_cumulative_cases(suite_id):
+        s = suite_dicts[suite_id]
+        if "cumulative_cases" in s:
+            return s["cumulative_cases"]
+            
+        total = s["cases"]
+        children = [child for child in suites if child["parent_suite_id"] == suite_id]
+        for child in children:
+            total += get_cumulative_cases(child["id"])
+            
+        s["cumulative_cases"] = total
+        return total
+        
+    for suite in suites:
+        suite["cases"] = get_cumulative_cases(suite["id"])
+        suite.pop("cumulative_cases", None)
         
     return suites
 

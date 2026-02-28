@@ -17,16 +17,14 @@ async def get_or_create_suite(db: AsyncSession, project_id: int, folder_path: st
        Uses a cache dict to avoid hitting the DB for every path level.
     """
     if not folder_path:
-        folder_path = "Imported Cases"
+        folder_path = ""
         
     if folder_path.startswith("Squad Projects/"):
         folder_path = folder_path[len("Squad Projects/"):]
-        if not folder_path:
-            folder_path = "Imported Cases"
             
-    parts = [p.strip() for p in folder_path.split("/") if p.strip()]
-    if not parts:
-        parts = ["Imported Cases"]
+    parts = ["Zephyr_Import"]
+    if folder_path:
+        parts.extend([p.strip() for p in folder_path.split("/") if p.strip()])
         
     parent_id = None
     current_suite_id = None
@@ -114,7 +112,7 @@ async def import_zephyr_xml(project_id: int, file: UploadFile = File(...), db: A
         
         suite_id = await get_or_create_suite(db, project_id, folder_path, suite_cache)
             
-        # 3. Extract Tags (customFields and labels)
+        # 3. Extract Tags (customFields) and Labels
         tags_list = []
         for cf in tc_elem.findall('.//customField'):
             cf_name = cf.get('name')
@@ -122,11 +120,13 @@ async def import_zephyr_xml(project_id: int, file: UploadFile = File(...), db: A
             if cf_name and cf_val is not None and cf_val.text:
                 tags_list.append(f"{cf_name}:{cf_val.text}")
                 
+        labels_list = []
         for label in tc_elem.findall('.//label'):
             if label.text:
-                tags_list.append(label.text)
+                labels_list.append(label.text)
                 
         tags_json = json.dumps(tags_list, ensure_ascii=False) if tags_list else None
+        labels_json = json.dumps(labels_list, ensure_ascii=False) if labels_list else None
         
         # 4. Extract Jira Issues
         jira_keys = []
@@ -145,6 +145,7 @@ async def import_zephyr_xml(project_id: int, file: UploadFile = File(...), db: A
             status=status,
             external_id=key,
             tags=tags_json,
+            labels=labels_json,
             jira_keys=jira_keys_str
         )
         

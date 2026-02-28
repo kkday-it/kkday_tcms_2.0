@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Layers, PlayCircle, Loader2, Bug, AlertTriangle, CheckCircle2, XCircle, Clock, Zap, Target, Activity } from 'lucide-react';
+import { Layers, PlayCircle, Loader2, Bug, AlertTriangle, CheckCircle2, XCircle, Clock, Zap, Target, Activity, Ban } from 'lucide-react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from 'recharts';
 import api from '../lib/api';
 
@@ -26,6 +26,8 @@ interface RecentRun {
     run_type: string;
     passed: number;
     failed: number;
+    blocked: number;
+    untested: number; // Added
     total: number;
 }
 interface TopFailingCase {
@@ -47,6 +49,7 @@ interface AssignedRun {
     status: string;
     passed: number;
     failed: number;
+    blocked: number;
     untested: number;
     total: number;
 }
@@ -207,6 +210,7 @@ export default function Dashboard() {
                                     {myData.assigned_runs.map((run) => {
                                         const passPct = run.total > 0 ? (run.passed / run.total) * 100 : 0;
                                         const failPct = run.total > 0 ? (run.failed / run.total) * 100 : 0;
+                                        const blockedPct = run.total > 0 ? (run.blocked / run.total) * 100 : 0;
 
                                         return (
                                             <tr key={run.id} className="hover:bg-slate-50 transition-colors group">
@@ -224,11 +228,14 @@ export default function Dashboard() {
                                                     <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 mb-1.5 px-0.5">
                                                         <span className="text-emerald-600 flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> {run.passed}</span>
                                                         <span className="text-rose-600 flex items-center gap-1"><XCircle className="w-3.5 h-3.5" /> {run.failed}</span>
-                                                        <span className="text-slate-400">{run.total} Total</span>
+                                                        <span className="text-amber-500 flex items-center gap-1"><Ban className="w-3.5 h-3.5" /> {run.blocked}</span>
+                                                        <span className="text-slate-400">{run.total} Total ({Math.round(((run.passed + run.failed + run.blocked) / run.total) * 100)}%)</span>
                                                     </div>
-                                                    <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden flex">
-                                                        <div style={{ width: `${passPct}%` }} className="bg-emerald-500 h-full transition-all duration-500"></div>
-                                                        <div style={{ width: `${failPct}%` }} className="bg-rose-500 h-full transition-all duration-500"></div>
+                                                    <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden flex shadow-inner border border-slate-200/30">
+                                                        <div style={{ width: `${passPct}%` }} className="bg-emerald-500 h-full transition-all duration-500 ease-out"></div>
+                                                        <div style={{ width: `${failPct}%` }} className="bg-rose-500 h-full transition-all duration-500 ease-out border-l border-white/10"></div>
+                                                        <div style={{ width: `${blockedPct}%` }} className="bg-amber-400 h-full transition-all duration-500 ease-out border-l border-white/10"></div>
+                                                        <div style={{ width: `${(100 - passPct - failPct - blockedPct)}%` }} className="bg-slate-200 h-full transition-all duration-500 ease-out border-l border-white/10"></div>
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-5 text-right w-48">
@@ -326,7 +333,7 @@ export default function Dashboard() {
                                             paddingAngle={5}
                                             dataKey="value"
                                         >
-                                            {summary.run_types_distribution.map((entry, index) => (
+                                            {summary.run_types_distribution.map((_, index) => (
                                                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                                             ))}
                                         </Pie>
@@ -361,8 +368,9 @@ export default function Dashboard() {
                                             contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                                         />
                                         <Legend verticalAlign="top" height={36} iconType="circle" wrapperStyle={{ paddingBottom: '20px' }} />
-                                        <Bar dataKey="passed" name="Passed" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={50} />
-                                        <Bar dataKey="failed" name="Failed" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={50} />
+                                        <Bar dataKey="passed" name="Passed" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                                        <Bar dataKey="failed" name="Failed" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                                        <Bar dataKey="blocked" name="Blocked" fill="#f59e0b" radius={[4, 4, 0, 0]} maxBarSize={40} />
                                     </BarChart>
                                 </ResponsiveContainer>
                             ) : (
@@ -396,25 +404,30 @@ export default function Dashboard() {
                                         summary.recent_runs.map(run => {
                                             const passPct = run.total > 0 ? (run.passed / run.total) * 100 : 0;
                                             const failPct = run.total > 0 ? (run.failed / run.total) * 100 : 0;
+                                            const blockedPct = run.total > 0 ? (run.blocked / run.total) * 100 : 0;
+                                            const untestedPct = run.total > 0 ? ((run.untested || 0) / run.total) * 100 : 0;
                                             return (
-                                                <tr key={run.id} onClick={() => navigate(`/runs/${run.id}`)} className="hover:bg-slate-50 cursor-pointer transition-colors">
-                                                    <td className="px-5 py-3">
-                                                        <div className="text-sm font-semibold text-slate-900 truncate max-w-[200px]">{run.title}</div>
-                                                        <div className="text-xs text-slate-500">{run.status}</div>
+                                                <tr key={run.id} onClick={() => navigate(`/runs/${run.id}`)} className="hover:bg-slate-50 cursor-pointer transition-colors border-b border-slate-50 last:border-0">
+                                                    <td className="px-5 py-4">
+                                                        <div className="text-sm font-semibold text-slate-900 mb-0.5">{run.title}</div>
+                                                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{run.status}</div>
                                                     </td>
-                                                    <td className="px-5 py-3">
+                                                    <td className="px-5 py-4">
                                                         <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-indigo-50 text-indigo-700 border border-indigo-100 whitespace-nowrap">
                                                             {run.run_type || 'Feature Test'}
                                                         </span>
                                                     </td>
-                                                    <td className="px-5 py-3 w-40">
+                                                    <td className="px-5 py-4 w-40">
                                                         <div className="flex items-center justify-between text-[11px] font-medium text-slate-500 mb-1">
                                                             <span className="text-emerald-600 flex items-center gap-0.5"><CheckCircle2 className="w-3 h-3" /> {run.passed}</span>
                                                             <span className="text-rose-600 flex items-center gap-0.5"><XCircle className="w-3 h-3" /> {run.failed}</span>
+                                                            <span className="text-amber-500 flex items-center gap-0.5"><Ban className="w-3 h-3" /> {run.blocked}</span>
                                                         </div>
-                                                        <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden flex">
+                                                        <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden flex shadow-inner">
                                                             <div style={{ width: `${passPct}%` }} className="bg-emerald-500 h-full"></div>
                                                             <div style={{ width: `${failPct}%` }} className="bg-rose-500 h-full"></div>
+                                                            <div style={{ width: `${blockedPct}%` }} className="bg-amber-400 h-full"></div>
+                                                            <div style={{ width: `${untestedPct}%` }} className="bg-slate-200 h-full"></div>
                                                         </div>
                                                     </td>
                                                 </tr>
@@ -468,28 +481,28 @@ export default function Dashboard() {
 
     return (
         <div className="flex-1 p-8 overflow-y-auto bg-slate-50 w-full h-full">
-            <div className="mb-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+            <div className="mb-8 flex flex-col gap-6 border-b border-slate-200 pb-6">
                 <div>
-                    <h1 className="text-3xl font-bold text-slate-900">Dashboard</h1>
-                    <p className="text-slate-500 mt-2">Welcome back! Here is an overview of your testing velocity and project health.</p>
+                    <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">Dashboard</h1>
+                    <p className="text-slate-500 mt-2 text-sm">Welcome back! Here is an overview of your testing velocity and project health.</p>
                 </div>
 
-                {/* Tabs */}
-                <div className="flex bg-slate-100 p-1 rounded-xl w-fit">
+                {/* Tabs - Moved to left and made more prominent */}
+                <div className="flex bg-slate-200/60 p-1.5 rounded-xl w-fit border border-slate-200/60 shadow-inner">
                     <button
                         onClick={() => setActiveTab('my_space')}
-                        className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'my_space'
-                                ? 'bg-white text-primary-600 shadow-sm'
-                                : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+                        className={`flex items-center gap-2 px-8 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'my_space'
+                            ? 'bg-white text-primary-700 shadow-sm ring-1 ring-slate-200/50'
+                            : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/50'
                             }`}
                     >
                         My Space
                     </button>
                     <button
                         onClick={() => setActiveTab('overview')}
-                        className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'overview'
-                                ? 'bg-white text-primary-600 shadow-sm'
-                                : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+                        className={`flex items-center gap-2 px-8 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'overview'
+                            ? 'bg-white text-primary-700 shadow-sm ring-1 ring-slate-200/50'
+                            : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/50'
                             }`}
                     >
                         Project Overview
