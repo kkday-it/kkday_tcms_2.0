@@ -13,7 +13,7 @@ services:
       - tcms_data:/app/data
       - tcms_uploads:/app/uploads
     ports:
-      - "8000:8000"
+      - "19425:8000"
 
   frontend:
     build:
@@ -22,7 +22,7 @@ services:
     container_name: tcms_frontend
     restart: always
     ports:
-      - "8001:80"
+      - "8085:80"
     depends_on:
       - backend
 
