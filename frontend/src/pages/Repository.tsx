@@ -555,53 +555,6 @@ export default function Repository() {
 
             {/* Cases List Main Area */}
             <div className="flex-1 flex flex-col h-full bg-slate-50 relative">
-                {/* Page-level toolbar — always visible */}
-                <div className="px-6 py-3 border-b border-slate-200 bg-white flex items-center justify-between shrink-0 z-10">
-                    <span className="text-xs text-slate-500 font-medium">
-                        {activeSuiteId && activeSuite
-                            ? <span>Export scope: <span className="text-slate-800">{activeSuite.name}</span> (folder + sub-folders)</span>
-                            : <span>Export scope: <span className="text-slate-800">All Cases</span> (entire project)</span>
-                        }
-                    </span>
-                    <div className="flex items-center gap-2">
-                        {/* Export 下拉選單 */}
-                        <div className="relative">
-                            <button
-                                onClick={() => setIsExportOpen(prev => !prev)}
-                                className="bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm"
-                            >
-                                <Download className="w-4 h-4" />
-                                Export
-                                <ChevronDown className="w-3 h-3" />
-                            </button>
-                            {isExportOpen && (
-                                <div className="absolute right-0 mt-1 w-44 bg-white border border-slate-200 rounded-lg shadow-lg z-20 py-1">
-                                    <button onClick={() => handleExport('csv')} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">
-                                        Export CSV
-                                    </button>
-                                    <button onClick={() => handleExport('json')} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">
-                                        Export JSON
-                                    </button>
-                                    <hr className="my-1 border-slate-100" />
-                                    <button onClick={() => handleExport('ai_json')} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2">
-                                        <span>🤖</span> Export for AI
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                        {/* Sync to Dify */}
-                        <button
-                            onClick={handleSyncDify}
-                            disabled={isSyncingDify}
-                            title="同步至 Dify Knowledge Base"
-                            className="bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm disabled:opacity-50"
-                        >
-                            {isSyncingDify ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                            {isSyncingDify ? 'Syncing...' : 'Sync to Dify'}
-                        </button>
-                    </div>
-                </div>
-
                 {!activeSuiteId ? (
                     <div className="flex-1 flex flex-col items-center justify-center h-full text-slate-400">
                         <div className="w-16 h-16 mb-4 rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center justify-center">
@@ -611,6 +564,23 @@ export default function Repository() {
                         <p className="text-sm text-center max-w-sm">
                             Click on a folder in the sidebar to view or manage its test cases.
                         </p>
+                        {/* Export All when no suite selected */}
+                        <div className="relative mt-4">
+                            <button
+                                onClick={() => setIsExportOpen(prev => !prev)}
+                                className="bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm"
+                            >
+                                <Download className="w-4 h-4" /> Export All Cases <ChevronDown className="w-3 h-3" />
+                            </button>
+                            {isExportOpen && (
+                                <div className="absolute left-1/2 -translate-x-1/2 mt-1 w-44 bg-white border border-slate-200 rounded-lg shadow-lg z-20 py-1">
+                                    <button onClick={() => handleExport('csv')} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">Export CSV</button>
+                                    <button onClick={() => handleExport('json')} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">Export JSON</button>
+                                    <hr className="my-1 border-slate-100" />
+                                    <button onClick={() => handleExport('ai_json')} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"><span>🤖</span> Export for AI</button>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 ) : (
                     <div className="flex-1 flex flex-col h-full bg-white relative">
@@ -629,6 +599,33 @@ export default function Repository() {
                                 >
                                     {isImporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
                                     {isImporting ? 'Importing...' : 'Import XML'}
+                                </button>
+                                {/* Export 下拉選單 */}
+                                <div className="relative">
+                                    <button
+                                        onClick={() => setIsExportOpen(prev => !prev)}
+                                        className="bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm"
+                                    >
+                                        <Download className="w-4 h-4" /> Export <ChevronDown className="w-3 h-3" />
+                                    </button>
+                                    {isExportOpen && (
+                                        <div className="absolute right-0 mt-1 w-44 bg-white border border-slate-200 rounded-lg shadow-lg z-20 py-1">
+                                            <button onClick={() => handleExport('csv')} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">Export CSV</button>
+                                            <button onClick={() => handleExport('json')} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">Export JSON</button>
+                                            <hr className="my-1 border-slate-100" />
+                                            <button onClick={() => handleExport('ai_json')} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"><span>🤖</span> Export for AI</button>
+                                        </div>
+                                    )}
+                                </div>
+                                {/* Sync to Dify */}
+                                <button
+                                    onClick={handleSyncDify}
+                                    disabled={isSyncingDify}
+                                    title="同步至 Dify Knowledge Base"
+                                    className="bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm disabled:opacity-50"
+                                >
+                                    {isSyncingDify ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                                    {isSyncingDify ? 'Syncing...' : 'Sync to Dify'}
                                 </button>
                                 <button
                                     onClick={() => setIsFilterOpen(!isFilterOpen)}
