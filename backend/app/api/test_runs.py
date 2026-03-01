@@ -1,18 +1,23 @@
-from fastapi import APIRouter, Depends, HTTPException
+import csv
+import io
+import json
+from datetime import datetime, timezone
+from typing import List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
+from sqlalchemy import func, case, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
-from typing import List
-from datetime import datetime, timezone
 
 from app.db.database import get_db
-from app.models.test_run import TestRun
-from app.models.test_result import TestResult
 from app.models.test_case import TestCase
+from app.models.test_result import TestResult
+from app.models.test_run import TestRun
 from app.models.test_suite import TestSuite
 from app.models.user import User
-from sqlalchemy import func, case, desc
-from app.schemas.test_run import TestRunCreate, TestRunUpdate, TestRunResponse
+from app.schemas.test_run import TestRunCreate, TestRunResponse, TestRunUpdate
 
 router = APIRouter()
 
@@ -48,6 +53,128 @@ def _build_response(run: TestRun, passed: int = 0, failed: int = 0, blocked: int
     d['total'] = total
     d['assignees'] = run.assignees if run.assignees else []
     return d
+
+
+@router.get("/export")
+async def export_runs(
+    project_id: int = Query(..., description="Project ID"),
+    run_id: Optional[int] = Query(None, description="只匯出指定 Run"),
+    format: str = Query("csv", description="匯出格式：csv | json"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    匯出 Test Run 執行結果。
+
+    - **csv** — 每筆 result 展平成一行（含 run 資訊 + case + 狀態）
+    - **json** — 巢狀結構（run → results → case 資訊）
+    """
+    # 查詢 runs
+    run_query = (
+        select(TestRun)
+        .options(selectinload(TestRun.assignees))
+        .where(TestRun.project_id == project_id)
+        .order_by(desc(TestRun.created_at))
+    )
+    if run_id:
+        run_query = run_query.where(TestRun.id == run_id)
+    runs_result = await db.execute(run_query)
+    runs = runs_result.scalars().all()
+
+    # 一次撈所有 results（含 case 資訊）
+    run_ids = [r.id for r in runs]
+    if not run_ids:
+        results_by_run: dict = {}
+    else:
+        res_query = (
+            select(TestResult, TestCase.title.label("case_title"))
+            .join(TestCase, TestResult.case_id == TestCase.id)
+            .where(TestResult.run_id.in_(run_ids))
+            .order_by(TestResult.run_id, TestResult.id)
+        )
+        res_rows = (await db.execute(res_query)).all()
+        results_by_run = {}
+        for result, case_title in res_rows:
+            results_by_run.setdefault(result.run_id, []).append((result, case_title))
+
+    if format == "csv":
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=[
+            "run_id", "run_title", "run_status", "run_type",
+            "run_created_at", "run_completed_at",
+            "case_id", "case_title",
+            "result_status", "comment", "executed_at",
+            "jira_bug_id", "attachment_url",
+        ])
+        writer.writeheader()
+        for run in runs:
+            run_results = results_by_run.get(run.id, [])
+            if not run_results:
+                writer.writerow({
+                    "run_id": f"RUN-{run.id}", "run_title": run.title,
+                    "run_status": run.status, "run_type": run.run_type,
+                    "run_created_at": run.created_at, "run_completed_at": run.completed_at or "",
+                    "case_id": "", "case_title": "", "result_status": "",
+                    "comment": "", "executed_at": "", "jira_bug_id": "", "attachment_url": "",
+                })
+            for result, case_title in run_results:
+                writer.writerow({
+                    "run_id": f"RUN-{run.id}", "run_title": run.title,
+                    "run_status": run.status, "run_type": run.run_type,
+                    "run_created_at": run.created_at, "run_completed_at": run.completed_at or "",
+                    "case_id": f"TC-{result.case_id}", "case_title": case_title,
+                    "result_status": result.status, "comment": result.comment or "",
+                    "executed_at": result.executed_at or "", "jira_bug_id": result.jira_bug_id or "",
+                    "attachment_url": result.attachment_url or "",
+                })
+        output.seek(0)
+        return StreamingResponse(
+            iter([output.getvalue()]),
+            media_type="text/csv; charset=utf-8-sig",
+            headers={"Content-Disposition": "attachment; filename=test_runs.csv"},
+        )
+
+    elif format == "json":
+        data = []
+        for run in runs:
+            run_results = results_by_run.get(run.id, [])
+            passed = sum(1 for r, _ in run_results if r.status == "Passed")
+            failed = sum(1 for r, _ in run_results if r.status == "Failed")
+            blocked = sum(1 for r, _ in run_results if r.status == "Blocked")
+            total = len(run_results)
+            data.append({
+                "id": f"RUN-{run.id}",
+                "title": run.title,
+                "status": run.status,
+                "run_type": run.run_type,
+                "description": run.description,
+                "created_at": run.created_at.isoformat() if run.created_at else None,
+                "completed_at": run.completed_at.isoformat() if run.completed_at else None,
+                "assignees": [a.username for a in (run.assignees or [])],
+                "stats": {
+                    "total": total, "passed": passed, "failed": failed,
+                    "blocked": blocked, "untested": total - passed - failed - blocked,
+                },
+                "results": [
+                    {
+                        "case_id": f"TC-{r.case_id}",
+                        "case_title": case_title,
+                        "status": r.status,
+                        "comment": r.comment,
+                        "executed_at": r.executed_at.isoformat() if r.executed_at else None,
+                        "jira_bug_id": r.jira_bug_id,
+                    }
+                    for r, case_title in run_results
+                ],
+            })
+        content = json.dumps(data, ensure_ascii=False, indent=2)
+        return StreamingResponse(
+            iter([content]),
+            media_type="application/json",
+            headers={"Content-Disposition": "attachment; filename=test_runs.json"},
+        )
+
+    else:
+        raise HTTPException(status_code=400, detail=f"不支援的格式：{format}。請使用 csv | json")
 
 
 @router.get("/project/{project_id}", response_model=List[TestRunResponse])

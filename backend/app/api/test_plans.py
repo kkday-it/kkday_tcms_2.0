@@ -1,15 +1,20 @@
-from fastapi import APIRouter, Depends, HTTPException
+import csv
+import io
+import json
+from typing import List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
+from sqlalchemy import delete, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
-from sqlalchemy import delete, insert
-from typing import List
 
 from app.db.database import get_db
-from app.models.test_plan import TestPlan, plan_runs, plan_cases
-from app.models.test_run import TestRun
 from app.models.test_case import TestCase
-from app.schemas.test_plan import TestPlanCreate, TestPlanUpdate, TestPlanResponse
+from app.models.test_plan import TestPlan, plan_cases, plan_runs
+from app.models.test_run import TestRun
+from app.schemas.test_plan import TestPlanCreate, TestPlanResponse, TestPlanUpdate
 
 router = APIRouter()
 
@@ -51,6 +56,85 @@ async def _set_cases(db: AsyncSession, plan_id: int, case_ids: List[int]):
     await db.execute(delete(plan_cases).where(plan_cases.c.plan_id == plan_id))
     if case_ids:
         await db.execute(insert(plan_cases).values([{"plan_id": plan_id, "case_id": cid} for cid in case_ids]))
+
+
+@router.get("/export")
+async def export_plans(
+    project_id: int = Query(..., description="Project ID"),
+    format: str = Query("csv", description="匯出格式：csv | json"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    匯出 Test Plans。
+
+    - **csv** — 每個 Plan 一行（含關聯 runs / cases 數量與 ID 列表）
+    - **json** — 巢狀結構（plan → linked_runs, linked_cases 詳細資訊）
+    """
+    result = await db.execute(
+        select(TestPlan)
+        .options(selectinload(TestPlan.linked_runs), selectinload(TestPlan.linked_cases))
+        .where(TestPlan.project_id == project_id)
+        .order_by(TestPlan.id)
+    )
+    plans = result.scalars().all()
+
+    if format == "csv":
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=[
+            "plan_id", "title", "status", "description",
+            "linked_runs_count", "linked_run_ids",
+            "linked_cases_count", "linked_case_ids",
+            "created_at", "updated_at",
+        ])
+        writer.writeheader()
+        for plan in plans:
+            writer.writerow({
+                "plan_id": f"PLAN-{plan.id}",
+                "title": plan.title,
+                "status": plan.status,
+                "description": plan.description or "",
+                "linked_runs_count": len(plan.linked_runs or []),
+                "linked_run_ids": ",".join(f"RUN-{r.id}" for r in (plan.linked_runs or [])),
+                "linked_cases_count": len(plan.linked_cases or []),
+                "linked_case_ids": ",".join(f"TC-{c.id}" for c in (plan.linked_cases or [])),
+                "created_at": plan.created_at,
+                "updated_at": plan.updated_at or "",
+            })
+        output.seek(0)
+        return StreamingResponse(
+            iter([output.getvalue()]),
+            media_type="text/csv; charset=utf-8-sig",
+            headers={"Content-Disposition": "attachment; filename=test_plans.csv"},
+        )
+
+    elif format == "json":
+        data = []
+        for plan in plans:
+            data.append({
+                "id": f"PLAN-{plan.id}",
+                "title": plan.title,
+                "status": plan.status,
+                "description": plan.description,
+                "created_at": plan.created_at.isoformat() if plan.created_at else None,
+                "updated_at": plan.updated_at.isoformat() if plan.updated_at else None,
+                "linked_runs": [
+                    {"id": f"RUN-{r.id}", "title": r.title, "status": r.status}
+                    for r in (plan.linked_runs or [])
+                ],
+                "linked_cases": [
+                    {"id": f"TC-{c.id}", "title": c.title, "priority": c.priority, "automation_status": c.automation_status}
+                    for c in (plan.linked_cases or [])
+                ],
+            })
+        content = json.dumps(data, ensure_ascii=False, indent=2)
+        return StreamingResponse(
+            iter([content]),
+            media_type="application/json",
+            headers={"Content-Disposition": "attachment; filename=test_plans.json"},
+        )
+
+    else:
+        raise HTTPException(status_code=400, detail=f"不支援的格式：{format}。請使用 csv | json")
 
 
 @router.get("/project/{project_id}", response_model=List[TestPlanResponse])

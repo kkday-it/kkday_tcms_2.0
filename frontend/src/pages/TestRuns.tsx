@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Play, CheckCircle2, XCircle, SkipForward, Clock, Loader2, Trash2, Copy, Search, Plus, Folder as FolderIcon, Pencil, Ban } from 'lucide-react';
+import { Play, CheckCircle2, XCircle, SkipForward, Clock, Loader2, Trash2, Copy, Search, Plus, Folder as FolderIcon, Pencil, Ban, Download, ChevronDown } from 'lucide-react';
 import { DndContext, DragEndEvent, closestCenter, useDroppable, useSensor, useSensors, PointerSensor, useDraggable } from '@dnd-kit/core';
 import api from '../lib/api';
 import CreateRunModal from '../components/runs/CreateRunModal';
@@ -284,6 +284,25 @@ export default function TestRuns() {
         fetchRuns();
     }, [projectId, activeFolderId]);
 
+    // Export
+    const [isExportOpen, setIsExportOpen] = useState(false);
+    const handleExportRuns = async (format: 'csv' | 'json') => {
+        setIsExportOpen(false);
+        try {
+            const params = new URLSearchParams({ project_id: String(projectId), format });
+            const response = await api.get(`/runs/export?${params}`, { responseType: 'blob' });
+            const url = URL.createObjectURL(response.data);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `test_runs.${format}`;
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error('Export failed:', error);
+            alert('Export failed');
+        }
+    };
+
     // Folder Actions
     const handleCreateFolder = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -509,12 +528,29 @@ export default function TestRuns() {
                                 <h1 className="text-2xl font-bold text-slate-900">
                                     {activeFolderId ? folders.find(f => f.id === activeFolderId)?.name || 'Folder Runs' : 'All Test Runs'}
                                 </h1>
-                                <button
-                                    onClick={() => { setDuplicateData(null); setIsCreatingRun(true); }}
-                                    className="btn-primary flex items-center gap-2"
-                                >
-                                    <Play className="w-4 h-4" fill="currentColor" /> Start New Run
-                                </button>
+                                <div className="flex items-center gap-2">
+                                    {/* Export Dropdown */}
+                                    <div className="relative">
+                                        <button
+                                            onClick={() => setIsExportOpen(prev => !prev)}
+                                            className="btn-secondary flex items-center gap-1.5"
+                                        >
+                                            <Download className="w-4 h-4" /> Export <ChevronDown className="w-3 h-3" />
+                                        </button>
+                                        {isExportOpen && (
+                                            <div className="absolute right-0 mt-1 w-36 bg-white border border-slate-200 rounded-lg shadow-lg z-20 py-1">
+                                                <button onClick={() => handleExportRuns('csv')} className="w-full text-left px-4 py-2 text-sm hover:bg-slate-50">CSV</button>
+                                                <button onClick={() => handleExportRuns('json')} className="w-full text-left px-4 py-2 text-sm hover:bg-slate-50">JSON</button>
+                                            </div>
+                                        )}
+                                    </div>
+                                    <button
+                                        onClick={() => { setDuplicateData(null); setIsCreatingRun(true); }}
+                                        className="btn-primary flex items-center gap-2"
+                                    >
+                                        <Play className="w-4 h-4" fill="currentColor" /> Start New Run
+                                    </button>
+                                </div>
                             </div>
 
                             {/* Create Run Modal */}

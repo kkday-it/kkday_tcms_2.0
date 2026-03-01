@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ClipboardList, Plus, Loader2, Trash2, Pencil, Folder as FolderIcon } from 'lucide-react';
+import { ClipboardList, Plus, Loader2, Trash2, Pencil, Folder as FolderIcon, Download, ChevronDown } from 'lucide-react';
 import { DndContext, DragEndEvent, closestCenter, useDroppable, useSensor, useSensors, PointerSensor, useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import api from '../lib/api';
@@ -197,6 +197,25 @@ export default function TestPlans() {
     useEffect(() => { fetchFolders(); fetchRuns(); fetchCases(); }, []);
     useEffect(() => { fetchPlans(); }, [activeFolderId]);
 
+    // ── Export ─────────────────────────────────────────────────────────────────
+    const [isExportOpen, setIsExportOpen] = useState(false);
+    const handleExportPlans = async (format: 'csv' | 'json') => {
+        setIsExportOpen(false);
+        try {
+            const params = new URLSearchParams({ project_id: String(projectId), format });
+            const response = await api.get(`/plans/export?${params}`, { responseType: 'blob' });
+            const url = URL.createObjectURL(response.data);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `test_plans.${format}`;
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error('Export failed:', error);
+            alert('Export failed');
+        }
+    };
+
     // ── Folder Actions ─────────────────────────────────────────────────────────
 
     const handleCreateFolder = async (e: React.FormEvent) => {
@@ -345,10 +364,27 @@ export default function TestPlans() {
                                         <p className="text-sm text-slate-500">Group and manage test scopes and reports.</p>
                                     </div>
                                 </div>
-                                <button onClick={() => setEditingPlan(null)}
-                                    className="btn-primary flex items-center gap-2">
-                                    <Plus className="w-4 h-4" /> New Plan
-                                </button>
+                                <div className="flex items-center gap-2">
+                                    {/* Export Dropdown */}
+                                    <div className="relative">
+                                        <button
+                                            onClick={() => setIsExportOpen(prev => !prev)}
+                                            className="btn-secondary flex items-center gap-1.5"
+                                        >
+                                            <Download className="w-4 h-4" /> Export <ChevronDown className="w-3 h-3" />
+                                        </button>
+                                        {isExportOpen && (
+                                            <div className="absolute right-0 mt-1 w-36 bg-white border border-slate-200 rounded-lg shadow-lg z-20 py-1">
+                                                <button onClick={() => handleExportPlans('csv')} className="w-full text-left px-4 py-2 text-sm hover:bg-slate-50">CSV</button>
+                                                <button onClick={() => handleExportPlans('json')} className="w-full text-left px-4 py-2 text-sm hover:bg-slate-50">JSON</button>
+                                            </div>
+                                        )}
+                                    </div>
+                                    <button onClick={() => setEditingPlan(null)}
+                                        className="btn-primary flex items-center gap-2">
+                                        <Plus className="w-4 h-4" /> New Plan
+                                    </button>
+                                </div>
                             </div>
 
                             {isLoading ? (
