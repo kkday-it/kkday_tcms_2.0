@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 // import { useParams } from 'react-router-dom';
-import { Plus, Search, Filter, Loader2, Upload, Trash2, FolderOpen } from 'lucide-react';
+import { Plus, Search, Filter, Loader2, Upload, Download, RefreshCw, Trash2, FolderOpen, ChevronDown } from 'lucide-react';
 import { DndContext, DragEndEvent, closestCenter, useDroppable, useSensor, useSensors, PointerSensor } from '@dnd-kit/core';
 import TestCaseEditor from '../components/cases/TestCaseEditor';
 import TestCasePreviewPane from '../components/cases/TestCasePreviewPane';
@@ -264,6 +264,45 @@ export default function Repository() {
 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [isImporting, setIsImporting] = useState(false);
+    const [isExportOpen, setIsExportOpen] = useState(false);
+    const [isSyncingDify, setIsSyncingDify] = useState(false);
+
+    const handleExport = async (format: 'csv' | 'json' | 'ai_json') => {
+        setIsExportOpen(false);
+        const params = new URLSearchParams({ project_id: String(projectId), format });
+        if (activeSuiteId) params.append('suite_id', String(activeSuiteId));
+
+        try {
+            const response = await api.get(`/cases/export?${params}`, { responseType: 'blob' });
+            const ext = format === 'ai_json' ? 'json' : format;
+            const filename = format === 'ai_json' ? 'test_cases_ai.json' : `test_cases.${ext}`;
+            const url = URL.createObjectURL(response.data);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error('Export failed:', error);
+            alert('Export failed');
+        }
+    };
+
+    const handleSyncDify = async () => {
+        setIsSyncingDify(true);
+        try {
+            const params = new URLSearchParams({ project_id: String(projectId) });
+            if (activeSuiteId) params.set('suite_id', String(activeSuiteId));
+            const res = await api.post(`/cases/sync/dify?${params}`);
+            const { stats } = res.data;
+            alert(`Dify 同步完成\n✅ 新增：${stats.created}  🔄 更新：${stats.updated}  ❌ 失敗：${stats.failed}`);
+        } catch (error: any) {
+            const msg = error?.response?.data?.detail || 'Dify 同步失敗';
+            alert(msg);
+        } finally {
+            setIsSyncingDify(false);
+        }
+    };
 
     const handleImportZephyr = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -543,6 +582,43 @@ export default function Repository() {
                                 >
                                     {isImporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
                                     {isImporting ? 'Importing...' : 'Import XML'}
+                                </button>
+
+                                {/* Export 下拉選單 */}
+                                <div className="relative">
+                                    <button
+                                        onClick={() => setIsExportOpen(prev => !prev)}
+                                        className="bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm"
+                                    >
+                                        <Download className="w-4 h-4" />
+                                        Export
+                                        <ChevronDown className="w-3 h-3" />
+                                    </button>
+                                    {isExportOpen && (
+                                        <div className="absolute right-0 mt-1 w-44 bg-white border border-slate-200 rounded-lg shadow-lg z-20 py-1">
+                                            <button onClick={() => handleExport('csv')} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                                                Export CSV
+                                            </button>
+                                            <button onClick={() => handleExport('json')} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                                                Export JSON
+                                            </button>
+                                            <hr className="my-1 border-slate-100" />
+                                            <button onClick={() => handleExport('ai_json')} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2">
+                                                <span>🤖</span> Export for AI
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Sync to Dify */}
+                                <button
+                                    onClick={handleSyncDify}
+                                    disabled={isSyncingDify}
+                                    title="同步至 Dify Knowledge Base"
+                                    className="bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm disabled:opacity-50"
+                                >
+                                    {isSyncingDify ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                                    {isSyncingDify ? 'Syncing...' : 'Sync to Dify'}
                                 </button>
                                 <button
                                     onClick={() => setIsFilterOpen(!isFilterOpen)}

@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, ForeignKey, DateTime
 from sqlalchemy.sql import func
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, backref
 from app.db.database import Base
 
 class TestCaseHistory(Base):
@@ -16,4 +16,8 @@ class TestCaseHistory(Base):
     
     # Relationships
     user = relationship("User")
-    test_case = relationship("TestCase", backref="history")
+    test_case = relationship(
+        "TestCase",
+        backref=backref("history", passive_deletes=True),
+        passive_deletes=True,
+    )

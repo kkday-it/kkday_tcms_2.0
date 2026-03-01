@@ -1,18 +1,25 @@
-from fastapi import APIRouter, Depends, HTTPException
+import csv
+import io
+import json
+import logging
+from typing import List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
-from typing import List, Optional
 
 from app.db.database import get_db
 from app.models.test_case import TestCase
-from app.models.test_step import TestStep
 from app.models.test_case_history import TestCaseHistory
-from app.schemas.test_case import TestCaseCreate, TestCaseUpdate, TestCaseResponse
-from app.schemas.test_case_history import TestCaseHistoryResponse
-import json
-
+from app.models.test_step import TestStep
 from app.models.test_suite import TestSuite
+from app.schemas.test_case import TestCaseCreate, TestCaseResponse, TestCaseUpdate
+from app.schemas.test_case_history import TestCaseHistoryResponse
+from app.services.dify_sync import build_case_metadata, build_case_text
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -111,6 +118,138 @@ async def create_case(case_in: TestCaseCreate, db: AsyncSession = Depends(get_db
     # Reload with steps
     result = await db.execute(select(TestCase).options(selectinload(TestCase.steps)).where(TestCase.id == case.id))
     return result.scalar_one()
+
+@router.get("/export")
+async def export_cases(
+    project_id: int = Query(..., description="Project ID"),
+    suite_id: Optional[int] = Query(None, description="限定 Suite（含子 Suite），不填則匯出整個 Project"),
+    format: str = Query("csv", description="匯出格式：csv | json | ai_json"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    匯出 Test Cases。
+
+    - **csv** — 適合 Excel 開啟的試算表
+    - **json** — 完整結構化資料，適合系統整合
+    - **ai_json** — 適合向量資料庫 ingestion（含 text + metadata 欄位）
+    """
+    if suite_id:
+        hierarchy = (
+            select(TestSuite.id)
+            .where(TestSuite.id == suite_id)
+            .cte(name="suite_hierarchy", recursive=True)
+        )
+        hierarchy = hierarchy.union_all(
+            select(TestSuite.id).where(TestSuite.parent_suite_id == hierarchy.c.id)
+        )
+        result = await db.execute(
+            select(TestCase)
+            .options(selectinload(TestCase.steps))
+            .where(TestCase.suite_id.in_(select(hierarchy.c.id)))
+        )
+    else:
+        result = await db.execute(
+            select(TestCase)
+            .join(TestSuite)
+            .options(selectinload(TestCase.steps))
+            .where(TestSuite.project_id == project_id)
+        )
+    cases = result.scalars().all()
+
+    if format == "csv":
+        output = io.StringIO()
+        max_steps = max((len(c.steps) for c in cases), default=0)
+        step_headers = []
+        for i in range(1, max_steps + 1):
+            step_headers += [f"step_{i}_action", f"step_{i}_data", f"step_{i}_expected"]
+
+        writer = csv.DictWriter(output, fieldnames=[
+            "case_id", "suite_id", "title", "lifecycle_status", "priority",
+            "automation_status", "layer", "type", "severity",
+            "tags", "labels", "jira_keys", "external_id",
+            "preconditions", "postconditions", *step_headers,
+        ])
+        writer.writeheader()
+        for case in cases:
+            row = {
+                "case_id": f"TC-{case.id}",
+                "suite_id": case.suite_id,
+                "title": case.title,
+                "lifecycle_status": case.lifecycle_status,
+                "priority": case.priority,
+                "automation_status": case.automation_status,
+                "layer": case.layer or "",
+                "type": case.type or "",
+                "severity": case.severity,
+                "tags": case.tags or "",
+                "labels": case.labels or "",
+                "jira_keys": case.jira_keys or "",
+                "external_id": case.external_id or "",
+                "preconditions": case.preconditions or "",
+                "postconditions": case.postconditions or "",
+            }
+            for i, step in enumerate(case.steps, 1):
+                row[f"step_{i}_action"] = step.action
+                row[f"step_{i}_data"] = step.data or ""
+                row[f"step_{i}_expected"] = step.expected_result or ""
+            writer.writerow(row)
+
+        output.seek(0)
+        return StreamingResponse(
+            iter([output.getvalue()]),
+            media_type="text/csv; charset=utf-8-sig",
+            headers={"Content-Disposition": "attachment; filename=test_cases.csv"},
+        )
+
+    elif format == "json":
+        data = []
+        for case in cases:
+            data.append({
+                "id": f"TC-{case.id}",
+                "suite_id": case.suite_id,
+                "title": case.title,
+                "lifecycle_status": case.lifecycle_status,
+                "priority": case.priority,
+                "automation_status": case.automation_status,
+                "layer": case.layer,
+                "type": case.type,
+                "severity": case.severity,
+                "tags": json.loads(case.tags) if case.tags else [],
+                "labels": json.loads(case.labels) if case.labels else [],
+                "jira_keys": case.jira_keys,
+                "external_id": case.external_id,
+                "preconditions": case.preconditions,
+                "postconditions": case.postconditions,
+                "steps": [
+                    {"order": s.order, "action": s.action, "data": s.data, "expected": s.expected_result}
+                    for s in case.steps
+                ],
+            })
+        content = json.dumps(data, ensure_ascii=False, indent=2)
+        return StreamingResponse(
+            iter([content]),
+            media_type="application/json",
+            headers={"Content-Disposition": "attachment; filename=test_cases.json"},
+        )
+
+    elif format == "ai_json":
+        data = []
+        for case in cases:
+            data.append({
+                "id": f"TC-{case.id}",
+                "text": build_case_text(case),
+                "metadata": build_case_metadata(case),
+            })
+        content = json.dumps(data, ensure_ascii=False, indent=2)
+        return StreamingResponse(
+            iter([content]),
+            media_type="application/json",
+            headers={"Content-Disposition": "attachment; filename=test_cases_ai.json"},
+        )
+
+    else:
+        raise HTTPException(status_code=400, detail=f"不支援的格式：{format}。請使用 csv | json | ai_json")
+
 
 @router.get("/{case_id}", response_model=TestCaseResponse)
 async def get_case(case_id: int, db: AsyncSession = Depends(get_db)):
