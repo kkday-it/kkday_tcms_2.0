@@ -1,3 +1,4 @@
+import os
 from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config
@@ -13,6 +14,19 @@ config = context.config
 # This line sets up loggers basically.
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
+
+# 優先從環境變數讀取 DATABASE_URL，方便 Docker / CI 覆寫
+# SQLite:     sqlite+aiosqlite:///./data/tcms_1_5.db
+# PostgreSQL: postgresql+asyncpg://user:pass@host:5432/dbname
+_db_url = os.environ.get("DATABASE_URL")
+if _db_url:
+    # Alembic 使用同步 driver，將 async driver 前綴替換成同步版
+    _sync_url = (
+        _db_url
+        .replace("sqlite+aiosqlite", "sqlite")
+        .replace("postgresql+asyncpg", "postgresql+psycopg2")
+    )
+    config.set_main_option("sqlalchemy.url", _sync_url)
 
 # add your model's MetaData object here
 # for 'autogenerate' support

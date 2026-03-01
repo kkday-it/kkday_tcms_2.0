@@ -1,0 +1,38 @@
+version: '3.8'
+
+# PostgreSQL override — 搭配 docker-compose.yml 一起使用：
+#   docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d
+#
+# 此 override 會：
+#   1. 啟動 PostgreSQL 16 container
+#   2. 將 backend 的 DATABASE_URL 替換為 PostgreSQL
+#   3. 讓 backend 等待 PostgreSQL 健康後才啟動
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: tcms_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-tcms}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tcms_password}
+      POSTGRES_DB: ${POSTGRES_DB:-tcms}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER:-tcms}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-tcms}:${POSTGRES_PASSWORD:-tcms_password}@db:5432/${POSTGRES_DB:-tcms}
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pg_data:

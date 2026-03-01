@@ -174,6 +174,93 @@ pytest tests/ -v
 
 ---
 
+## PostgreSQL 遷移
+
+目前系統預設使用 SQLite（`backend/data/tcms_1_5.db`），中長期計畫遷移至 PostgreSQL container on EC2。
+
+### 架構路徑
+
+```
+現在                      中期                     長期
+SQLite file（本機）  →  Docker Compose on EC2  →  PostgreSQL container on EC2
+```
+
+### 遷移步驟
+
+#### 步驟一：啟動 PostgreSQL（EC2 上執行）
+
+```bash
+# 複製環境變數設定
+cp .env.example .env
+# 編輯 .env 設定 POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB
+
+# 用 PostgreSQL override 啟動
+docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d db
+```
+
+#### 步驟二：建立 Schema（Alembic 自動執行）
+
+Backend container 啟動時 `entrypoint.sh` 會自動執行：
+
+```bash
+alembic upgrade head   # 建立所有資料表（全新 DB）或套用 migration（已有資料）
+```
+
+也可手動執行：
+
+```bash
+docker compose exec backend alembic upgrade head
+```
+
+#### 步驟三：搬移現有 SQLite 資料
+
+```bash
+# 在 backend container 內執行（或本機安裝 psycopg2 後執行）
+python scripts/migrate_sqlite_to_pg.py \
+    --sqlite ./data/tcms_1_5.db \
+    --pg     postgresql://tcms:password@localhost:5432/tcms
+```
+
+腳本特性：
+- 依資料表相依順序搬移（共 15 張表）
+- 先清空再插入（可重複執行）
+- 自動重置 PostgreSQL sequences
+- 5000 筆 case 約 10~30 秒完成
+
+#### 步驟四：切換 backend 連線
+
+確認資料正確後，更新 `.env`：
+
+```bash
+DATABASE_URL=postgresql+asyncpg://tcms:password@db:5432/tcms
+```
+
+重啟 backend：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.postgres.yml restart backend
+```
+
+### 現有 SQLite 部署的注意事項
+
+如果你的 SQLite 資料庫已有資料且是透過 `create_all` 建立（非從 Alembic migration 建立），
+需要執行一次 stamp 讓 Alembic 知道目前資料庫已是最新狀態：
+
+```bash
+cd backend
+alembic stamp 43b3c73328ee
+```
+
+### 環境變數對照
+
+| 情境 | DATABASE_URL |
+|---|---|
+| 本機 SQLite | `sqlite+aiosqlite:///./data/tcms_1_5.db` |
+| Docker SQLite | `sqlite+aiosqlite:////app/data/tcms_1_5.db` |
+| PostgreSQL | `postgresql+asyncpg://tcms:password@db:5432/tcms` |
+
+---
+
 ## CI 整合
 
 在 CI pipeline 的 Backend 測試步驟加入：

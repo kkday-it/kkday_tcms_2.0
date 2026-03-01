@@ -2,13 +2,21 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Create directory for sqlite db volume
-RUN mkdir -p /app/data
+RUN mkdir -p /app/data /app/uploads
 
 COPY . .
 
-# Use uvicorn on port 8000
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# 啟動前執行 alembic upgrade head：
+#   - 全新 PostgreSQL → 依序建立所有資料表
+#   - 已有資料的 DB  → 套用尚未執行的 migration，無則跳過
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]
