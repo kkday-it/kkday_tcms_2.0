@@ -155,8 +155,8 @@ export default function CreateRunModal({ isOpen, onClose, projectId, initialTitl
                     // If duplicating, only select the previously attached cases
                     setSelectedCaseIds(new Set(initialCaseIds));
                 } else {
-                    // By default, select all cases that were fetched
-                    setSelectedCaseIds(new Set(fetchedCases.map((c: any) => c.id)));
+                    // Default: no cases pre-selected; user selects manually
+                    setSelectedCaseIds(new Set());
                 }
             } else {
                 // Important: if the user manually switched Run Type, the fetched cases changed. 
@@ -492,10 +492,24 @@ export default function CreateRunModal({ isOpen, onClose, projectId, initialTitl
                     <div className="flex-1 flex flex-col min-h-0 border border-slate-200 rounded-lg overflow-hidden bg-white">
                         <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between z-10">
                             <h3 className="font-semibold text-slate-800 text-sm">Select Test Cases</h3>
-                            <div className="flex items-center gap-4">
+                            <div className="flex items-center gap-3">
                                 <span className="text-sm font-medium text-primary-700 bg-primary-50 px-2 py-0.5 rounded">
                                     {selectedCaseIds.size} / {cases.length} selected
                                 </span>
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedCaseIds(new Set(cases.map(c => c.id)))}
+                                    className="text-xs font-medium text-slate-500 hover:text-primary-600 px-2 py-1 rounded hover:bg-primary-50 transition-colors"
+                                >
+                                    全選
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedCaseIds(new Set())}
+                                    className="text-xs font-medium text-slate-500 hover:text-rose-600 px-2 py-1 rounded hover:bg-rose-50 transition-colors"
+                                >
+                                    全不選
+                                </button>
                                 <button
                                     type="button"
                                     onClick={() => setIsFilterOpen(!isFilterOpen)}
