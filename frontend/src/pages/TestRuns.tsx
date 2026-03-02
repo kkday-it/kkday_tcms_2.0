@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Play, CheckCircle2, XCircle, SkipForward, Clock, Loader2, Trash2, Copy, Search, Plus, Folder as FolderIcon, Pencil, Ban, Download, ChevronDown } from 'lucide-react';
 import { DndContext, DragEndEvent, closestCenter, useDroppable, useSensor, useSensors, PointerSensor, useDraggable } from '@dnd-kit/core';
@@ -250,11 +250,25 @@ export default function TestRuns() {
         }
     };
 
+    /** 取得某資料夾及其所有子孫資料夾的 ID 集合 */
+    const getDescendantFolderIds = useCallback((folderId: number, allFolders: TestRunFolder[]): Set<number> => {
+        const ids = new Set<number>([folderId]);
+        const queue = [folderId];
+        while (queue.length > 0) {
+            const current = queue.shift()!;
+            allFolders.filter(f => f.parent_id === current).forEach(child => {
+                ids.add(child.id);
+                queue.push(child.id);
+            });
+        }
+        return ids;
+    }, []);
+
     const fetchRuns = async () => {
         setIsLoadingRuns(true);
         try {
             const response = await api.get(`/runs/project/${projectId}`);
-            let mappedRuns = response.data.map((r: any) => ({
+            const mappedRuns = response.data.map((r: any) => ({
                 ...r,
                 passed: r.passed ?? 0,
                 failed: r.failed ?? 0,
@@ -262,12 +276,6 @@ export default function TestRuns() {
                 untested: r.untested ?? 0,
                 total: r.total ?? 0
             }));
-
-            // Filter by selected folder if any
-            if (activeFolderId !== null) {
-                mappedRuns = mappedRuns.filter((r: TestRun) => r.folder_id === activeFolderId);
-            }
-
             setRuns(mappedRuns);
         } catch (error) {
             console.error("Failed to fetch runs:", error);
@@ -282,7 +290,14 @@ export default function TestRuns() {
 
     useEffect(() => {
         fetchRuns();
-    }, [projectId, activeFolderId]);
+    }, [projectId]);
+
+    /** 根據選取資料夾（含所有子孫）過濾要顯示的 runs */
+    const displayedRuns = useMemo(() => {
+        if (activeFolderId === null) return runs;
+        const folderIds = getDescendantFolderIds(activeFolderId, folders);
+        return runs.filter(r => r.folder_id !== null && r.folder_id !== undefined && folderIds.has(r.folder_id as number));
+    }, [runs, activeFolderId, folders, getDescendantFolderIds]);
 
     // Export
     const [isExportOpen, setIsExportOpen] = useState(false);
@@ -411,7 +426,10 @@ export default function TestRuns() {
 
         return (
             <div className="space-y-0.5">
-                {children.map(folder => (
+                {children.map(folder => {
+                    const folderIds = getDescendantFolderIds(folder.id, folders);
+                    const folderRunCount = runs.filter(r => r.folder_id !== null && r.folder_id !== undefined && folderIds.has(r.folder_id as number)).length;
+                    return (
                     <RunFolderNode
                         key={folder.id}
                         folder={folder}
@@ -421,9 +439,11 @@ export default function TestRuns() {
                         onAddSubFolder={(id) => { setIsAddingFolder(true); setNewFolderParentId(id); setNewFolderName(''); }}
                         onEdit={handleEditFolder}
                         onDelete={handleDeleteFolder}
+                        runCount={folderRunCount}
                         childrenNodes={renderFolderTree(folder.id, level + 1)}
                     />
-                ))}
+                    );
+                })}
 
                 {isAddingFolder && newFolderParentId === parentId && (
                     <div className="mt-1 mb-2" style={{ paddingLeft: level === 0 ? '8px' : `${level * 16 + 8}px`, paddingRight: '8px' }}>
@@ -511,7 +531,7 @@ export default function TestRuns() {
                                     <span className={activeFolderId === null ? 'text-primary-700 font-medium' : 'text-slate-700'}>All Runs</span>
                                 </div>
                                 <span className="text-xs text-slate-400 bg-white px-1.5 py-0.5 rounded border border-slate-200 relative z-10">
-                                    {runs.length}
+                                    {displayedRuns.length}
                                 </span>
                             </RootDroppableArea>
 
@@ -567,7 +587,7 @@ export default function TestRuns() {
                                 }}
                             />
 
-                            {runs.length === 0 && !isLoading ? (
+                            {displayedRuns.length === 0 && !isLoading ? (
                                 <div className="flex flex-col items-center justify-center p-12 bg-white rounded-xl border border-slate-200 border-dashed text-slate-500">
                                     <Play className="w-12 h-12 text-slate-300 mb-4" />
                                     <p className="mb-2 text-lg font-medium text-slate-900">No active test runs</p>
@@ -585,7 +605,7 @@ export default function TestRuns() {
                                 </div>
                             ) : (
                                 <div className="grid grid-cols-1 gap-4">
-                                    {runs.map(run => (
+                                    {displayedRuns.map(run => (
                                         <DraggableRunCard
                                             key={`run-${run.id}`}
                                             run={run}

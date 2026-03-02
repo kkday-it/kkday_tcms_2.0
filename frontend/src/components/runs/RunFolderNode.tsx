@@ -18,6 +18,7 @@ interface RunFolderNodeProps {
     onEdit?: (folder: TestRunFolder) => void;
     onDelete?: (folderId: number) => void;
     childrenNodes?: React.ReactNode;
+    runCount?: number;
 }
 
 export default function RunFolderNode({
@@ -28,9 +29,15 @@ export default function RunFolderNode({
     onAddSubFolder,
     onEdit,
     onDelete,
-    childrenNodes
+    childrenNodes,
+    runCount,
 }: RunFolderNodeProps) {
     const [isExpanded, setIsExpanded] = useState(false);
+
+    // 選中時自動展開以顯示子資料夾
+    React.useEffect(() => {
+        if (isActive) setIsExpanded(true);
+    }, [isActive]);
 
     const { attributes, listeners, setNodeRef: setDraggableRef, transform, isDragging } = useDraggable({
         id: `folder-${folder.id}`,
@@ -84,6 +91,11 @@ export default function RunFolderNode({
                     {/* No checkbox for folders right now unless batch operations are needed implicitly */}
                     <Folder className={`w-4 h-4 flex-shrink-0 transition-colors ${isActive ? 'text-primary-500' : 'text-slate-400 group-hover:text-primary-500'}`} />
                     <span className="text-sm font-medium truncate">{folder.name}</span>
+                    {runCount !== undefined && runCount > 0 && (
+                        <span className="ml-1 text-xs text-slate-400 bg-white px-1.5 py-0.5 rounded border border-slate-200 shrink-0">
+                            {runCount}
+                        </span>
+                    )}
                 </div>
 
                 <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-inherit pl-1 pointer-events-auto shrink-0 pr-1">
