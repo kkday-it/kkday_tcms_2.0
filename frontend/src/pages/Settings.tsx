@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Shield, Loader2, Plus, X, Save, Users, Bell, Palette, Database, Download, CheckCircle2 } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Shield, Loader2, Plus, X, Save, Users, Bell, Palette, Database, Download, Upload, CheckCircle2, AlertCircle } from 'lucide-react';
 import api from '../lib/api';
 
 export interface AppUser {
@@ -269,13 +269,25 @@ function UsersTab({ isAdmin }: { isAdmin: boolean }) {
     );
 }
 
-// --- System Tab (Backup) ---
+// --- System Tab (Backup & Restore) ---
 function SystemTab() {
     const projectId = 1;
+    const restoreInputRef = useRef<HTMLInputElement>(null);
+
+    // Backup state
     const [isBackingUp, setIsBackingUp] = useState(false);
     const [lastBackup, setLastBackup] = useState<string | null>(
         localStorage.getItem('tcms_last_backup')
     );
+
+    // Restore state
+    const [isRestoring, setIsRestoring] = useState(false);
+    const [restoreResult, setRestoreResult] = useState<{
+        status: 'success' | 'error';
+        message?: string;
+        imported?: Record<string, number>;
+        skipped_count?: number;
+    } | null>(null);
 
     const handleBackup = async () => {
         setIsBackingUp(true);
@@ -300,6 +312,35 @@ function SystemTab() {
         }
     };
 
+    const handleRestoreFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        if (!file.name.endsWith('.zip')) {
+            setRestoreResult({ status: 'error', message: '請選擇 .zip 備份檔案' });
+            return;
+        }
+        setIsRestoring(true);
+        setRestoreResult(null);
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            const res = await api.post(`/backup/restore?project_id=${projectId}`, formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+            });
+            setRestoreResult({
+                status: 'success',
+                imported: res.data.imported,
+                skipped_count: res.data.skipped_count,
+            });
+        } catch (err: any) {
+            const detail = err?.response?.data?.detail || '還原失敗，請確認備份檔案格式正確';
+            setRestoreResult({ status: 'error', message: detail });
+        } finally {
+            setIsRestoring(false);
+            if (restoreInputRef.current) restoreInputRef.current.value = '';
+        }
+    };
+
     return (
         <div>
             <h2 className="text-lg font-bold text-slate-900 mb-2">System</h2>
@@ -314,7 +355,7 @@ function SystemTab() {
                         </div>
                         <div>
                             <h3 className="text-base font-bold text-slate-900">One-Click Backup</h3>
-                            <p className="text-sm text-slate-500">匯出所有 Test Cases、Runs、Plans 及 Dashboard 統計為 ZIP 檔案</p>
+                            <p className="text-sm text-slate-500">匯出所有 Suites、Cases、Runs、Plans 及 Dashboard 統計為 ZIP 檔案</p>
                         </div>
                     </div>
                 </div>
@@ -323,7 +364,9 @@ function SystemTab() {
                         <div className="space-y-1">
                             <p className="text-sm font-medium text-slate-700">備份內容</p>
                             <ul className="text-sm text-slate-500 space-y-0.5 list-disc list-inside">
-                                <li><code className="text-xs bg-slate-100 px-1 rounded">cases.json</code> — 所有 Test Cases（含步驟）</li>
+                                <li><code className="text-xs bg-slate-100 px-1 rounded">suites.json</code> — Suite 階層結構</li>
+                                <li><code className="text-xs bg-slate-100 px-1 rounded">cases.json</code> — 所有 Test Cases（含步驟，可還原）</li>
+                                <li><code className="text-xs bg-slate-100 px-1 rounded">cases_ai.json</code> — AI 格式（供向量資料庫使用）</li>
                                 <li><code className="text-xs bg-slate-100 px-1 rounded">runs.json</code> — 所有 Test Runs（含執行結果）</li>
                                 <li><code className="text-xs bg-slate-100 px-1 rounded">plans.json</code> — 所有 Test Plans（含關聯）</li>
                                 <li><code className="text-xs bg-slate-100 px-1 rounded">dashboard.json</code> — Dashboard 統計摘要</li>
@@ -346,6 +389,72 @@ function SystemTab() {
                             <CheckCircle2 className="w-4 h-4 shrink-0" />
                             上次備份時間：{lastBackup}
                         </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Restore Card */}
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm">
+                <div className="px-6 py-5 border-b border-slate-100">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center">
+                            <Upload className="w-5 h-5 text-amber-500" />
+                        </div>
+                        <div>
+                            <h3 className="text-base font-bold text-slate-900">Restore from Backup</h3>
+                            <p className="text-sm text-slate-500">上傳 ZIP 備份檔案還原資料（相同名稱的項目會自動跳過，不會重複建立）</p>
+                        </div>
+                    </div>
+                </div>
+                <div className="px-6 py-5">
+                    <input
+                        ref={restoreInputRef}
+                        type="file"
+                        accept=".zip"
+                        style={{ display: 'none' }}
+                        onChange={handleRestoreFile}
+                    />
+                    <div className="flex items-center gap-4 mb-4">
+                        <button
+                            onClick={() => restoreInputRef.current?.click()}
+                            disabled={isRestoring}
+                            className="flex items-center gap-2 px-5 py-2.5 bg-amber-500 text-white text-sm font-medium rounded-lg hover:bg-amber-600 transition-colors shadow-sm disabled:opacity-70"
+                        >
+                            {isRestoring
+                                ? <><Loader2 className="w-4 h-4 animate-spin" /> Restoring...</>
+                                : <><Upload className="w-4 h-4" /> Select Backup File</>
+                            }
+                        </button>
+                        <p className="text-xs text-slate-400">僅接受 tcms_backup_*.zip 格式</p>
+                    </div>
+
+                    {/* Restore Result */}
+                    {restoreResult && (
+                        restoreResult.status === 'success' ? (
+                            <div className="bg-emerald-50 border border-emerald-100 rounded-lg p-4">
+                                <div className="flex items-center gap-2 mb-3 text-emerald-700 font-semibold">
+                                    <CheckCircle2 className="w-4 h-4" /> 還原成功
+                                </div>
+                                <div className="grid grid-cols-3 gap-3">
+                                    {Object.entries(restoreResult.imported || {}).map(([key, val]) => (
+                                        <div key={key} className="bg-white border border-emerald-100 rounded-lg px-3 py-2 text-center">
+                                            <div className="text-lg font-bold text-emerald-600">{val}</div>
+                                            <div className="text-xs text-slate-500 capitalize">{key}</div>
+                                        </div>
+                                    ))}
+                                </div>
+                                {(restoreResult.skipped_count ?? 0) > 0 && (
+                                    <p className="text-xs text-slate-500 mt-3">
+                                        另有 {restoreResult.skipped_count} 個項目因已存在而跳過
+                                    </p>
+                                )}
+                            </div>
+                        ) : (
+                            <div className="flex items-start gap-2 bg-rose-50 border border-rose-100 rounded-lg px-4 py-3 text-sm text-rose-700">
+                                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                                {restoreResult.message}
+                            </div>
+                        )
                     )}
                 </div>
             </div>
