@@ -350,12 +350,16 @@ async def duplicate_run(run_id: int, db: AsyncSession = Depends(get_db)):
     run_data["title"] = f"{run_data.get('title', 'Duplicate')} (Copy)"
     run_data["status"] = "Active"
 
+    # Save assignee IDs before flush to avoid lazy-load in async context
+    assignee_ids = [a.id for a in original_run.assignees]
+
     new_run = TestRun(**run_data)
     db.add(new_run)
     await db.flush()
 
-    # Copy assignees
-    new_run.assignees = list(original_run.assignees)
+    # Sync assignees only when there are IDs to assign (new_run starts with no assignees)
+    if assignee_ids:
+        await _sync_assignees(new_run, assignee_ids, db)
 
     results_query = select(TestResult).where(TestResult.run_id == original_run.id)
     original_results = (await db.execute(results_query)).scalars().all()
