@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 // import { useParams } from 'react-router-dom';
-import { Plus, Search, Filter, Loader2, Upload, Download, RefreshCw, Trash2, FolderOpen, ChevronDown } from 'lucide-react';
+import { Plus, Search, Filter, Loader2, Upload, Download, RefreshCw, Trash2, FolderOpen, ChevronDown, X, CheckCircle2, AlertCircle, FileCode2 } from 'lucide-react';
 import { DndContext, DragEndEvent, closestCenter, useDroppable, useSensor, useSensors, PointerSensor } from '@dnd-kit/core';
 import TestCaseEditor from '../components/cases/TestCaseEditor';
 import TestCasePreviewPane from '../components/cases/TestCasePreviewPane';
@@ -42,6 +42,174 @@ interface TestCase {
     type?: string;
     layer?: string;
 }
+
+// ─── XMind Import Modal ──────────────────────────────────────────────────────
+interface XmindImportResult {
+    total_test_cases: number;
+    test_cases: { title: string; priority: string }[];
+}
+
+function XmindImportModal({
+    projectId,
+    onClose,
+    onSuccess,
+}: {
+    projectId: number;
+    onClose: () => void;
+    onSuccess: () => void;
+}) {
+    const [file, setFile] = useState<File | null>(null);
+    const [owner, setOwner] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [result, setResult] = useState<{ ok: boolean; message: string; data?: XmindImportResult; errors?: string[] } | null>(null);
+    const fileRef = useRef<HTMLInputElement>(null);
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!file) return;
+
+        const formData = new FormData();
+        formData.append('project_id', String(projectId));
+        formData.append('owner', owner.trim());
+        formData.append('file', file);
+
+        setIsSubmitting(true);
+        setResult(null);
+        try {
+            const res = await api.post('/cases/import/xmind', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+            });
+            const body = res.data;
+            if (body.status === 'success') {
+                setResult({ ok: true, message: body.message, data: body.data });
+                onSuccess();
+            } else {
+                setResult({ ok: false, message: body.message, errors: body.errors });
+            }
+        } catch (err: any) {
+            const msg = err?.response?.data?.detail || 'XMind 匯入失敗，請確認檔案格式';
+            setResult({ ok: false, message: msg });
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg">
+                {/* Header */}
+                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+                    <div className="flex items-center gap-2">
+                        <FileCode2 className="w-5 h-5 text-primary-600" />
+                        <h2 className="text-lg font-bold text-slate-900">Import XMind</h2>
+                    </div>
+                    <button
+                        onClick={onClose}
+                        className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                    >
+                        <X className="w-5 h-5" />
+                    </button>
+                </div>
+
+                <form onSubmit={handleSubmit} className="p-6 space-y-5">
+                    {/* File picker */}
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                            XMind 檔案 <span className="text-rose-500">*</span>
+                        </label>
+                        <div
+                            onClick={() => fileRef.current?.click()}
+                            className={`w-full border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors
+                                ${file ? 'border-primary-400 bg-primary-50' : 'border-slate-200 hover:border-primary-300 hover:bg-primary-50/30'}`}
+                        >
+                            <Upload className={`w-6 h-6 mx-auto mb-1.5 ${file ? 'text-primary-500' : 'text-slate-400'}`} />
+                            {file ? (
+                                <p className="text-sm font-medium text-primary-700">{file.name}</p>
+                            ) : (
+                                <p className="text-sm text-slate-500">點擊選擇 <span className="font-medium">.xmind</span> 檔案</p>
+                            )}
+                            <input
+                                ref={fileRef}
+                                type="file"
+                                accept=".xmind"
+                                className="hidden"
+                                onChange={e => setFile(e.target.files?.[0] ?? null)}
+                            />
+                        </div>
+                    </div>
+
+                    {/* Owner email */}
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                            負責人 Email
+                            <span className="ml-1.5 text-xs text-slate-400 font-normal">（選填，查無帳號自動設為 Unassigned）</span>
+                        </label>
+                        <input
+                            type="email"
+                            value={owner}
+                            onChange={e => setOwner(e.target.value)}
+                            placeholder="user@example.com"
+                            className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
+                        />
+                    </div>
+
+                    {/* Result panel */}
+                    {result && (
+                        <div className={`rounded-lg p-4 ${result.ok ? 'bg-emerald-50 border border-emerald-200' : 'bg-rose-50 border border-rose-200'}`}>
+                            <div className="flex items-start gap-2">
+                                {result.ok
+                                    ? <CheckCircle2 className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
+                                    : <AlertCircle className="w-4 h-4 text-rose-600 mt-0.5 shrink-0" />
+                                }
+                                <div className="flex-1 min-w-0">
+                                    <p className={`text-sm font-medium ${result.ok ? 'text-emerald-800' : 'text-rose-800'}`}>
+                                        {result.message}
+                                    </p>
+                                    {result.ok && result.data && (
+                                        <div className="mt-2 max-h-40 overflow-y-auto space-y-1">
+                                            {result.data.test_cases.slice(0, 30).map((tc, i) => (
+                                                <div key={i} className="flex items-center gap-2 text-xs text-emerald-700">
+                                                    <span className="px-1.5 py-0.5 bg-emerald-100 rounded text-emerald-600 font-mono shrink-0">{tc.priority}</span>
+                                                    <span className="truncate">{tc.title}</span>
+                                                </div>
+                                            ))}
+                                            {result.data.test_cases.length > 30 && (
+                                                <p className="text-xs text-emerald-600 italic">…以及 {result.data.test_cases.length - 30} 筆</p>
+                                            )}
+                                        </div>
+                                    )}
+                                    {!result.ok && result.errors && (
+                                        <ul className="mt-1.5 list-disc list-inside text-xs text-rose-700 space-y-0.5">
+                                            {result.errors.map((e, i) => <li key={i}>{e}</li>)}
+                                        </ul>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Footer buttons */}
+                    <div className="flex items-center justify-end gap-3 pt-1">
+                        <button type="button" onClick={onClose} className="btn-secondary">
+                            {result?.ok ? '關閉' : '取消'}
+                        </button>
+                        {!result?.ok && (
+                            <button
+                                type="submit"
+                                disabled={!file || isSubmitting}
+                                className="btn-primary flex items-center gap-2 disabled:opacity-50"
+                            >
+                                {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                                {isSubmitting ? '匯入中…' : '開始匯入'}
+                            </button>
+                        )}
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default function Repository() {
     // const { projectId } = useParams();
@@ -264,6 +432,7 @@ export default function Repository() {
 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [isImporting, setIsImporting] = useState(false);
+    const [isXmindModalOpen, setIsXmindModalOpen] = useState(false);
     const [isExportOpen, setIsExportOpen] = useState(false);
     const [isSyncingDify, setIsSyncingDify] = useState(false);
 
@@ -471,6 +640,14 @@ export default function Repository() {
 
     return (
         <div className="flex-1 flex h-full overflow-hidden">
+            {isXmindModalOpen && (
+                <XmindImportModal
+                    projectId={projectId}
+                    onClose={() => setIsXmindModalOpen(false)}
+                    onSuccess={() => { fetchSuites(); fetchCases(); }}
+                />
+            )}
+
             <TestCasePreviewPane
                 isOpen={isPreviewOpen}
                 onClose={() => setIsPreviewOpen(false)}
@@ -556,30 +733,74 @@ export default function Repository() {
             {/* Cases List Main Area */}
             <div className="flex-1 flex flex-col h-full bg-slate-50 relative">
                 {!activeSuiteId ? (
-                    <div className="flex-1 flex flex-col items-center justify-center h-full text-slate-400">
-                        <div className="w-16 h-16 mb-4 rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center justify-center">
-                            <FolderOpen className="w-8 h-8 text-slate-300" />
+                    <div className="flex-1 flex flex-col items-center justify-center h-full gap-8">
+                        {/* Hero */}
+                        <div className="flex flex-col items-center">
+                            <div className="w-16 h-16 mb-4 rounded-2xl bg-white border border-slate-200 shadow-sm flex items-center justify-center">
+                                <FolderOpen className="w-8 h-8 text-slate-300" />
+                            </div>
+                            <h3 className="text-lg font-bold text-slate-900 mb-1">Select a folder</h3>
+                            <p className="text-sm text-center max-w-sm text-slate-500">
+                                Click on a folder in the sidebar to view or manage its test cases.
+                            </p>
                         </div>
-                        <h3 className="text-lg font-bold text-slate-900 mb-1">Select a folder</h3>
-                        <p className="text-sm text-center max-w-sm">
-                            Click on a folder in the sidebar to view or manage its test cases.
-                        </p>
-                        {/* Export All when no suite selected */}
-                        <div className="relative mt-4">
-                            <button
-                                onClick={() => setIsExportOpen(prev => !prev)}
-                                className="bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm"
-                            >
-                                <Download className="w-4 h-4" /> Export All Cases <ChevronDown className="w-3 h-3" />
-                            </button>
-                            {isExportOpen && (
-                                <div className="absolute left-1/2 -translate-x-1/2 mt-1 w-44 bg-white border border-slate-200 rounded-lg shadow-lg z-20 py-1">
-                                    <button onClick={() => handleExport('csv')} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">Export CSV</button>
-                                    <button onClick={() => handleExport('json')} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">Export JSON</button>
-                                    <hr className="my-1 border-slate-100" />
-                                    <button onClick={() => handleExport('ai_json')} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"><span>🤖</span> Export for AI</button>
+
+                        {/* Import / Export cards */}
+                        <div className="flex items-stretch gap-4">
+                            {/* ── Import card ── */}
+                            <div className="bg-primary-50 border border-primary-200 rounded-xl px-6 py-5 flex flex-col gap-3 min-w-[260px]">
+                                <div className="flex items-center gap-2 mb-1">
+                                    <div className="w-7 h-7 rounded-lg bg-primary-100 flex items-center justify-center">
+                                        <Upload className="w-4 h-4 text-primary-600" />
+                                    </div>
+                                    <span className="text-sm font-semibold text-primary-800">匯入測試案例</span>
                                 </div>
-                            )}
+                                <input type="file" accept=".xml" ref={fileInputRef} style={{ display: 'none' }} onChange={handleImportZephyr} />
+                                <button
+                                    onClick={() => fileInputRef.current?.click()}
+                                    disabled={isImporting}
+                                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-white border border-primary-200 text-primary-700 hover:bg-primary-100 transition-colors shadow-sm disabled:opacity-50"
+                                >
+                                    {isImporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                                    {isImporting ? 'Importing...' : 'Import Zephyr XML'}
+                                </button>
+                                <button
+                                    onClick={() => setIsXmindModalOpen(true)}
+                                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-white border border-primary-200 text-primary-700 hover:bg-primary-100 transition-colors shadow-sm"
+                                >
+                                    <FileCode2 className="w-4 h-4" />
+                                    Import XMind
+                                </button>
+                            </div>
+
+                            {/* ── Export card ── */}
+                            <div className="bg-slate-50 border border-slate-200 rounded-xl px-6 py-5 flex flex-col gap-3 min-w-[200px]">
+                                <div className="flex items-center gap-2 mb-1">
+                                    <div className="w-7 h-7 rounded-lg bg-slate-200 flex items-center justify-center">
+                                        <Download className="w-4 h-4 text-slate-600" />
+                                    </div>
+                                    <span className="text-sm font-semibold text-slate-700">匯出測試案例</span>
+                                </div>
+                                <div className="relative">
+                                    <button
+                                        onClick={() => setIsExportOpen(prev => !prev)}
+                                        className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 transition-colors shadow-sm"
+                                    >
+                                        <span className="flex items-center gap-2">
+                                            <Download className="w-4 h-4" /> Export All Cases
+                                        </span>
+                                        <ChevronDown className="w-3 h-3 text-slate-400" />
+                                    </button>
+                                    {isExportOpen && (
+                                        <div className="absolute left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg z-20 py-1">
+                                            <button onClick={() => handleExport('csv')} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">Export CSV</button>
+                                            <button onClick={() => handleExport('json')} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">Export JSON</button>
+                                            <hr className="my-1 border-slate-100" />
+                                            <button onClick={() => handleExport('ai_json')} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"><span>🤖</span> Export for AI</button>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
                         </div>
                     </div>
                 ) : (
@@ -591,15 +812,6 @@ export default function Repository() {
                                 <p className="text-sm text-slate-500 mt-1">{filteredCases.length} test cases in this suite</p>
                             </div>
                             <div className="flex items-center gap-3">
-                                <input type="file" accept=".xml" ref={fileInputRef} style={{ display: 'none' }} onChange={handleImportZephyr} />
-                                <button
-                                    onClick={() => fileInputRef.current?.click()}
-                                    disabled={isImporting}
-                                    className="bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm disabled:opacity-50"
-                                >
-                                    {isImporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                                    {isImporting ? 'Importing...' : 'Import XML'}
-                                </button>
                                 {/* Export 下拉選單 */}
                                 <div className="relative">
                                     <button
