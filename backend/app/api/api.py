@@ -36,3 +36,6 @@ router.include_router(dify_sync_router, prefix="/cases/sync/dify", tags=["Dify S
 
 from app.api.backup import router as backup_router
 router.include_router(backup_router, prefix="/backup", tags=["Backup"])
+
+from app.api.xmind_import import router as xmind_import_router
+router.include_router(xmind_import_router, prefix="/cases", tags=["XMind Import"])
