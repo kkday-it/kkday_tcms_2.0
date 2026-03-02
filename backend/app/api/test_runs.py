@@ -212,11 +212,14 @@ async def list_runs_by_project(project_id: int, db: AsyncSession = Depends(get_d
 async def create_run(run_in: TestRunCreate, db: AsyncSession = Depends(get_db)):
     run_data = run_in.model_dump(exclude={"case_ids", "assignee_ids"})
     run = TestRun(**run_data)
+
+    # Set assignees BEFORE flush: object is still transient, no lazy-load triggered
+    if run_in.assignee_ids:
+        users_result = await db.execute(select(User).where(User.id.in_(run_in.assignee_ids)))
+        run.assignees = list(users_result.scalars().all())
+
     db.add(run)
     await db.flush()  # get run.id without full commit
-
-    # Sync assignees
-    await _sync_assignees(run, run_in.assignee_ids, db)
 
     # Fetch matching cases
     cases_query = select(TestCase).join(TestSuite).where(TestSuite.project_id == run.project_id)
