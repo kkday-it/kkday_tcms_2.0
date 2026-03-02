@@ -1,15 +1,53 @@
+from contextlib import asynccontextmanager
+import logging
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+
 from app.core.config import settings
 from app.db.database import engine, Base
 from app.api.api import router as api_router
-import logging
-# Import all models so SQLAlchemy registers them before create_all
+
+# 確保所有 model 都被 SQLAlchemy 注冊
 import app.models.test_plan_folder  # noqa: F401
 import app.models.test_plan         # noqa: F401
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # ── 啟動 ──────────────────────────────────────────────
+    logger.info("Starting up FastAPI server...")
+
+    # 初始化資料庫
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    logger.info("Database tables initialized.")
+
+    # 啟動定期備份排程
+    try:
+        from app.services.backup_scheduler import init_scheduler
+        init_scheduler()
+    except Exception as e:
+        logger.warning(f"APScheduler init failed (non-fatal): {e}")
+
+    yield
+
+    # ── 關閉 ──────────────────────────────────────────────
+    try:
+        from app.services.backup_scheduler import shutdown_scheduler
+        shutdown_scheduler()
+        logger.info("APScheduler shut down.")
+    except Exception:
+        pass
+
+    await engine.dispose()
+    logger.info("Server shutdown complete.")
+
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -17,6 +55,7 @@ app = FastAPI(
     docs_url="/api/v1/docs",
     description="Backend API for KK TCMS 1.5",
     version="1.5.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -26,19 +65,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-@app.on_event("startup")
-async def startup_event():
-    logger.info("Starting up FastAPI server...")
-    # Setup database tables
-    async with engine.begin() as conn:
-        # Avoid dropping tables in production, just using this for initial dev setup.
-        # await conn.run_sync(Base.metadata.drop_all)
-        await conn.run_sync(Base.metadata.create_all)
-    logger.info("Database tables initialized.")
-
-from fastapi.staticfiles import StaticFiles
-import os
 
 @app.get("/api/v1/health")
 async def health_check():

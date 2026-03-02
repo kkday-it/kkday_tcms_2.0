@@ -271,6 +271,59 @@ async def create_backup(
 
 # ── Restore endpoint ──────────────────────────────────────────────────────────
 
+@router.get("/schedule")
+async def get_backup_schedule():
+    """取得目前的定期備份設定與執行紀錄"""
+    from app.services.backup_scheduler import get_schedule, list_backup_files
+    cfg = get_schedule()
+    cfg["backup_files"] = list_backup_files()
+    return cfg
+
+
+@router.put("/schedule")
+async def update_backup_schedule(body: dict):
+    """
+    更新定期備份設定。
+
+    ```json
+    {
+      "enabled": true,
+      "schedule_type": "cron",       // "cron" | "interval"
+      "cron_expression": "0 2 * * *", // Cron 格式（5 欄位）
+      "interval_hours": 24,           // schedule_type=interval 時使用
+      "project_id": 1,
+      "keep_last_n": 10
+    }
+    ```
+    """
+    from app.services.backup_scheduler import update_schedule
+    return update_schedule(body)
+
+
+@router.post("/schedule/run-now")
+async def run_backup_now():
+    """立即執行一次排程備份（不影響排程週期）"""
+    from app.services.backup_scheduler import run_backup_job, get_schedule
+    import asyncio
+    asyncio.create_task(run_backup_job())
+    return {"status": "triggered", "message": "備份任務已觸發，請稍後查看執行紀錄"}
+
+
+@router.get("/schedule/files/{filename}")
+async def download_scheduled_backup(filename: str):
+    """下載指定的排程備份檔案"""
+    from app.services.backup_scheduler import BACKUP_DIR
+    from fastapi.responses import FileResponse
+    filepath = BACKUP_DIR / filename
+    if not filepath.exists() or not filename.startswith("auto_backup_"):
+        raise HTTPException(status_code=404, detail="備份檔案不存在")
+    return FileResponse(
+        path=str(filepath),
+        media_type="application/zip",
+        filename=filename,
+    )
+
+
 @router.post("/restore")
 async def restore_backup(
     project_id: Optional[int] = Query(None, description="目標 Project ID（不填則使用備份原本的 project_id）"),
