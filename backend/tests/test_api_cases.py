@@ -3,20 +3,29 @@ Test Cases API 測試
 驗證原有 CRUD 功能與新增的 export 端點皆正常運作
 """
 
+import allure
 import pytest
 from httpx import AsyncClient
 
 pytestmark = pytest.mark.asyncio
 
 
+@allure.epic("TCMS API")
+@allure.feature("系統健康檢查")
 class TestHealthCheck:
+    @allure.title("GET /health 回傳 200 ok")
+    @allure.severity(allure.severity_level.BLOCKER)
     async def test_health(self, client: AsyncClient):
         res = await client.get("/api/v1/health")
         assert res.status_code == 200
         assert res.json()["status"] == "ok"
 
 
+@allure.epic("TCMS API")
+@allure.feature("專案管理")
 class TestProjectsAPI:
+    @allure.title("建立專案成功")
+    @allure.severity(allure.severity_level.CRITICAL)
     async def test_create_project(self, client: AsyncClient):
         res = await client.post("/api/v1/projects/", json={"name": "My Project"})
         assert res.status_code == 200
@@ -30,7 +39,11 @@ class TestProjectsAPI:
         assert any(p["id"] == project_id for p in res.json())
 
 
+@allure.epic("TCMS API")
+@allure.feature("測試套件管理")
 class TestSuitesAPI:
+    @allure.title("建立測試套件")
+    @allure.severity(allure.severity_level.CRITICAL)
     async def test_create_suite(self, client: AsyncClient, project_id: int):
         res = await client.post("/api/v1/suites/", json={"name": "Suite A", "project_id": project_id})
         assert res.status_code == 200
@@ -51,7 +64,11 @@ class TestSuitesAPI:
         assert any(s["id"] == suite_id for s in res.json())
 
 
+@allure.epic("TCMS API")
+@allure.feature("測試案例管理")
 class TestCasesAPI:
+    @allure.title("建立測試案例（含步驟）")
+    @allure.severity(allure.severity_level.CRITICAL)
     async def test_create_case(self, client: AsyncClient, suite_id: int):
         res = await client.post("/api/v1/cases/", json={
             "title": "Login with valid credentials",
@@ -137,6 +154,8 @@ class TestCasesAPI:
         assert "regression" in res.json()
 
 
+@allure.epic("TCMS API")
+@allure.feature("測試案例匯出")
 class TestExportAPI:
     async def _create_case_with_steps(self, client: AsyncClient, suite_id: int, title: str):
         return await client.post("/api/v1/cases/", json={
@@ -192,6 +211,8 @@ class TestExportAPI:
         assert res.status_code == 400
 
 
+@allure.epic("TCMS API")
+@allure.feature("Dify AI 同步")
 class TestDifySyncStatus:
     async def test_sync_status_unconfigured(self, client: AsyncClient):
         res = await client.get("/api/v1/cases/sync/dify/status")

@@ -7,6 +7,7 @@ import csv
 import io
 import json
 
+import allure
 import pytest
 from httpx import AsyncClient
 
@@ -52,6 +53,9 @@ async def _create_plan(client: AsyncClient, project_id: int, title: str = "Plan-
 
 # ── Test Cases Export ─────────────────────────────────────────────────────────
 
+@allure.epic("TCMS API")
+@allure.feature("匯出功能")
+@allure.story("測試案例匯出")
 class TestCasesExport:
     async def test_export_csv_returns_200(self, client: AsyncClient, project_id: int, suite_id: int):
         await _create_case(client, suite_id, "CSV Case")
@@ -129,6 +133,9 @@ class TestCasesExport:
 
 # ── Test Runs Export ──────────────────────────────────────────────────────────
 
+@allure.epic("TCMS API")
+@allure.feature("匯出功能")
+@allure.story("測試執行匯出")
 class TestRunsExport:
     async def test_export_runs_csv_returns_200(self, client: AsyncClient, project_id: int):
         await _create_run(client, project_id, "Run CSV")
@@ -193,6 +200,9 @@ class TestRunsExport:
 
 # ── Test Plans Export ─────────────────────────────────────────────────────────
 
+@allure.epic("TCMS API")
+@allure.feature("匯出功能")
+@allure.story("測試計畫匯出")
 class TestPlansExport:
     async def test_export_plans_csv_returns_200(self, client: AsyncClient, project_id: int):
         await _create_plan(client, project_id)

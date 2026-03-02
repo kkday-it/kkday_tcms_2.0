@@ -3,6 +3,7 @@ Test Plans API 測試
 涵蓋 Plans CRUD、Plan Folders、linked runs/cases
 """
 
+import allure
 import pytest
 from httpx import AsyncClient
 
@@ -40,6 +41,9 @@ async def _create_case(client: AsyncClient, suite_id: int) -> dict:
 
 # ── Plans CRUD ────────────────────────────────────────────────────────────────
 
+@allure.epic("TCMS API")
+@allure.feature("測試計畫管理")
+@allure.story("Test Plan CRUD")
 class TestPlansCRUD:
     async def test_create_plan(self, client: AsyncClient, project_id: int):
         plan = await _create_plan(client, project_id, "Sprint 1 Plan")
@@ -98,6 +102,9 @@ class TestPlansCRUD:
 
 # ── Linked Runs & Cases ───────────────────────────────────────────────────────
 
+@allure.epic("TCMS API")
+@allure.feature("測試計畫管理")
+@allure.story("Plan 關聯 Run/Case")
 class TestPlanLinks:
     async def test_create_plan_with_linked_run(self, client: AsyncClient, project_id: int):
         run = await _create_run(client, project_id, "Linked Run")
@@ -144,6 +151,9 @@ class TestPlanLinks:
 
 # ── Plan Folders ──────────────────────────────────────────────────────────────
 
+@allure.epic("TCMS API")
+@allure.feature("測試計畫管理")
+@allure.story("Plan Folder CRUD")
 class TestPlanFoldersAPI:
     async def test_create_plan_folder(self, client: AsyncClient, project_id: int):
         res = await client.post("/api/v1/plan-folders/", json={

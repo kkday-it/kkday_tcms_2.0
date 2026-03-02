@@ -6,6 +6,7 @@ import io
 import json
 import zipfile
 
+import allure
 import pytest
 from httpx import AsyncClient
 
@@ -44,6 +45,9 @@ async def _make_backup_zip(client: AsyncClient, project_id: int, suite_id: int) 
 
 # ── Backup Tests ──────────────────────────────────────────────────────────────
 
+@allure.epic("TCMS API")
+@allure.feature("備份與還原")
+@allure.story("一鍵備份")
 class TestBackupAPI:
     async def test_backup_returns_200(self, client: AsyncClient, project_id: int):
         res = await client.get(f"/api/v1/backup?project_id={project_id}")
@@ -152,6 +156,9 @@ class TestBackupAPI:
 
 # ── Restore Tests ─────────────────────────────────────────────────────────────
 
+@allure.epic("TCMS API")
+@allure.feature("備份與還原")
+@allure.story("一鍵還原")
 class TestRestoreAPI:
     async def _upload_zip(self, client: AsyncClient, project_id: int, zip_bytes: bytes, target_project_id: int | None = None):
         pid = target_project_id or project_id

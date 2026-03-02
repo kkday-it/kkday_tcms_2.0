@@ -4,6 +4,7 @@ Users API 測試
 """
 
 import hashlib
+import allure
 import pytest
 from httpx import AsyncClient
 
@@ -29,6 +30,9 @@ async def _create_user(client: AsyncClient, username: str = "testuser", role: st
 
 # ── Users CRUD ────────────────────────────────────────────────────────────────
 
+@allure.epic("TCMS API")
+@allure.feature("使用者管理")
+@allure.story("User CRUD")
 class TestUsersCRUD:
     async def test_create_user(self, client: AsyncClient):
         user = await _create_user(client, "alice")
@@ -100,6 +104,9 @@ class TestUsersCRUD:
 
 # ── Login ─────────────────────────────────────────────────────────────────────
 
+@allure.epic("TCMS API")
+@allure.feature("使用者管理")
+@allure.story("登入驗證")
 class TestUsersLogin:
     async def test_login_success(self, client: AsyncClient):
         """登入時密碼需先由 client 做 SHA-256，再傳給 API；回傳 JWT token"""
@@ -140,6 +147,9 @@ class TestUsersLogin:
 
 # ── Password Operations ───────────────────────────────────────────────────────
 
+@allure.epic("TCMS API")
+@allure.feature("使用者管理")
+@allure.story("密碼管理")
 class TestUsersPassword:
     async def test_reset_default_password(self, client: AsyncClient):
         user = await _create_user(client, "resetme")
@@ -166,6 +176,9 @@ class TestUsersPassword:
 
 # ── Projects CRUD (complete) ──────────────────────────────────────────────────
 
+@allure.epic("TCMS API")
+@allure.feature("專案管理")
+@allure.story("Project 完整 CRUD")
 class TestProjectsCompleteCRUD:
     async def test_get_project_by_id(self, client: AsyncClient, project_id: int):
         res = await client.get(f"/api/v1/projects/{project_id}")
@@ -191,6 +204,9 @@ class TestProjectsCompleteCRUD:
 
 # ── Suites CRUD (complete) ────────────────────────────────────────────────────
 
+@allure.epic("TCMS API")
+@allure.feature("測試套件管理")
+@allure.story("Suite 完整 CRUD")
 class TestSuitesCompleteCRUD:
     async def test_get_suite_by_id(self, client: AsyncClient, suite_id: int):
         res = await client.get(f"/api/v1/suites/{suite_id}")

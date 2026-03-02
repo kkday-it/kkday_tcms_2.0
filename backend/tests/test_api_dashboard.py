@@ -3,6 +3,7 @@ Dashboard API 測試
 涵蓋 /stats、/summary、/me
 """
 
+import allure
 import pytest
 from httpx import AsyncClient
 
@@ -28,6 +29,9 @@ async def _seed(client: AsyncClient, project_id: int, suite_id: int):
     return case, run
 
 
+@allure.epic("TCMS API")
+@allure.feature("儀表板")
+@allure.story("Stats 端點")
 class TestDashboardStats:
     async def test_stats_returns_200(self, client: AsyncClient):
         res = await client.get("/api/v1/dashboard/stats")
@@ -54,6 +58,9 @@ class TestDashboardStats:
         assert after == before + 1
 
 
+@allure.epic("TCMS API")
+@allure.feature("儀表板")
+@allure.story("Summary 端點")
 class TestDashboardSummary:
     async def test_summary_returns_200(self, client: AsyncClient):
         res = await client.get("/api/v1/dashboard/summary")
@@ -91,6 +98,9 @@ class TestDashboardSummary:
         assert isinstance(data["top_failing_cases"], list)
 
 
+@allure.epic("TCMS API")
+@allure.feature("儀表板")
+@allure.story("Me 個人儀表板")
 class TestDashboardMe:
     async def test_me_returns_200(self, client: AsyncClient):
         res = await client.get("/api/v1/dashboard/me?user_id=1")

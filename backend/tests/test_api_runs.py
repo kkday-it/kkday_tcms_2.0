@@ -3,6 +3,7 @@ Test Runs API 測試
 涵蓋 Runs CRUD、Duplicate、Test Results 更新
 """
 
+import allure
 import pytest
 from httpx import AsyncClient
 
@@ -37,6 +38,9 @@ async def _create_case(client: AsyncClient, suite_id: int, title: str = "TC") ->
 
 # ── Test Runs CRUD ────────────────────────────────────────────────────────────
 
+@allure.epic("TCMS API")
+@allure.feature("測試執行管理")
+@allure.story("Test Run CRUD")
 class TestRunsCRUD:
     async def test_create_run(self, client: AsyncClient, project_id: int):
         run = await _create_run(client, project_id, "My First Run")
@@ -104,6 +108,9 @@ class TestRunsCRUD:
 
 # ── Duplicate ─────────────────────────────────────────────────────────────────
 
+@allure.epic("TCMS API")
+@allure.feature("測試執行管理")
+@allure.story("Test Run 複製")
 class TestRunDuplicate:
     async def test_duplicate_run(self, client: AsyncClient, project_id: int):
         run = await _create_run(client, project_id, "Original Run")
@@ -121,6 +128,9 @@ class TestRunDuplicate:
 
 # ── Test Results ──────────────────────────────────────────────────────────────
 
+@allure.epic("TCMS API")
+@allure.feature("測試執行管理")
+@allure.story("Test Result 更新")
 class TestResultsAPI:
     async def test_get_results_by_run(self, client: AsyncClient, project_id: int, suite_id: int):
         await _create_case(client, suite_id, "Case for Results")
@@ -191,6 +201,9 @@ class TestResultsAPI:
 
 # ── Run Folders ───────────────────────────────────────────────────────────────
 
+@allure.epic("TCMS API")
+@allure.feature("測試執行管理")
+@allure.story("Run Folder CRUD")
 class TestRunFoldersAPI:
     async def test_create_run_folder(self, client: AsyncClient, project_id: int):
         res = await client.post("/api/v1/run-folders/", json={
