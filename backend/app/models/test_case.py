@@ -4,10 +4,10 @@ from sqlalchemy.orm import relationship
 from app.db.database import Base
 
 class TestCase(Base):
-    __tablename__ = "test_cases"
+    __tablename__ = "tcms_test_cases"
 
     id = Column(Integer, primary_key=True, index=True)
-    suite_id = Column(Integer, ForeignKey("test_suites.id"), nullable=False)
+    suite_id = Column(Integer, ForeignKey("tcms_test_suites.id"), nullable=False)
     title = Column(String, index=True, nullable=False)
     status = Column(String, default="Active")
     lifecycle_status = Column(String, default="Draft") # Draft, Approved
@@ -23,7 +23,7 @@ class TestCase(Base):
     preconditions = Column(String, nullable=True)
     postconditions = Column(String, nullable=True)
     
-    default_owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    default_owner_id = Column(Integer, ForeignKey("tcms_users.id"), nullable=True)
 
     # Zephyr / Legacy Integration Fields
     external_id = Column(String, index=True, nullable=True)

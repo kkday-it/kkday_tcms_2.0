@@ -4,12 +4,12 @@ from sqlalchemy.orm import relationship
 from app.db.database import Base
 
 class TestRunFolder(Base):
-    __tablename__ = "test_run_folders"
+    __tablename__ = "tcms_test_run_folders"
 
     id = Column(Integer, primary_key=True, index=True)
-    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
+    project_id = Column(Integer, ForeignKey("tcms_projects.id"), nullable=False)
     name = Column(String, index=True, nullable=False)
-    parent_id = Column(Integer, ForeignKey("test_run_folders.id"), nullable=True)
+    parent_id = Column(Integer, ForeignKey("tcms_test_run_folders.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

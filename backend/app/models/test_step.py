@@ -3,10 +3,10 @@ from sqlalchemy.orm import relationship
 from app.db.database import Base
 
 class TestStep(Base):
-    __tablename__ = "test_steps"
+    __tablename__ = "tcms_test_steps"
 
     id = Column(Integer, primary_key=True, index=True)
-    test_case_id = Column(Integer, ForeignKey("test_cases.id"), nullable=False)
+    test_case_id = Column(Integer, ForeignKey("tcms_test_cases.id"), nullable=False)
     order = Column(Integer, nullable=False, default=1)
     action = Column(String, nullable=False)
     data = Column(String, nullable=True)

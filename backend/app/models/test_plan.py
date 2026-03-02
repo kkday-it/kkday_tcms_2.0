@@ -5,28 +5,28 @@ from app.db.database import Base
 
 # Association tables
 plan_runs = Table(
-    "plan_runs",
+    "tcms_plan_runs",
     Base.metadata,
-    Column("plan_id", Integer, ForeignKey("test_plans.id", ondelete="CASCADE"), primary_key=True),
-    Column("run_id", Integer, ForeignKey("test_runs.id", ondelete="CASCADE"), primary_key=True),
+    Column("plan_id", Integer, ForeignKey("tcms_test_plans.id", ondelete="CASCADE"), primary_key=True),
+    Column("run_id", Integer, ForeignKey("tcms_test_runs.id", ondelete="CASCADE"), primary_key=True),
 )
 
 plan_cases = Table(
-    "plan_cases",
+    "tcms_plan_cases",
     Base.metadata,
-    Column("plan_id", Integer, ForeignKey("test_plans.id", ondelete="CASCADE"), primary_key=True),
-    Column("case_id", Integer, ForeignKey("test_cases.id", ondelete="CASCADE"), primary_key=True),
+    Column("plan_id", Integer, ForeignKey("tcms_test_plans.id", ondelete="CASCADE"), primary_key=True),
+    Column("case_id", Integer, ForeignKey("tcms_test_cases.id", ondelete="CASCADE"), primary_key=True),
 )
 
 class TestPlan(Base):
-    __tablename__ = "test_plans"
+    __tablename__ = "tcms_test_plans"
 
     id = Column(Integer, primary_key=True, index=True)
-    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
+    project_id = Column(Integer, ForeignKey("tcms_projects.id"), nullable=False)
     title = Column(String, index=True, nullable=False)
     description = Column(String, nullable=True)
     status = Column(String, default="Draft")
-    folder_id = Column(Integer, ForeignKey("test_plan_folders.id", ondelete="SET NULL"), nullable=True)
+    folder_id = Column(Integer, ForeignKey("tcms_test_plan_folders.id", ondelete="SET NULL"), nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

@@ -4,11 +4,11 @@ from sqlalchemy.orm import relationship
 from app.db.database import Base
 
 class TestSuite(Base):
-    __tablename__ = "test_suites"
+    __tablename__ = "tcms_test_suites"
 
     id = Column(Integer, primary_key=True, index=True)
-    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
-    parent_suite_id = Column(Integer, ForeignKey("test_suites.id"), nullable=True)
+    project_id = Column(Integer, ForeignKey("tcms_projects.id"), nullable=False)
+    parent_suite_id = Column(Integer, ForeignKey("tcms_test_suites.id"), nullable=True)
     name = Column(String, index=True, nullable=False)
     description = Column(String, nullable=True)
     preconditions = Column(String, nullable=True)

@@ -4,7 +4,7 @@ from sqlalchemy.orm import relationship
 from app.db.database import Base
 
 class Project(Base):
-    __tablename__ = "projects"
+    __tablename__ = "tcms_projects"
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True, nullable=False)
