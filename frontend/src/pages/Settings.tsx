@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Shield, Loader2, Plus, X, Save, Users, Bell, Palette, Database } from 'lucide-react';
+import { Shield, Loader2, Plus, X, Save, Users, Bell, Palette, Database, Download, CheckCircle2 } from 'lucide-react';
 import api from '../lib/api';
 
 export interface AppUser {
@@ -269,6 +269,90 @@ function UsersTab({ isAdmin }: { isAdmin: boolean }) {
     );
 }
 
+// --- System Tab (Backup) ---
+function SystemTab() {
+    const projectId = 1;
+    const [isBackingUp, setIsBackingUp] = useState(false);
+    const [lastBackup, setLastBackup] = useState<string | null>(
+        localStorage.getItem('tcms_last_backup')
+    );
+
+    const handleBackup = async () => {
+        setIsBackingUp(true);
+        try {
+            const response = await api.get(`/backup?project_id=${projectId}`, { responseType: 'blob' });
+            const url = URL.createObjectURL(response.data);
+            const a = document.createElement('a');
+            a.href = url;
+            const now = new Date();
+            const ts = now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
+            a.download = `tcms_backup_${ts}.zip`;
+            a.click();
+            URL.revokeObjectURL(url);
+            const timeStr = now.toLocaleString();
+            setLastBackup(timeStr);
+            localStorage.setItem('tcms_last_backup', timeStr);
+        } catch (err) {
+            console.error('Backup failed:', err);
+            alert('Backup failed. Please try again.');
+        } finally {
+            setIsBackingUp(false);
+        }
+    };
+
+    return (
+        <div>
+            <h2 className="text-lg font-bold text-slate-900 mb-2">System</h2>
+            <p className="text-sm text-slate-500 mb-6">System-wide configurations. Admin only.</p>
+
+            {/* Backup Card */}
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm mb-6">
+                <div className="px-6 py-5 border-b border-slate-100">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center">
+                            <Database className="w-5 h-5 text-blue-500" />
+                        </div>
+                        <div>
+                            <h3 className="text-base font-bold text-slate-900">One-Click Backup</h3>
+                            <p className="text-sm text-slate-500">匯出所有 Test Cases、Runs、Plans 及 Dashboard 統計為 ZIP 檔案</p>
+                        </div>
+                    </div>
+                </div>
+                <div className="px-6 py-5">
+                    <div className="flex items-center justify-between mb-5">
+                        <div className="space-y-1">
+                            <p className="text-sm font-medium text-slate-700">備份內容</p>
+                            <ul className="text-sm text-slate-500 space-y-0.5 list-disc list-inside">
+                                <li><code className="text-xs bg-slate-100 px-1 rounded">cases.json</code> — 所有 Test Cases（含步驟）</li>
+                                <li><code className="text-xs bg-slate-100 px-1 rounded">runs.json</code> — 所有 Test Runs（含執行結果）</li>
+                                <li><code className="text-xs bg-slate-100 px-1 rounded">plans.json</code> — 所有 Test Plans（含關聯）</li>
+                                <li><code className="text-xs bg-slate-100 px-1 rounded">dashboard.json</code> — Dashboard 統計摘要</li>
+                                <li><code className="text-xs bg-slate-100 px-1 rounded">manifest.json</code> — 備份 metadata</li>
+                            </ul>
+                        </div>
+                        <button
+                            onClick={handleBackup}
+                            disabled={isBackingUp}
+                            className="flex items-center gap-2 px-5 py-2.5 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 transition-colors shadow-sm disabled:opacity-70 shrink-0 ml-6"
+                        >
+                            {isBackingUp
+                                ? <><Loader2 className="w-4 h-4 animate-spin" /> Backing up...</>
+                                : <><Download className="w-4 h-4" /> Download Backup</>
+                            }
+                        </button>
+                    </div>
+                    {lastBackup && (
+                        <div className="flex items-center gap-2 text-sm text-emerald-600 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2">
+                            <CheckCircle2 className="w-4 h-4 shrink-0" />
+                            上次備份時間：{lastBackup}
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
 // --- Settings Page ---
 type SettingsTab = 'users' | 'notifications' | 'appearance' | 'system';
 
@@ -342,13 +426,7 @@ export default function Settings() {
                     )}
 
                     {activeTab === 'system' && isAdmin && (
-                        <div>
-                            <h2 className="text-lg font-bold text-slate-900 mb-2">System</h2>
-                            <p className="text-sm text-slate-500 mb-6">System-wide configurations. Admin only.</p>
-                            <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
-                                <p className="text-sm text-slate-400 italic">System settings coming soon...</p>
-                            </div>
-                        </div>
+                        <SystemTab />
                     )}
                 </div>
             </div>

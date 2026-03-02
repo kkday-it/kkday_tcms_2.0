@@ -33,3 +33,6 @@ router.include_router(uploads_router, prefix="/uploads", tags=["Uploads"])
 
 from app.api.dify_sync import router as dify_sync_router
 router.include_router(dify_sync_router, prefix="/cases/sync/dify", tags=["Dify Sync"])
+
+from app.api.backup import router as backup_router
+router.include_router(backup_router, prefix="/backup", tags=["Backup"])
