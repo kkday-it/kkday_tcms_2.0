@@ -125,9 +125,8 @@ export default function CreateRunModal({ isOpen, onClose, projectId, initialTitl
             // Fetch cases (this will apply the initial Run Type filtering)
             await fetchCasesForRunType(initialRunType, true);
 
-            // By default, expand all root suites
-            const rootSuiteIds = fetchedSuites.filter((s: TestSuite) => s.parent_suite_id === null).map((s: TestSuite) => s.id);
-            setExpandedSuites(new Set(rootSuiteIds));
+            // By default, all suites collapsed
+            setExpandedSuites(new Set());
         } catch (error) {
             console.error("Failed to fetch layout data:", error);
         } finally {
