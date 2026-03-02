@@ -38,7 +38,9 @@ function App() {
           </ProtectedRoute>
         }>
           <Route path="/" element={<Dashboard />} />
-          <Route path="/project/:projectId" element={<Repository />} />
+          <Route path="/repository" element={<Repository />} />
+          {/* backward-compat: old /project/:id links still work */}
+          <Route path="/project/:projectId" element={<Navigate to="/repository" replace />} />
           <Route path="/runs" element={<TestRuns />} />
           <Route path="/runs/:runId" element={<TestRunDetails />} />
           <Route path="/users" element={<Users />} />

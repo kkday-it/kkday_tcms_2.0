@@ -18,7 +18,7 @@ export default function MainLayout() {
 
     const navigation = [
         { name: 'Dashboard', href: '/', icon: Activity },
-        { name: 'Repository', href: '/project/1', icon: Layers },
+        { name: 'Repository', href: '/repository', icon: Layers },
         { name: 'Test Plans', href: '/plans', icon: ClipboardList },
         { name: 'Test Runs', href: '/runs', icon: Presentation },
     ];

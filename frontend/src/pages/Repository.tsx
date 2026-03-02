@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-// import { useParams } from 'react-router-dom';
 import { Plus, Search, Filter, Loader2, Upload, Download, RefreshCw, Trash2, FolderOpen, ChevronDown, X, CheckCircle2, AlertCircle, FileCode2 } from 'lucide-react';
 import { DndContext, DragEndEvent, closestCenter, useDroppable, useSensor, useSensors, PointerSensor } from '@dnd-kit/core';
 import TestCaseEditor from '../components/cases/TestCaseEditor';
@@ -212,8 +211,7 @@ function XmindImportModal({
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function Repository() {
-    // const { projectId } = useParams();
-    const projectId = 1; // Hardcoded for now until project selection is implemented
+    const projectId = 1; // single-project mode; extend with project selector when needed
 
     const [suites, setSuites] = useState<TestSuite[]>([]);
     const [cases, setCases] = useState<TestCase[]>([]);
