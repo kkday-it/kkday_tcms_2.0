@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Loader2, ArrowLeft, CheckCircle2, XCircle, SkipForward, Edit2, Filter, X, Save, Ban } from 'lucide-react';
 import api from '../lib/api';
+import { useUsers } from '../lib/useUsers';
 import TestCaseExecutionPane from '../components/runs/TestCaseExecutionPane';
 import EditRunModal from '../components/runs/EditRunModal';
 
@@ -22,12 +23,6 @@ interface TestResult {
         tags?: string;
         folder_id?: number;
     };
-}
-
-interface AppUser {
-    id: number;
-    username: string;
-    full_name?: string;
 }
 
 const STATUS_OPTIONS = ['Passed', 'Failed', 'Untested', 'Blocked'];
@@ -60,7 +55,7 @@ export default function TestRunDetails() {
     // Local unsaved state maps: resultId → value
     const [unsavedStatuses, setUnsavedStatuses] = useState<Record<number, string>>({});
     const [unsavedAssignees, setUnsavedAssignees] = useState<Record<number, string>>({});
-    const [users, setUsers] = useState<AppUser[]>([]);
+    const { users } = useUsers();
 
     // Batch selection
     const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
@@ -154,14 +149,13 @@ export default function TestRunDetails() {
     const fetchData = useCallback(async () => {
         setIsLoading(true);
         try {
-            const runRes = await api.get(`/runs/${runId}`);
+            // Parallel: run, results (users from useUsers cache; folders needs project_id from run)
+            const [runRes, resultsRes] = await Promise.all([
+                api.get(`/runs/${runId}`),
+                api.get(`/results/run/${runId}`),
+            ]);
             setTestRun(runRes.data);
-
-            const resultsRes = await api.get(`/results/run/${runId}`);
             setResults(resultsRes.data);
-
-            const usersRes = await api.get('/users/');
-            setUsers(usersRes.data);
 
             const foldersRes = await api.get(`/run-folders/project/${runRes.data.project_id || 1}`);
             setFolders(foldersRes.data);

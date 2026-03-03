@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { X, Loader2, Search, Folder, ChevronRight, ChevronDown, Filter } from 'lucide-react';
 import api from '../../lib/api';
+import { useUsers } from '../../lib/useUsers';
 
 interface TestSuite {
     id: number;
@@ -26,12 +27,6 @@ interface TestRunFolder {
     parent_id?: number | null;
 }
 
-interface User {
-    id: number;
-    username: string;
-    full_name: string;
-}
-
 interface CreateRunModalProps {
     isOpen: boolean;
     onClose: () => void;
@@ -53,7 +48,7 @@ export default function CreateRunModal({ isOpen, onClose, projectId, initialTitl
     const [suites, setSuites] = useState<TestSuite[]>([]);
     const [cases, setCases] = useState<TestCase[]>([]);
     const [folders, setFolders] = useState<TestRunFolder[]>([]);
-    const [users, setUsers] = useState<User[]>([]);
+    const { users } = useUsers();
     const [isLoadingData, setIsLoadingData] = useState(false);
 
     // UI state
@@ -111,16 +106,14 @@ export default function CreateRunModal({ isOpen, onClose, projectId, initialTitl
     const fetchData = async (initialRunType: string) => {
         setIsLoadingData(true);
         try {
-            const [suitesRes, foldersRes, usersRes] = await Promise.all([
+            const [suitesRes, foldersRes] = await Promise.all([
                 api.get(`/suites/project/${projectId}`),
                 api.get(`/run-folders/project/${projectId}`),
-                api.get(`/users`)
             ]);
 
             const fetchedSuites = suitesRes.data;
             setSuites(fetchedSuites);
             setFolders(foldersRes.data);
-            setUsers(usersRes.data);
 
             // Fetch cases (this will apply the initial Run Type filtering)
             await fetchCasesForRunType(initialRunType, true);

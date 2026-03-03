@@ -61,16 +61,15 @@ export default function TestPlanDetails() {
     const fetchData = async () => {
         setIsLoading(true);
         try {
-            const planRes = await api.get(`/plans/${planId}`);
-            const planData: TestPlan = planRes.data;
-            setPlan(planData);
-
-            // Always fetch folders, runs, cases for the Edit modal (and cases/runs for the metrics)
-            const [foldersRes, runsRes, casesRes] = await Promise.all([
+            // All 4 independent; fetch in parallel
+            const [planRes, foldersRes, runsRes, casesRes] = await Promise.all([
+                api.get(`/plans/${planId}`),
                 api.get(`/plan-folders/project/1`),
                 api.get(`/runs/project/1`),
                 api.get(`/cases/project/1`),
             ]);
+            const planData: TestPlan = planRes.data;
+            setPlan(planData);
 
             setFolders(foldersRes.data);
             setAllRuns(runsRes.data);

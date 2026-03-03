@@ -47,7 +47,7 @@ function DraggableRunCard({ run, onClick, onEdit, onDuplicate, onDelete }: { run
             ref={setNodeRef}
             style={style}
             className={`bg-white border ${isDragging ? 'border-primary-400 shadow-md transform scale-[1.02]' : 'border-slate-200 shadow-sm hover:shadow-md'} rounded-xl p-6 transition-all cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-6 relative`}
-            onClick={(e) => {
+            onClick={() => {
                 if (isDragging) return;
                 onClick();
             }}

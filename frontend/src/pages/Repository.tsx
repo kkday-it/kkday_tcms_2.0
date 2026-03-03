@@ -6,6 +6,7 @@ import TestCasePreviewPane from '../components/cases/TestCasePreviewPane';
 import EditSuiteModal from '../components/suites/EditSuiteModal';
 import SuiteNode from '../components/suites/SuiteNode';
 import api from '../lib/api';
+import { useUsers } from '../lib/useUsers';
 
 function RootDroppableArea({ children }: { children: React.ReactNode }) {
     const { setNodeRef, isOver } = useDroppable({
@@ -258,14 +259,10 @@ export default function Repository() {
     const [previewingCaseId, setPreviewingCaseId] = useState<number | null>(null);
     const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
 
-    // Users for batch owner
-    const [users, setUsers] = useState<{ id: number; username: string }[]>([]);
+    // Users for batch owner (cached via useUsers)
+    const { users } = useUsers();
     const [selectedCases, setSelectedCases] = useState<Set<number>>(new Set());
     const [batchOwnerId, setBatchOwnerId] = useState<string>('');
-
-    useEffect(() => {
-        api.get('/users/').then(r => setUsers(r.data)).catch(() => { });
-    }, []);
 
     // Fetch Suites for Project
     const fetchSuites = async () => {

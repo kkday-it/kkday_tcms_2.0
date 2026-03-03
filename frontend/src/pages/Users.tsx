@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { User, Shield, Loader2, Plus } from 'lucide-react';
 import api from '../lib/api';
+import { useUsers } from '../lib/useUsers';
 
 export interface AppUser {
     id: number;
@@ -10,8 +11,7 @@ export interface AppUser {
 }
 
 export default function Users() {
-    const [users, setUsers] = useState<AppUser[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const { users, isLoading, refresh } = useUsers();
     const [isAddOpen, setIsAddOpen] = useState(false);
 
     // Check if current user is admin
@@ -21,22 +21,6 @@ export default function Users() {
     const [newUsername, setNewUsername] = useState('');
     const [newEmail, setNewEmail] = useState('');
     const [newRole, setNewRole] = useState('QA');
-
-    const fetchUsers = async () => {
-        setIsLoading(true);
-        try {
-            const res = await api.get('/users/');
-            setUsers(res.data);
-        } catch (error) {
-            console.error("Failed to fetch users", error);
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        fetchUsers();
-    }, []);
 
     const handleAddUser = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -50,7 +34,7 @@ export default function Users() {
             setNewUsername('');
             setNewEmail('');
             setNewRole('QA');
-            fetchUsers();
+            refresh();
         } catch (error) {
             console.error("Failed to create user", error);
             alert("Failed to create user. Email or username might already exist.");

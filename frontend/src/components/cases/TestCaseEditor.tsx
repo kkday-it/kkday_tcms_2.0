@@ -1,17 +1,13 @@
 import { useState, useEffect } from 'react';
 import { X, Plus, Trash2, Save, Loader2, ImagePlus } from 'lucide-react';
 import api from '../../lib/api';
+import { useUsers } from '../../lib/useUsers';
 import TagInput from '../common/TagInput';
 
 interface TestStep {
     action: string;
     data?: string;
     expected_result: string;
-}
-
-interface AppUser {
-    id: number;
-    username: string;
 }
 
 interface TestCaseEditorProps {
@@ -38,13 +34,11 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
     const [steps, setSteps] = useState<TestStep[]>([{ action: '', data: '', expected_result: '' }]);
     const [isSaving, setIsSaving] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
-    const [users, setUsers] = useState<AppUser[]>([]);
+    const { users } = useUsers();
     const [availableLabels, setAvailableLabels] = useState<string[]>([]);
 
     useEffect(() => {
         if (isOpen) {
-            // Fetch users for the assignee dropdown
-            api.get('/users/').then(res => setUsers(res.data)).catch(console.error);
             // Fetch available labels for autocomplete
             api.get('/cases/labels/all').then(res => setAvailableLabels(res.data)).catch(console.error);
 

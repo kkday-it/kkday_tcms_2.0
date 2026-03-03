@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
-import { Shield, Loader2, Plus, X, Save, Users, Bell, Palette, Database, Download, Upload, CheckCircle2, AlertCircle, Clock, Play, RefreshCw, FileArchive } from 'lucide-react';
+import { Shield, Loader2, Plus, X, Save, Users, Bell, Palette, Database, Download, Upload, CheckCircle2, AlertCircle, Clock, Play, FileArchive } from 'lucide-react';
 import api from '../lib/api';
+import { useUsers } from '../lib/useUsers';
 
 export interface AppUser {
     id: number;
     username: string;
-    full_name: string;
-    email: string;
-    role: string;
+    full_name?: string;
+    email?: string;
+    role?: string;
 }
 
 // --- Edit User Modal ---
@@ -162,21 +163,9 @@ function AddUserModal({ onClose, onSaved }: { onClose: () => void; onSaved: () =
 
 // --- User Management Tab ---
 function UsersTab({ isAdmin }: { isAdmin: boolean }) {
-    const [users, setUsers] = useState<AppUser[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const { users, isLoading, refresh } = useUsers();
     const [editUser, setEditUser] = useState<AppUser | null>(null);
     const [isAddOpen, setIsAddOpen] = useState(false);
-
-    const fetchUsers = async () => {
-        setIsLoading(true);
-        try {
-            const res = await api.get('/users/');
-            setUsers(res.data);
-        } catch (err) { console.error('Failed to fetch users', err); }
-        finally { setIsLoading(false); }
-    };
-
-    useEffect(() => { fetchUsers(); }, []);
 
     const handleResetPassword = async (userId: number, username: string) => {
         if (!window.confirm(`Reset ${username}'s password to '1234'?`)) return;
@@ -263,8 +252,8 @@ function UsersTab({ isAdmin }: { isAdmin: boolean }) {
                 </div>
             )}
 
-            {editUser && <EditUserModal user={editUser} onClose={() => setEditUser(null)} onSaved={fetchUsers} />}
-            {isAddOpen && <AddUserModal onClose={() => setIsAddOpen(false)} onSaved={fetchUsers} />}
+            {editUser && <EditUserModal user={editUser} onClose={() => setEditUser(null)} onSaved={refresh} />}
+            {isAddOpen && <AddUserModal onClose={() => setIsAddOpen(false)} onSaved={refresh} />}
         </div>
     );
 }

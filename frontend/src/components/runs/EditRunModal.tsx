@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { X, Loader2, Search, Folder, ChevronRight, ChevronDown, Filter } from 'lucide-react';
 import api from '../../lib/api';
+import { useUsers } from '../../lib/useUsers';
 
 interface TestSuite {
     id: number;
@@ -37,12 +38,6 @@ interface TestRun {
     assignees?: { id: number; username: string; full_name?: string }[];
 }
 
-interface User {
-    id: number;
-    username: string;
-    full_name: string;
-}
-
 interface EditRunModalProps {
     isOpen: boolean;
     onClose: () => void;
@@ -61,7 +56,7 @@ export default function EditRunModal({ isOpen, onClose, run, folders, onUpdated 
 
     const [suites, setSuites] = useState<TestSuite[]>([]);
     const [cases, setCases] = useState<TestCase[]>([]);
-    const [users, setUsers] = useState<User[]>([]);
+    const { users } = useUsers();
     const [isLoadingData, setIsLoadingData] = useState(false);
 
     // UI state
@@ -124,15 +119,13 @@ export default function EditRunModal({ isOpen, onClose, run, folders, onUpdated 
     const fetchData = async (projectId: number, runId: number, initialRunType: string) => {
         setIsLoadingData(true);
         try {
-            // Fetch layout data
-            const [suitesRes, usersRes, runDetailsRes] = await Promise.all([
+            // Fetch layout data (users from useUsers cache)
+            const [suitesRes, runDetailsRes] = await Promise.all([
                 api.get(`/suites/project/${projectId}`),
-                api.get(`/users`),
-                api.get(`/results/run/${runId}?include_all=true`) // Need to hit an endpoint that returns existing results for this run
+                api.get(`/results/run/${runId}?include_all=true`),
             ]);
 
             setSuites(suitesRes.data);
-            setUsers(usersRes.data);
 
             // Fetch cases (this will apply the initial Run Type filtering)
             await fetchCasesForRunType(projectId, initialRunType);

@@ -3,17 +3,12 @@ import { X, Edit2, Loader2, History as HistoryIcon, FileText } from 'lucide-reac
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
 import api from '../../lib/api';
+import { useUsers } from '../../lib/useUsers';
 
 interface TestStep {
     action: string;
     data?: string;
     expected_result: string;
-}
-
-interface AppUser {
-    id: number;
-    username: string;
-    full_name: string;
 }
 
 interface TestCasePreview {
@@ -44,18 +39,12 @@ interface TestCasePreviewPaneProps {
 export default function TestCasePreviewPane({ isOpen, onClose, caseId, onEditClick, refreshKey = 0 }: TestCasePreviewPaneProps) {
     const [isLoading, setIsLoading] = useState(false);
     const [testCase, setTestCase] = useState<TestCasePreview | null>(null);
-    const [users, setUsers] = useState<AppUser[]>([]);
+    const { users } = useUsers();
 
     // History 
     const [activeTab, setActiveTab] = useState<'details' | 'history'>('details');
     const [historyLogs, setHistoryLogs] = useState<any[]>([]);
     const [isLoadingHistory, setIsLoadingHistory] = useState(false);
-
-    useEffect(() => {
-        if (isOpen) {
-            api.get('/users/').then(res => setUsers(res.data)).catch(console.error);
-        }
-    }, [isOpen]);
 
     useEffect(() => {
         if (isOpen && caseId) {

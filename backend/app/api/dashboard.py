@@ -7,7 +7,7 @@ from app.db.database import get_db
 from app.models.test_case import TestCase
 from app.models.test_run import TestRun
 from app.models.test_result import TestResult
-from sqlalchemy import desc, text, case
+from sqlalchemy import desc, case
 
 router = APIRouter()
 
@@ -75,31 +75,38 @@ async def get_dashboard_summary(db: AsyncSession = Depends(get_db)):
     
     run_type_pass_fail = list(pf_data.values())
 
-    # 5. Recent Test Runs
+    # 5. Recent Test Runs (batch stats in one query, avoid N+1)
     recent_runs_query = select(TestRun).order_by(desc(TestRun.created_at)).limit(5)
     recent_runs_res = await db.execute(recent_runs_query)
-    recent_runs = []
-    for run in recent_runs_res.scalars().all():
-        # Use single query for all counts
+    runs = recent_runs_res.scalars().all()
+    run_ids = [r.id for r in runs]
+    stats_map = {}
+    if run_ids:
         stats_query = select(
+            TestResult.run_id,
             func.sum(case((TestResult.status == 'Passed', 1), else_=0)).label('p'),
             func.sum(case((TestResult.status == 'Failed', 1), else_=0)).label('f'),
             func.sum(case((TestResult.status == 'Blocked', 1), else_=0)).label('b'),
             func.count(TestResult.id).label('tot')
-        ).where(TestResult.run_id == run.id)
+        ).where(TestResult.run_id.in_(run_ids)).group_by(TestResult.run_id)
         stats_res = await db.execute(stats_query)
-        p, f, b, tot = stats_res.one()
-        
-        recent_runs.append({
+        stats_map = {
+            row[0]: (row[1] or 0, row[2] or 0, row[3] or 0, row[4] or 0)
+            for row in stats_res.all()
+        }
+    recent_runs = [
+        {
             "id": run.id,
             "title": run.title,
             "status": run.status,
             "run_type": run.run_type,
-            "passed": p or 0,
-            "failed": f or 0,
-            "blocked": b or 0,
-            "total": tot or 0
-        })
+            "passed": stats_map.get(run.id, (0, 0, 0, 0))[0],
+            "failed": stats_map.get(run.id, (0, 0, 0, 0))[1],
+            "blocked": stats_map.get(run.id, (0, 0, 0, 0))[2],
+            "total": stats_map.get(run.id, (0, 0, 0, 0))[3],
+        }
+        for run in runs
+    ]
 
     # 6. Top Failing Test Cases
     # Count how many times a case has failed
@@ -130,27 +137,31 @@ from datetime import datetime, timedelta, timezone
 
 @router.get("/me")
 async def get_my_dashboard(user_id: int, db: AsyncSession = Depends(get_db)):
-    # 1. Assigned Active Test Runs
-    # Runs explicitly assigned to this user that are not Done
+    # 1. Assigned Active Test Runs (batch stats in one query, avoid N+1)
     assigned_runs_query = select(TestRun).where(
         (TestRun.assignee_id == user_id) & 
         (TestRun.status.in_(["Pending", "Testing"]))
     ).order_by(desc(TestRun.created_at)).limit(10)
-    
     assigned_runs_res = await db.execute(assigned_runs_query)
-    assigned_runs = []
-    
-    for run in assigned_runs_res.scalars().all():
+    runs = assigned_runs_res.scalars().all()
+    run_ids = [r.id for r in runs]
+    stats_map = {}
+    if run_ids:
         stats_query = select(
+            TestResult.run_id,
             func.sum(case((TestResult.status == 'Passed', 1), else_=0)).label('p'),
             func.sum(case((TestResult.status == 'Failed', 1), else_=0)).label('f'),
             func.sum(case((TestResult.status == 'Blocked', 1), else_=0)).label('b'),
             func.count(TestResult.id).label('tot')
-        ).where(TestResult.run_id == run.id)
+        ).where(TestResult.run_id.in_(run_ids)).group_by(TestResult.run_id)
         stats_res = await db.execute(stats_query)
-        p, f, b, tot = stats_res.one()
-        p, f, b, tot = p or 0, f or 0, b or 0, tot or 0
-
+        stats_map = {
+            row[0]: (row[1] or 0, row[2] or 0, row[3] or 0, row[4] or 0)
+            for row in stats_res.all()
+        }
+    assigned_runs = []
+    for run in runs:
+        p, f, b, tot = stats_map.get(run.id, (0, 0, 0, 0))
         assigned_runs.append({
             "id": run.id,
             "title": run.title,

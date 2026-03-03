@@ -3,6 +3,7 @@ import { X, CheckCircle2, XCircle, Ban, Clock, FileWarning, Image as ImageIcon, 
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
 import api from '../../lib/api';
+import { useUsers } from '../../lib/useUsers';
 
 // Types
 interface TestStep {
@@ -47,12 +48,7 @@ interface Props {
 export default function TestCaseExecutionPane({ resultId, onClose, onUpdated }: Props) {
     const [detail, setDetail] = useState<TestResultDetail | null>(null);
     const [isLoading, setIsLoading] = useState(false);
-    const [users, setUsers] = useState<{ id: number; username: string; full_name?: string }[]>([]);
-
-    // Fetch users once for assignee name resolution
-    useEffect(() => {
-        api.get('/users/').then(r => setUsers(r.data)).catch(() => { });
-    }, []);
+    const { users } = useUsers();
 
     const resolveAssignee = (id?: number) => {
         if (!id) return null;
