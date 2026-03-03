@@ -1,0 +1,14 @@
+# 勿將敏感資訊打入 image
+.env
+.env.*
+!.env.example
+
+# 開發 / 測試
+.venv
+.test_venv
+__pycache__
+*.pyc
+.pytest_cache
+.coverage
+htmlcov
+*.db

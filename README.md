@@ -67,11 +67,19 @@ sudo ./setup_ubuntu.sh
 
 ## Docker 啟動
 
+首次執行前建立 `backend/.env`：
+
+```bash
+cp backend/.env.example backend/.env
+# 編輯填入 SECRET_SERVICE_URL、AUTOMATION_TOKEN（EC2 用 remote DB）
+# 本機開發可改 USE_QA_DATABASE_SECRET=false 並設定 DATABASE_URL
+```
+
 ```bash
 docker compose up -d
 ```
 
-與本機模式使用相同 Port（`8085` / `19425`）。
+與本機模式使用相同 Port（`8085` / `19425`）。預設使用 remote DB（qa_database）。
 
 ---
 

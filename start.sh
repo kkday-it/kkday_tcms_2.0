@@ -10,6 +10,8 @@ cd "$BACKEND_DIR"
 # Assuming the user has a virtual environment. Use it if exists.
 if [ -d ".venv" ]; then
     source .venv/bin/activate
+elif [ -d ".test_venv" ]; then
+    source .test_venv/bin/activate
 fi
 nohup uvicorn main:app --host 0.0.0.0 --port 19425 --reload > backend.log 2>&1 &
 BACKEND_PID=$!
