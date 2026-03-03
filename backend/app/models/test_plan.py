@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Table
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Table
+from sqlalchemy import JSON
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.db.database import Base
@@ -27,6 +28,19 @@ class TestPlan(Base):
     description = Column(String, nullable=True)
     status = Column(String, default="Draft")
     folder_id = Column(Integer, ForeignKey("tcms_test_plan_folders.id", ondelete="SET NULL"), nullable=True)
+
+    # PRD / SA / SD
+    prd_url = Column(Text, nullable=True)
+    sa_docs = Column(JSON, nullable=True)  # [{title, url}, ...]
+    sd_docs = Column(JSON, nullable=True)  # [{title, url}, ...]
+
+    # Timeline: {rd: {start,end}, ued: {...}, qa: [{platform,start,end},...]}
+    timeline = Column(JSON, nullable=True)
+
+    # Jira: filter id from https://kkday.atlassian.net/issues/?filter=18523
+    jira_unfix_filter_id = Column(Integer, nullable=True)
+    jira_total_filter_id = Column(Integer, nullable=True)
+    jira_display_fields = Column(JSON, nullable=True)  # ['key','summary','status','assignee','priority']
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

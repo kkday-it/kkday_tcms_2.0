@@ -1,9 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Loader2, ClipboardList, PlayCircle, FileText, CheckCircle2, XCircle, Clock, Edit2 } from 'lucide-react';
+import { ArrowLeft, Loader2, ClipboardList, PlayCircle, FileText, CheckCircle2, XCircle, Clock, Edit2, ExternalLink } from 'lucide-react';
 import api from '../lib/api';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend } from 'recharts';
 import EditPlanModal from '../components/plans/EditPlanModal';
+
+interface DocEntry {
+    title?: string;
+    url: string;
+}
 
 interface TestPlan {
     id: number;
@@ -13,7 +18,29 @@ interface TestPlan {
     folder_id: number | null;
     run_ids: number[];
     case_ids: number[];
+    prd_url?: string | null;
+    sa_docs?: DocEntry[];
+    sd_docs?: DocEntry[];
+    timeline?: {
+        rd?: { start?: string; end?: string };
+        ued?: { start?: string; end?: string };
+        qa?: { platform: string; start: string; end: string }[];
+    };
+    jira_unfix_filter_id?: number | null;
+    jira_total_filter_id?: number | null;
+    jira_display_fields?: string[];
     created_at: string;
+}
+
+interface JiraIssue {
+    key: string;
+    url: string;
+    summary?: string;
+    status?: string;
+    assignee?: string;
+    priority?: string;
+    created?: string;
+    labels?: string[];
 }
 
 interface RunResult {
@@ -57,6 +84,11 @@ export default function TestPlanDetails() {
     const [folders, setFolders] = useState<any[]>([]);
     const [allRuns, setAllRuns] = useState<any[]>([]);
     const [allCases, setAllCases] = useState<any[]>([]);
+
+    // Jira issues
+    const [jiraUnfix, setJiraUnfix] = useState<{ issues: JiraIssue[]; view_url?: string } | null>(null);
+    const [jiraTotal, setJiraTotal] = useState<{ issues: JiraIssue[]; view_url?: string } | null>(null);
+    const [jiraLoading, setJiraLoading] = useState(false);
 
     const fetchData = async () => {
         setIsLoading(true);
@@ -106,6 +138,35 @@ export default function TestPlanDetails() {
     useEffect(() => {
         if (planId) fetchData();
     }, [planId]);
+
+    // Fetch Jira issues when plan has filter IDs
+    useEffect(() => {
+        if (!plan?.id) return;
+        const unfixId = plan.jira_unfix_filter_id;
+        const totalId = plan.jira_total_filter_id;
+        if (!unfixId && !totalId) {
+            setJiraUnfix(null);
+            setJiraTotal(null);
+            return;
+        }
+        const load = async () => {
+            setJiraLoading(true);
+            try {
+                const [unfixRes, totalRes] = await Promise.all([
+                    unfixId ? api.get(`/plans/${plan.id}/jira-issues`, { params: { filter_type: 'unfix' } }) : Promise.resolve(null),
+                    totalId ? api.get(`/plans/${plan.id}/jira-issues`, { params: { filter_type: 'total' } }) : Promise.resolve(null),
+                ]);
+                setJiraUnfix(unfixRes?.data?.issues ? { issues: unfixRes.data.issues, view_url: unfixRes.data.view_url } : null);
+                setJiraTotal(totalRes?.data?.issues ? { issues: totalRes.data.issues, view_url: totalRes.data.view_url } : null);
+            } catch {
+                setJiraUnfix(null);
+                setJiraTotal(null);
+            } finally {
+                setJiraLoading(false);
+            }
+        };
+        load();
+    }, [plan?.id, plan?.jira_unfix_filter_id, plan?.jira_total_filter_id]);
 
     if (isLoading) return (
         <div className="flex-1 flex items-center justify-center bg-slate-50">
@@ -169,6 +230,93 @@ export default function TestPlanDetails() {
 
             <div className="p-8 space-y-6 pb-20">
 
+                {/* ── Documents & Timeline ────────────────────────────────────── */}
+                {(plan.prd_url || (plan.sa_docs && plan.sa_docs.length) || (plan.sd_docs && plan.sd_docs.length) || plan.timeline) && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {/* Documents */}
+                        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+                            <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-4">文件連結</h3>
+                            <div className="space-y-3">
+                                {plan.prd_url && (
+                                    <div>
+                                        <span className="text-xs text-slate-500">PRD</span>
+                                        <a href={plan.prd_url} target="_blank" rel="noreferrer" className="block text-sm text-primary-600 hover:underline truncate">
+                                            {plan.prd_url}
+                                        </a>
+                                    </div>
+                                )}
+                                {plan.sa_docs && plan.sa_docs.length > 0 && (
+                                    <div>
+                                        <span className="text-xs text-slate-500">SA</span>
+                                        <ul className="mt-1 space-y-1">
+                                            {plan.sa_docs.map((d, i) => (
+                                                <li key={i}>
+                                                    <a href={d.url} target="_blank" rel="noreferrer" className="text-sm text-primary-600 hover:underline flex items-center gap-1">
+                                                        {d.title || d.url}
+                                                        <ExternalLink className="w-3 h-3 shrink-0" />
+                                                    </a>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
+                                {plan.sd_docs && plan.sd_docs.length > 0 && (
+                                    <div>
+                                        <span className="text-xs text-slate-500">SD</span>
+                                        <ul className="mt-1 space-y-1">
+                                            {plan.sd_docs.map((d, i) => (
+                                                <li key={i}>
+                                                    <a href={d.url} target="_blank" rel="noreferrer" className="text-sm text-primary-600 hover:underline flex items-center gap-1">
+                                                        {d.title || d.url}
+                                                        <ExternalLink className="w-3 h-3 shrink-0" />
+                                                    </a>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
+                                {!plan.prd_url && (!plan.sa_docs || !plan.sa_docs.length) && (!plan.sd_docs || !plan.sd_docs.length) && (
+                                    <p className="text-sm text-slate-400">無文件連結</p>
+                                )}
+                            </div>
+                        </div>
+                        {/* Timeline */}
+                        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+                            <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-4">Timeline</h3>
+                            <div className="space-y-3 text-sm">
+                                {plan.timeline?.rd && (plan.timeline.rd.start || plan.timeline.rd.end) && (
+                                    <div>
+                                        <span className="text-slate-500">RD</span>
+                                        <span className="ml-2">{plan.timeline.rd.start || '—'} ～ {plan.timeline.rd.end || '—'}</span>
+                                    </div>
+                                )}
+                                {plan.timeline?.ued && (plan.timeline.ued.start || plan.timeline.ued.end) && (
+                                    <div>
+                                        <span className="text-slate-500">UED</span>
+                                        <span className="ml-2">{plan.timeline.ued.start || '—'} ～ {plan.timeline.ued.end || '—'}</span>
+                                    </div>
+                                )}
+                                {plan.timeline?.qa && plan.timeline.qa.length > 0 && (
+                                    <div>
+                                        <span className="text-slate-500">QA</span>
+                                        <ul className="mt-1 space-y-1">
+                                            {plan.timeline.qa.map((q, i) => (
+                                                <li key={i} className="flex gap-2">
+                                                    <span className="font-mono text-xs bg-slate-100 px-1.5 rounded">{q.platform}</span>
+                                                    {q.start || '—'} ～ {q.end || '—'}
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
+                                {(!plan.timeline?.rd?.start && !plan.timeline?.rd?.end) && (!plan.timeline?.ued?.start && !plan.timeline?.ued?.end) && (!plan.timeline?.qa || !plan.timeline.qa.length) && (
+                                    <p className="text-slate-400">無 Timeline</p>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* ── Metrics ─────────────────────────────────────────────────── */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     {[
@@ -194,17 +342,24 @@ export default function TestPlanDetails() {
                     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
                         <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-4">Result Distribution</h3>
                         {totalCaseExecs > 0 ? (
-                            <div className="h-56">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <PieChart>
-                                        <Pie data={pieData} cx="50%" cy="50%" innerRadius={52} outerRadius={72} paddingAngle={4} dataKey="value">
-                                            {pieData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
-                                        </Pie>
-                                        <RechartsTooltip contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0' }} />
-                                        <Legend verticalAlign="bottom" height={32} />
-                                    </PieChart>
-                                </ResponsiveContainer>
-                            </div>
+                            <>
+                                <div className="h-56">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <PieChart>
+                                            <Pie data={pieData} cx="50%" cy="50%" innerRadius={52} outerRadius={72} paddingAngle={4} dataKey="value">
+                                                {pieData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                                            </Pie>
+                                            <RechartsTooltip contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0' }} />
+                                            <Legend verticalAlign="bottom" height={32} />
+                                        </PieChart>
+                                    </ResponsiveContainer>
+                                </div>
+                                <div className="mt-3 flex items-center justify-center gap-6 text-sm">
+                                    <span className="text-emerald-600 font-semibold">Passed: {totalPassed}</span>
+                                    <span className="text-red-600 font-semibold">Failed: {totalFailed}</span>
+                                    <span className="text-slate-600 font-semibold">Total: {totalCaseExecs}</span>
+                                </div>
+                            </>
                         ) : (
                             <div className="h-56 flex flex-col items-center justify-center text-slate-400">
                                 <XCircle className="w-10 h-10 mb-2 text-slate-200" />
@@ -305,6 +460,103 @@ export default function TestPlanDetails() {
                         )}
                     </div>
                 </div>
+
+                {/* ── Jira Bug List ─────────────────────────────────────────────── */}
+                {(plan.jira_unfix_filter_id || plan.jira_total_filter_id) && (
+                    <div className="space-y-6">
+                        <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider">Jira Issues</h3>
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            {plan.jira_unfix_filter_id && (
+                                <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                                    <div className="px-6 py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+                                        <span className="font-semibold text-slate-700">Unfix Bugs</span>
+                                        {jiraUnfix?.view_url && (
+                                            <a href={jiraUnfix.view_url} target="_blank" rel="noreferrer" className="text-xs text-primary-600 hover:underline flex items-center gap-1">
+                                                <ExternalLink className="w-3 h-3" /> 在 Jira 開啟
+                                            </a>
+                                        )}
+                                    </div>
+                                    <div className="overflow-x-auto max-h-64">
+                                        {jiraLoading ? (
+                                            <div className="p-8 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-primary-500" /></div>
+                                        ) : jiraUnfix && jiraUnfix.issues.length > 0 ? (
+                                            <table className="w-full text-sm">
+                                                <thead>
+                                                    <tr className="border-b border-slate-200 bg-white">
+                                                        <th className="px-4 py-2 text-left font-semibold text-slate-500">Key</th>
+                                                        <th className="px-4 py-2 text-left font-semibold text-slate-500">Summary</th>
+                                                        <th className="px-4 py-2 text-left font-semibold text-slate-500">Status</th>
+                                                        <th className="px-4 py-2 text-left font-semibold text-slate-500">Assignee</th>
+                                                        <th className="px-4 py-2 text-left font-semibold text-slate-500">Priority</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {jiraUnfix.issues.map((issue, i) => (
+                                                        <tr key={i} className="border-b border-slate-100 hover:bg-slate-50">
+                                                            <td className="px-4 py-2">
+                                                                <a href={issue.url} target="_blank" rel="noreferrer" className="text-primary-600 hover:underline font-mono">{issue.key}</a>
+                                                            </td>
+                                                            <td className="px-4 py-2 truncate max-w-[180px]" title={issue.summary}>{issue.summary ?? '—'}</td>
+                                                            <td className="px-4 py-2">{issue.status ?? '—'}</td>
+                                                            <td className="px-4 py-2">{issue.assignee ?? '—'}</td>
+                                                            <td className="px-4 py-2">{issue.priority ?? '—'}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        ) : (
+                                            <div className="p-6 text-center text-slate-400 text-sm">無資料或 Jira API 未設定</div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                            {plan.jira_total_filter_id && (
+                                <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                                    <div className="px-6 py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+                                        <span className="font-semibold text-slate-700">Total Issues</span>
+                                        {jiraTotal?.view_url && (
+                                            <a href={jiraTotal.view_url} target="_blank" rel="noreferrer" className="text-xs text-primary-600 hover:underline flex items-center gap-1">
+                                                <ExternalLink className="w-3 h-3" /> 在 Jira 開啟
+                                            </a>
+                                        )}
+                                    </div>
+                                    <div className="overflow-x-auto max-h-64">
+                                        {jiraLoading ? (
+                                            <div className="p-8 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-primary-500" /></div>
+                                        ) : jiraTotal && jiraTotal.issues.length > 0 ? (
+                                            <table className="w-full text-sm">
+                                                <thead>
+                                                    <tr className="border-b border-slate-200 bg-white">
+                                                        <th className="px-4 py-2 text-left font-semibold text-slate-500">Key</th>
+                                                        <th className="px-4 py-2 text-left font-semibold text-slate-500">Summary</th>
+                                                        <th className="px-4 py-2 text-left font-semibold text-slate-500">Status</th>
+                                                        <th className="px-4 py-2 text-left font-semibold text-slate-500">Assignee</th>
+                                                        <th className="px-4 py-2 text-left font-semibold text-slate-500">Priority</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {jiraTotal.issues.map((issue, i) => (
+                                                        <tr key={i} className="border-b border-slate-100 hover:bg-slate-50">
+                                                            <td className="px-4 py-2">
+                                                                <a href={issue.url} target="_blank" rel="noreferrer" className="text-primary-600 hover:underline font-mono">{issue.key}</a>
+                                                            </td>
+                                                            <td className="px-4 py-2 truncate max-w-[180px]" title={issue.summary}>{issue.summary ?? '—'}</td>
+                                                            <td className="px-4 py-2">{issue.status ?? '—'}</td>
+                                                            <td className="px-4 py-2">{issue.assignee ?? '—'}</td>
+                                                            <td className="px-4 py-2">{issue.priority ?? '—'}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        ) : (
+                                            <div className="p-6 text-center text-slate-400 text-sm">無資料或 Jira API 未設定</div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
             </div>
 
             {isEditModalOpen && (

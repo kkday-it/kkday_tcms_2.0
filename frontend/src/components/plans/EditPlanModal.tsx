@@ -1,6 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Loader2, Search } from 'lucide-react';
+import { Loader2, Search, Plus, X } from 'lucide-react';
 import api from '../../lib/api';
+
+interface DocEntry {
+    title?: string;
+    url: string;
+}
 
 export interface PlanFolder {
     id: number;
@@ -28,6 +33,17 @@ export interface TestPlan {
     folder_id?: number | null;
     run_ids?: number[];
     case_ids?: number[];
+    prd_url?: string | null;
+    sa_docs?: DocEntry[];
+    sd_docs?: DocEntry[];
+    timeline?: {
+        rd?: { start?: string; end?: string };
+        ued?: { start?: string; end?: string };
+        qa?: { platform: string; start: string; end: string }[];
+    };
+    jira_unfix_filter_id?: number | null;
+    jira_total_filter_id?: number | null;
+    jira_display_fields?: string[];
 }
 
 export default function EditPlanModal({ plan, folders, runs, cases, onClose, onSaved }: {
@@ -43,11 +59,25 @@ export default function EditPlanModal({ plan, folders, runs, cases, onClose, onS
     const [description, setDescription] = useState('');
     const [status, setStatus] = useState('Draft');
     const [folderId, setFolderId] = useState<number | ''>('');
+    const [prdUrl, setPrdUrl] = useState('');
+    const [saDocs, setSaDocs] = useState<DocEntry[]>([]);
+    const [sdDocs, setSdDocs] = useState<DocEntry[]>([]);
+    const [timeline, setTimeline] = useState<{
+        rd?: { start: string; end: string };
+        ued?: { start: string; end: string };
+        qa: { platform: string; start: string; end: string }[];
+    }>({ qa: [] });
+    const [jiraUnfixFilterId, setJiraUnfixFilterId] = useState<string>('');
+    const [jiraTotalFilterId, setJiraTotalFilterId] = useState<string>('');
+    const [jiraDisplayFields, setJiraDisplayFields] = useState<string[]>(['key', 'summary', 'status', 'assignee', 'priority']);
     const [selectedRunIds, setSelectedRunIds] = useState<number[]>([]);
     const [selectedCaseIds, setSelectedCaseIds] = useState<number[]>([]);
     const [isSaving, setIsSaving] = useState(false);
     const [caseSearch, setCaseSearch] = useState('');
     const [activeTab, setActiveTab] = useState<'runs' | 'cases'>('runs');
+    const [metaTab, setMetaTab] = useState<'basic' | 'docs' | 'timeline' | 'jira' | 'runs'>('basic');
+
+    const JIRA_FIELD_OPTIONS = ['key', 'summary', 'status', 'assignee', 'priority', 'created', 'labels'];
 
     useEffect(() => {
         if (plan) {
@@ -55,15 +85,65 @@ export default function EditPlanModal({ plan, folders, runs, cases, onClose, onS
             setDescription(plan.description || '');
             setStatus(plan.status);
             setFolderId(plan.folder_id || '');
+            setPrdUrl(plan.prd_url || '');
+            setSaDocs(plan.sa_docs || []);
+            setSdDocs(plan.sd_docs || []);
+            const t = plan.timeline || {};
+            setTimeline({
+                rd: t.rd ? { start: t.rd.start || '', end: t.rd.end || '' } : undefined,
+                ued: t.ued ? { start: t.ued.start || '', end: t.ued.end || '' } : undefined,
+                qa: t.qa || [],
+            });
+            setJiraUnfixFilterId(plan.jira_unfix_filter_id != null ? String(plan.jira_unfix_filter_id) : '');
+            setJiraTotalFilterId(plan.jira_total_filter_id != null ? String(plan.jira_total_filter_id) : '');
+            setJiraDisplayFields(plan.jira_display_fields?.length ? plan.jira_display_fields : ['key', 'summary', 'status', 'assignee', 'priority']);
             setSelectedRunIds(plan.run_ids || []);
             setSelectedCaseIds(plan.case_ids || []);
         } else {
             setTitle(''); setDescription(''); setStatus('Draft');
             setFolderId(''); setSelectedRunIds([]); setSelectedCaseIds([]);
+            setPrdUrl(''); setSaDocs([]); setSdDocs([]);
+            setTimeline({ qa: [] });
+            setJiraUnfixFilterId(''); setJiraTotalFilterId('');
+            setJiraDisplayFields(['key', 'summary', 'status', 'assignee', 'priority']);
         }
         setCaseSearch('');
         setActiveTab('runs');
+        setMetaTab('basic');
     }, [plan]);
+
+    const addDocEntry = (target: 'sa' | 'sd') => {
+        if (target === 'sa') setSaDocs([...saDocs, { url: '' }]);
+        else setSdDocs([...sdDocs, { url: '' }]);
+    };
+    const updateDocEntry = (target: 'sa' | 'sd', idx: number, field: keyof DocEntry, value: string) => {
+        const arr = target === 'sa' ? [...saDocs] : [...sdDocs];
+        arr[idx] = { ...arr[idx], [field]: value };
+        if (target === 'sa') setSaDocs(arr);
+        else setSdDocs(arr);
+    };
+    const removeDocEntry = (target: 'sa' | 'sd', idx: number) => {
+        if (target === 'sa') setSaDocs(saDocs.filter((_, i) => i !== idx));
+        else setSdDocs(sdDocs.filter((_, i) => i !== idx));
+    };
+
+    const addQaEntry = () => {
+        setTimeline({ ...timeline, qa: [...(timeline.qa || []), { platform: 'APP', start: '', end: '' }] });
+    };
+    const updateQaEntry = (idx: number, field: 'platform' | 'start' | 'end', value: string) => {
+        const qa = [...(timeline.qa || [])];
+        qa[idx] = { ...qa[idx], [field]: value };
+        setTimeline({ ...timeline, qa });
+    };
+    const removeQaEntry = (idx: number) => {
+        setTimeline({ ...timeline, qa: (timeline.qa || []).filter((_, i) => i !== idx) });
+    };
+
+    const toggleJiraField = (f: string) => {
+        setJiraDisplayFields(prev =>
+            prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f].sort((a, b) => JIRA_FIELD_OPTIONS.indexOf(a) - JIRA_FIELD_OPTIONS.indexOf(b))
+        );
+    };
 
     const toggleRun = (id: number) =>
         setSelectedRunIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
@@ -78,11 +158,26 @@ export default function EditPlanModal({ plan, folders, runs, cases, onClose, onS
         if (!title.trim()) return;
         setIsSaving(true);
         try {
+            const tPayload =
+                timeline.rd || timeline.ued || (timeline.qa && timeline.qa.length)
+                    ? {
+                          rd: timeline.rd?.start || timeline.rd?.end ? timeline.rd : undefined,
+                          ued: timeline.ued?.start || timeline.ued?.end ? timeline.ued : undefined,
+                          qa: timeline.qa?.filter(x => x.start || x.end).length ? timeline.qa : undefined,
+                      }
+                    : null;
             const payload = {
                 title: title.trim(),
                 description: description.trim() || null,
                 status,
                 folder_id: folderId === '' ? null : Number(folderId),
+                prd_url: prdUrl.trim() || null,
+                sa_docs: saDocs.filter(d => d.url.trim()).map(d => ({ title: d.title?.trim() || undefined, url: d.url.trim() })),
+                sd_docs: sdDocs.filter(d => d.url.trim()).map(d => ({ title: d.title?.trim() || undefined, url: d.url.trim() })),
+                timeline: tPayload,
+                jira_unfix_filter_id: jiraUnfixFilterId.trim() ? parseInt(jiraUnfixFilterId, 10) : null,
+                jira_total_filter_id: jiraTotalFilterId.trim() ? parseInt(jiraTotalFilterId, 10) : null,
+                jira_display_fields: jiraDisplayFields.length ? jiraDisplayFields : ['key', 'summary', 'status', 'assignee', 'priority'],
                 run_ids: selectedRunIds,
                 case_ids: selectedCaseIds,
             };
@@ -103,48 +198,200 @@ export default function EditPlanModal({ plan, folders, runs, cases, onClose, onS
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-            <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden">
                 {/* Header */}
                 <div className="px-6 py-4 border-b border-slate-100 bg-white flex items-center justify-between shrink-0">
                     <h2 className="text-xl font-bold text-slate-900">{isNew ? 'New Test Plan' : 'Edit Test Plan'}</h2>
                     <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors">✕</button>
                 </div>
 
+                {/* Meta tabs */}
+                <div className="px-6 pt-3 flex gap-1 border-b border-slate-200 shrink-0 overflow-x-auto">
+                    {(['basic', 'docs', 'timeline', 'jira', 'runs'] as const).map(t => (
+                        <button key={t} type="button" onClick={() => setMetaTab(t)}
+                            className={`px-3 py-2 text-sm font-medium rounded-t-lg whitespace-nowrap ${metaTab === t ? 'bg-slate-100 text-primary-700 border-b-2 border-primary-500 -mb-px' : 'text-slate-500 hover:text-slate-700'}`}>
+                            {t === 'basic' && '基本'}
+                            {t === 'docs' && '文件'}
+                            {t === 'timeline' && 'Timeline'}
+                            {t === 'jira' && 'Jira'}
+                            {t === 'runs' && 'Runs / Cases'}
+                        </button>
+                    ))}
+                </div>
+
                 <form onSubmit={handleSave} className="flex flex-col flex-1 overflow-hidden">
                     <div className="p-6 overflow-y-auto flex-1 space-y-4">
-                        {/* Title */}
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Title <span className="text-rose-500">*</span></label>
-                            <input type="text" required value={title} onChange={e => setTitle(e.target.value)}
-                                className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
-                                placeholder="Plan title" />
-                        </div>
-                        {/* Description */}
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
-                            <textarea rows={2} value={description} onChange={e => setDescription(e.target.value)}
-                                className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm resize-none"
-                                placeholder="Optional description" />
-                        </div>
-                        {/* Status + Folder */}
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">Status</label>
-                                <select value={status} onChange={e => setStatus(e.target.value)}
-                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm bg-white">
-                                    {['Draft', 'Active', 'Completed', 'Archived'].map(s => <option key={s}>{s}</option>)}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">Folder</label>
-                                <select value={folderId} onChange={e => setFolderId(e.target.value === '' ? '' : Number(e.target.value))}
-                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm bg-white">
-                                    <option value="">(No Folder)</option>
-                                    {folders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                                </select>
-                            </div>
-                        </div>
+                        {metaTab === 'basic' && (
+                            <>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Title <span className="text-rose-500">*</span></label>
+                                    <input type="text" required value={title} onChange={e => setTitle(e.target.value)}
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
+                                        placeholder="Plan title" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
+                                    <textarea rows={2} value={description} onChange={e => setDescription(e.target.value)}
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm resize-none"
+                                        placeholder="Optional description" />
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Status</label>
+                                        <select value={status} onChange={e => setStatus(e.target.value)}
+                                            className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm bg-white">
+                                            {['Draft', 'Active', 'Completed', 'Archived'].map(s => <option key={s}>{s}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Folder</label>
+                                        <select value={folderId} onChange={e => setFolderId(e.target.value === '' ? '' : Number(e.target.value))}
+                                            className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm bg-white">
+                                            <option value="">(No Folder)</option>
+                                            {folders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                                        </select>
+                                    </div>
+                                </div>
+                            </>
+                        )}
 
+                        {metaTab === 'docs' && (
+                            <>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">PRD（單一連結）</label>
+                                    <input type="url" value={prdUrl} onChange={e => setPrdUrl(e.target.value)}
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
+                                        placeholder="https://confluence.../prd" />
+                                </div>
+                                <div>
+                                    <div className="flex items-center justify-between mb-1">
+                                        <label className="block text-sm font-medium text-slate-700">SA（可多份）</label>
+                                        <button type="button" onClick={() => addDocEntry('sa')}
+                                            className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-1">
+                                            <Plus className="w-3 h-3" /> 新增
+                                        </button>
+                                    </div>
+                                    <div className="space-y-2">
+                                        {saDocs.map((d, i) => (
+                                            <div key={i} className="flex gap-2 items-center">
+                                                <input type="text" placeholder="標題（選填）" value={d.title || ''} onChange={e => updateDocEntry('sa', i, 'title', e.target.value)}
+                                                    className="flex-1 min-w-0 px-3 py-2 border border-slate-200 rounded-lg text-sm" />
+                                                <input type="url" placeholder="URL" value={d.url} onChange={e => updateDocEntry('sa', i, 'url', e.target.value)}
+                                                    className="flex-[2] min-w-0 px-3 py-2 border border-slate-200 rounded-lg text-sm" />
+                                                <button type="button" onClick={() => removeDocEntry('sa', i)} className="p-2 text-slate-400 hover:text-red-600"><X className="w-4 h-4" /></button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div>
+                                    <div className="flex items-center justify-between mb-1">
+                                        <label className="block text-sm font-medium text-slate-700">SD（可多份）</label>
+                                        <button type="button" onClick={() => addDocEntry('sd')}
+                                            className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-1">
+                                            <Plus className="w-3 h-3" /> 新增
+                                        </button>
+                                    </div>
+                                    <div className="space-y-2">
+                                        {sdDocs.map((d, i) => (
+                                            <div key={i} className="flex gap-2 items-center">
+                                                <input type="text" placeholder="標題（選填）" value={d.title || ''} onChange={e => updateDocEntry('sd', i, 'title', e.target.value)}
+                                                    className="flex-1 min-w-0 px-3 py-2 border border-slate-200 rounded-lg text-sm" />
+                                                <input type="url" placeholder="URL" value={d.url} onChange={e => updateDocEntry('sd', i, 'url', e.target.value)}
+                                                    className="flex-[2] min-w-0 px-3 py-2 border border-slate-200 rounded-lg text-sm" />
+                                                <button type="button" onClick={() => removeDocEntry('sd', i)} className="p-2 text-slate-400 hover:text-red-600"><X className="w-4 h-4" /></button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </>
+                        )}
+
+                        {metaTab === 'timeline' && (
+                            <>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">RD 開發</label>
+                                        <div className="flex gap-2 items-center">
+                                            <input type="date" value={timeline.rd?.start || ''} onChange={e => setTimeline({ ...timeline, rd: { ...timeline.rd, start: e.target.value, end: timeline.rd?.end || '' } })}
+                                                className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm" />
+                                            <span className="text-slate-400">～</span>
+                                            <input type="date" value={timeline.rd?.end || ''} onChange={e => setTimeline({ ...timeline, rd: { ...timeline.rd, start: timeline.rd?.start || '', end: e.target.value } })}
+                                                className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm" />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">UED 設計審核</label>
+                                        <div className="flex gap-2 items-center">
+                                            <input type="date" value={timeline.ued?.start || ''} onChange={e => setTimeline({ ...timeline, ued: { ...timeline.ued, start: e.target.value, end: timeline.ued?.end || '' } })}
+                                                className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm" />
+                                            <span className="text-slate-400">～</span>
+                                            <input type="date" value={timeline.ued?.end || ''} onChange={e => setTimeline({ ...timeline, ued: { ...timeline.ued, start: timeline.ued?.start || '', end: e.target.value } })}
+                                                className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm" />
+                                        </div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div className="flex items-center justify-between mb-1">
+                                        <label className="block text-sm font-medium text-slate-700">QA 交付（APP / PC / M）</label>
+                                        <button type="button" onClick={addQaEntry}
+                                            className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-1">
+                                            <Plus className="w-3 h-3" /> 新增
+                                        </button>
+                                    </div>
+                                    <div className="space-y-2">
+                                        {(timeline.qa || []).map((q, i) => (
+                                            <div key={i} className="flex gap-2 items-center">
+                                                <select value={q.platform} onChange={e => updateQaEntry(i, 'platform', e.target.value)}
+                                                    className="w-24 px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white">
+                                                    {['APP', 'PC', 'M'].map(p => <option key={p} value={p}>{p}</option>)}
+                                                </select>
+                                                <input type="date" value={q.start} onChange={e => updateQaEntry(i, 'start', e.target.value)}
+                                                    className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm" />
+                                                <span className="text-slate-400">～</span>
+                                                <input type="date" value={q.end} onChange={e => updateQaEntry(i, 'end', e.target.value)}
+                                                    className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm" />
+                                                <button type="button" onClick={() => removeQaEntry(i)} className="p-2 text-slate-400 hover:text-red-600"><X className="w-4 h-4" /></button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </>
+                        )}
+
+                        {metaTab === 'jira' && (
+                            <>
+                                <p className="text-xs text-slate-500">從 <a href="https://kkday.atlassian.net/issues/?filter=18523" target="_blank" rel="noreferrer" className="text-primary-600 underline">Jira Filter</a> 複製 filter ID（網址 ?filter= 後的數字）</p>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Unfix Filter ID（未修復 bug）</label>
+                                        <input type="number" min={1} value={jiraUnfixFilterId} onChange={e => setJiraUnfixFilterId(e.target.value)}
+                                            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                                            placeholder="18523" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Total Filter ID（全部 issues）</label>
+                                        <input type="number" min={1} value={jiraTotalFilterId} onChange={e => setJiraTotalFilterId(e.target.value)}
+                                            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                                            placeholder="18522" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-2">顯示欄位（至少選 key/summary/status/assignee/priority）</label>
+                                    <div className="flex flex-wrap gap-2">
+                                        {JIRA_FIELD_OPTIONS.map(f => (
+                                            <label key={f} className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-50">
+                                                <input type="checkbox" checked={jiraDisplayFields.includes(f)} onChange={() => toggleJiraField(f)}
+                                                    className="w-4 h-4 rounded border-slate-300 text-primary-600" />
+                                                <span className="text-sm">{f}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+                            </>
+                        )}
+
+                        {metaTab === 'runs' && (
+                        <>
                         {/* Tabs: Test Runs / Test Cases */}
                         <div className="pt-2">
                             <div className="flex gap-1 border-b border-slate-200 mb-4">
@@ -193,6 +440,8 @@ export default function EditPlanModal({ plan, folders, runs, cases, onClose, onS
                                 </>
                             )}
                         </div>
+                        </>
+                        )}
                     </div>
 
                     {/* Footer */}

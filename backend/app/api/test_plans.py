@@ -41,6 +41,14 @@ def _plan_to_response(plan: TestPlan) -> dict:
         "folder_id": plan.folder_id,
         "run_ids": [r.id for r in (plan.linked_runs or [])],
         "case_ids": [c.id for c in (plan.linked_cases or [])],
+        "prd_url": getattr(plan, "prd_url", None),
+        "sa_docs": getattr(plan, "sa_docs", None) or [],
+        "sd_docs": getattr(plan, "sd_docs", None) or [],
+        "timeline": getattr(plan, "timeline", None),
+        "jira_unfix_filter_id": getattr(plan, "jira_unfix_filter_id", None),
+        "jira_total_filter_id": getattr(plan, "jira_total_filter_id", None),
+        "jira_display_fields": getattr(plan, "jira_display_fields", None)
+        or ["key", "summary", "status", "assignee", "priority"],
         "created_at": plan.created_at,
         "updated_at": plan.updated_at,
     }
@@ -202,3 +210,43 @@ async def delete_test_plan(plan_id: int, db: AsyncSession = Depends(get_db)):
     await db.delete(db_plan)
     await db.commit()
     return {"message": "Test Plan deleted"}
+
+
+@router.get("/{plan_id}/jira-issues")
+async def get_plan_jira_issues(
+    plan_id: int,
+    filter_type: str = Query("unfix", description="unfix | total"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Fetch Jira issues by plan's configured filter ID.
+    Uses production_atlassian secret. Requires SECRET_SERVICE_URL + AUTOMATION_TOKEN.
+    """
+    db_plan = await db.get(TestPlan, plan_id)
+    if not db_plan:
+        raise HTTPException(status_code=404, detail="Test Plan not found")
+    filter_id = (
+        getattr(db_plan, "jira_unfix_filter_id", None)
+        if filter_type == "unfix"
+        else getattr(db_plan, "jira_total_filter_id", None)
+    )
+    if not filter_id:
+        return {"issues": [], "filter_id": None, "message": f"No {filter_type} filter configured"}
+    try:
+        from app.services.jira_issues import fetch_issues_by_filter_id
+
+        fields = getattr(db_plan, "jira_display_fields", None) or [
+            "key",
+            "summary",
+            "status",
+            "assignee",
+            "priority",
+        ]
+        issues = fetch_issues_by_filter_id(filter_id=filter_id, fields=fields)
+        return {
+            "issues": issues,
+            "filter_id": filter_id,
+            "view_url": f"https://kkday.atlassian.net/issues/?filter={filter_id}",
+        }
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Jira API error: {str(e)}")
