@@ -25,7 +25,30 @@ cp backend/.env.example backend/.env
 docker compose up -d
 ```
 
-## 4. 驗證
+## 4. 建立 Admin 使用者
+
+**方式 A：執行 script（建議，不須登入）**
+```bash
+docker compose exec backend python scripts/create_admin_user.py
+# 自訂帳號：
+docker compose exec backend python scripts/create_admin_user.py --email lance@kkday.com --username lance --password 1234
+```
+
+**方式 B：呼叫 API（需 Backend 已啟動）**
+```bash
+curl -X POST http://localhost:19425/api/v1/users/ \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","email":"admin@example.com","role":"Admin","password":"1234"}'
+```
+
+## 5. 隱藏頁面：即時 Log
+
+登入後可直達以下 URL 查看即時 log（不在側邊欄顯示）：
+
+- **FE Log**：`/tcms/fe-log` — Nginx access log
+- **BE Log**：`/tcms/be-log` — Uvicorn/Backend log
+
+## 6. 驗證
 
 ```bash
 # 健康檢查
@@ -35,23 +58,31 @@ curl http://localhost:19425/api/v1/health
 docker compose logs backend | tail -20
 ```
 
-## 5. Nginx 反向代理（若使用 /tcms 路徑）
+## 7. Nginx 反向代理（若使用 /tcms 路徑）
 
-若 TCMS 掛在 `https://host/tcms/` 下，需重建 frontend 並指定 API 路徑與 base：
+若 TCMS 掛在 `https://host/tcms/` 下，需重建 frontend 並指定 API 路徑與 base。
 
+**方式 A：使用 .env（建議）**
+```bash
+cp .env.tcms.example .env
+docker compose build frontend
+docker compose up -d
+```
+
+**方式 B：直接指定 build-arg**
 ```bash
 docker compose build --build-arg VITE_API_URL=/tcms/api/v1 --build-arg VITE_BASE_URL=/tcms/ frontend
 docker compose up -d
 ```
 
-### 5.1 部署前備份（強烈建議）
+### 7.1 部署前備份（強烈建議）
 
 ```bash
 # 在 EC2 上備份現有 Nginx 設定
 sudo cp /etc/nginx/sites-enabled/ai_studio_8080 /etc/nginx/sites-enabled/ai_studio_8080.bak.$(date +%Y%m%d)
 ```
 
-### 5.2 套用含 TCMS 的 Nginx 設定
+### 7.2 套用含 TCMS 的 Nginx 設定
 
 ```bash
 # 從專案目錄複製（先 git pull 取得最新設定檔）
@@ -59,7 +90,7 @@ sudo cp kk_tcms_1.5/docs/ai_studio_8080_with_tcms.conf /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
-### 5.3 還原備份（若出問題）
+### 7.3 還原備份（若出問題）
 
 ```bash
 # 還原 EC2 本機備份
@@ -76,7 +107,49 @@ sudo nginx -t && sudo systemctl reload nginx
 
 Nginx 設定檔說明請參考 `deployment_nginx.md`。
 
-## 6. 網路需求
+## 7. 疑難排解（登入 / reset password 進不去）
+
+### 8.1 先確認幾件事
+
+| 檢查項目 | 指令 / 方式 |
+|----------|--------------|
+| Backend 是否正常 | `curl http://localhost:19425/api/v1/health` |
+| Frontend 是否用 /tcms build | 開 DevTools → Network，登入時看 API 請求是否打到 `/tcms/api/v1/users/login`（若打到 `/api/v1/` 代表 build 未加 VITE_API_URL） |
+| Nginx 是否已套用 | `sudo nginx -t && grep tcms /etc/nginx/sites-enabled/ai_studio_8080` |
+| 用戶是否存在 | 用 migrate-passwords 或 DB 確認 `tcms_users` 表有對應帳號 |
+
+### 8.2 常見原因與處理
+
+1. **URL 少了 `/tcms`**  
+   - 已透過 `BrowserRouter basename` 修正。需**重新 build frontend** 才能生效。
+2. **API 打到錯誤路徑**  
+   - 登入請求應為 `.../tcms/api/v1/users/login`。若打到 `/api/v1/`，代表 frontend 未用 `VITE_API_URL=/tcms/api/v1`  build。  
+   - 處理：用 `cp .env.tcms.example .env` 後，`docker compose build --no-cache frontend` 再 up。
+3. **密碼不符**  
+   - 前端用 SHA-256 hash，後端比對 hash。若曾用 migrate-passwords 設為 `1234`，需確認 hash 正確。  
+   - 可重新執行 migrate-passwords 再試。
+4. **CORS / 404**  
+   - 確認 Nginx 含 TCMS 設定且已 reload（`sudo systemctl reload nginx`）。
+
+### 8.3 驗證登入流程
+
+```bash
+# 1. 健康檢查
+curl http://localhost:19425/api/v1/health
+
+# 2. 透過 Nginx（若在 EC2 上）
+curl https://autotest-service.sit.kkday.com:8081/tcms/api-health
+
+# 3. 登入 API 測試（需先取得密碼的 SHA-256 hash）
+# 例：echo -n "1234" | shasum -a 256
+curl -X POST https://autotest-service.sit.kkday.com:8081/tcms/api/v1/users/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"lance.chien@kkday.com","password":"<SHA256_OF_PASSWORD>"}'
+```
+
+---
+
+## 9. 網路需求
 
 Backend 需能連線至：
 - `SECRET_SERVICE_URL:8000`（get_secret API）

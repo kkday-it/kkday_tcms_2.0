@@ -15,9 +15,12 @@ export default function Login() {
         e.preventDefault();
         setIsLoading(true);
         setError('');
+        console.log('[TCMS Login] Submitting, email:', email ? `${email.slice(0, 3)}***` : '(empty)', 'baseURL:', import.meta.env.VITE_API_URL || '(default)');
 
         try {
             const hashedPassword = await sha256(password);
+            const url = (api.defaults.baseURL || '') + '/users/login';
+            console.log('[TCMS Login] POST', url);
             const res = await api.post('/users/login', {
                 email,
                 password: hashedPassword
@@ -36,6 +39,7 @@ export default function Login() {
                 navigate('/');
             }
         } catch (err: any) {
+            console.error('[TCMS Login] Error:', err?.message, err?.response?.status, err?.response?.data);
             setError(err.response?.data?.detail || 'Login failed. Please check your credentials.');
         } finally {
             setIsLoading(false);
@@ -89,6 +93,7 @@ export default function Login() {
                                 <input
                                     type="password"
                                     required
+                                    autoComplete="current-password"
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
                                     className="appearance-none block w-full px-3 py-2.5 border border-slate-300 rounded-lg shadow-sm placeholder-slate-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm transition-colors"

@@ -16,6 +16,7 @@ services:
     volumes:
       - tcms_data:/app/data
       - tcms_uploads:/app/uploads
+      - tcms_logs:/app/logs
     ports:
       - "19425:8000"
 
@@ -23,13 +24,20 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        # 掛在 /tcms 時：建立 kk_tcms_1.5/.env 含 VITE_API_URL=/tcms/api/v1 VITE_BASE_URL=/tcms/
+        VITE_API_URL: ${VITE_API_URL:-/api/v1}
+        VITE_BASE_URL: ${VITE_BASE_URL:-/}
     container_name: tcms_frontend
     restart: always
     ports:
       - "8085:80"
+    volumes:
+      - tcms_logs:/var/log/nginx
     depends_on:
       - backend
 
 volumes:
   tcms_data:
   tcms_uploads:
+  tcms_logs:  # FE nginx + BE uvicorn 共用，供 tcms/fe-log、tcms/be-log 使用

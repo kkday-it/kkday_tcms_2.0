@@ -12,6 +12,8 @@ import Login from './pages/Login';
 import ResetPassword from './pages/ResetPassword';
 
 import ForceChangePassword from './pages/ForceChangePassword';
+import FeLog from './pages/FeLog';
+import BeLog from './pages/BeLog';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const token = localStorage.getItem('tcms_token');
@@ -49,6 +51,9 @@ function App() {
           <Route path="/settings" element={<Settings />} />
           <Route path="/plans" element={<TestPlans />} />
           <Route path="/plans/:planId" element={<TestPlanDetails />} />
+          {/* 隱藏頁面：即時 log */}
+          <Route path="/fe-log" element={<FeLog />} />
+          <Route path="/be-log" element={<BeLog />} />
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

@@ -39,3 +39,6 @@ router.include_router(backup_router, prefix="/backup", tags=["Backup"])
 
 from app.api.xmind_import import router as xmind_import_router
 router.include_router(xmind_import_router, prefix="/cases", tags=["XMind Import"])
+
+from app.api.logs import router as logs_router
+router.include_router(logs_router, prefix="/logs", tags=["Logs"])
