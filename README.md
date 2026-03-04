@@ -13,6 +13,7 @@ KKday 測試案例管理系統（Test Case Management System），提供 Test Ca
 - [API 文件](#api-文件)
 - [Unit Test](#unit-test)
 - [CI 整合](#ci-整合)
+- [相關文件](#相關文件)
 
 ---
 
@@ -198,9 +199,9 @@ SQLite file（本機）  →  Docker Compose on EC2  →  PostgreSQL container o
 #### 步驟一：啟動 PostgreSQL（EC2 上執行）
 
 ```bash
-# 複製環境變數設定
-cp .env.example .env
-# 編輯 .env 設定 POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB
+# 在專案根目錄建立 .env（供 docker-compose.postgres 變數替換使用）
+# 設定 POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB
+# 詳見 docs/migration_sqlite_to_postgresql.md
 
 # 用 PostgreSQL override 啟動
 docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d db
@@ -293,3 +294,15 @@ source .venv/bin/activate
 pip install -r requirements.txt
 pytest tests/ -v
 ```
+
+---
+
+## 相關文件
+
+| 文件 | 說明 |
+|------|------|
+| [docs/EC2_DEPLOYMENT.md](docs/EC2_DEPLOYMENT.md) | EC2 部署檢查清單 |
+| [docs/deployment_nginx.md](docs/deployment_nginx.md) | Nginx 反向代理設定（掛於 /tcms 路徑） |
+| [docs/migration_sqlite_to_postgresql.md](docs/migration_sqlite_to_postgresql.md) | SQLite → PostgreSQL 遷移步驟 |
+| [docs/test_case_management_strategy.md](docs/test_case_management_strategy.md) | Test Case 分類與 Test Run 執行策略 |
+| [docs/PR_DOCKER_COMPOSE_CHECKLIST.md](docs/PR_DOCKER_COMPOSE_CHECKLIST.md) | PR 前 Docker Compose 相容性檢查 |

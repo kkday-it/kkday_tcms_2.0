@@ -37,14 +37,44 @@ docker compose logs backend | tail -20
 
 ## 5. Nginx 反向代理（若使用 /tcms 路徑）
 
-若 TCMS 掛在 `https://host/tcms/` 下，需重建 frontend 並指定 API 路徑：
+若 TCMS 掛在 `https://host/tcms/` 下，需重建 frontend 並指定 API 路徑與 base：
 
 ```bash
-docker compose build --build-arg VITE_API_URL=/tcms/api/v1 frontend
+docker compose build --build-arg VITE_API_URL=/tcms/api/v1 --build-arg VITE_BASE_URL=/tcms/ frontend
 docker compose up -d
 ```
 
-Nginx 設定請參考 `deployment_nginx.md`。
+### 5.1 部署前備份（強烈建議）
+
+```bash
+# 在 EC2 上備份現有 Nginx 設定
+sudo cp /etc/nginx/sites-enabled/ai_studio_8080 /etc/nginx/sites-enabled/ai_studio_8080.bak.$(date +%Y%m%d)
+```
+
+### 5.2 套用含 TCMS 的 Nginx 設定
+
+```bash
+# 從專案目錄複製（先 git pull 取得最新設定檔）
+sudo cp kk_tcms_1.5/docs/ai_studio_8080_with_tcms.conf /etc/nginx/sites-enabled/ai_studio_8080
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+### 5.3 還原備份（若出問題）
+
+```bash
+# 還原 EC2 本機備份
+sudo cp /etc/nginx/sites-enabled/ai_studio_8080.bak.YYYYMMDD /etc/nginx/sites-enabled/ai_studio_8080
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+或使用 repo 內的備份檔（加入 TCMS 前的原始設定）：
+
+```bash
+sudo cp kk_tcms_1.5/docs/ai_studio_8080_backup_before_tcms.conf /etc/nginx/sites-enabled/ai_studio_8080
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Nginx 設定檔說明請參考 `deployment_nginx.md`。
 
 ## 6. 網路需求
 

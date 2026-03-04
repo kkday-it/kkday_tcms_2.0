@@ -1,5 +1,3 @@
-version: '3.8'
-
 # EC2 / 生產環境：使用 remote DB（get_secret key=qa_database）
 # 部署前：cp backend/.env.example backend/.env，填入 SECRET_SERVICE_URL、AUTOMATION_TOKEN
 # 本機開發：在 .env 設 USE_QA_DATABASE_SECRET=false 並提供 DATABASE_URL

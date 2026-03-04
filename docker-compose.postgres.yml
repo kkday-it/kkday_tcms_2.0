@@ -1,5 +1,3 @@
-version: '3.8'
-
 # PostgreSQL override — 搭配 docker-compose.yml 一起使用：
 #   docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d
 #
@@ -29,6 +27,7 @@ services:
 
   backend:
     environment:
+      - USE_QA_DATABASE_SECRET=false
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-tcms}:${POSTGRES_PASSWORD:-tcms_password}@db:5432/${POSTGRES_DB:-tcms}
     depends_on:
       db:
