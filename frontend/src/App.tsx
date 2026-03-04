@@ -25,8 +25,10 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 function App() {
+  // 掛在 /tcms 子路徑時，VITE_BASE_URL=/tcms/，需設定 basename 讓 URL 正確
+  const basename = import.meta.env.BASE_URL?.replace(/\/$/, '') || '';
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={basename}>
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/reset-password" element={<ResetPassword />} />
