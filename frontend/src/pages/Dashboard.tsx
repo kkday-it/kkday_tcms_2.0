@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Layers, PlayCircle, Loader2, Bug, AlertTriangle, CheckCircle2, XCircle, Clock, Zap, Target, Activity, Ban } from 'lucide-react';
-import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from 'recharts';
+import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, LabelList } from 'recharts';
 import api from '../lib/api';
 
 // --- Interfaces: Overview ---
@@ -369,9 +369,15 @@ export default function Dashboard() {
                                             contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                                         />
                                         <Legend verticalAlign="top" height={36} iconType="circle" wrapperStyle={{ paddingBottom: '20px' }} />
-                                        <Bar dataKey="passed" name="Passed" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={40} />
-                                        <Bar dataKey="failed" name="Failed" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={40} />
-                                        <Bar dataKey="blocked" name="Blocked" fill="#f59e0b" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                                        <Bar dataKey="passed" name="Passed" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={40}>
+                                            <LabelList dataKey="passed" position="top" fill="#10b981" fontSize={11} formatter={(v: any) => Number(v) > 0 ? v : ''} />
+                                        </Bar>
+                                        <Bar dataKey="failed" name="Failed" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={40}>
+                                            <LabelList dataKey="failed" position="top" fill="#ef4444" fontSize={11} formatter={(v: any) => Number(v) > 0 ? v : ''} />
+                                        </Bar>
+                                        <Bar dataKey="blocked" name="Blocked" fill="#f59e0b" radius={[4, 4, 0, 0]} maxBarSize={40}>
+                                            <LabelList dataKey="blocked" position="top" fill="#f59e0b" fontSize={11} formatter={(v: any) => Number(v) > 0 ? v : ''} />
+                                        </Bar>
                                     </BarChart>
                                 </ResponsiveContainer>
                             ) : (
