@@ -801,7 +801,7 @@ export default function Repository() {
                 ) : (
                     <div className="flex-1 flex flex-col h-full bg-white relative">
                         {/* Header */}
-                        <div className="px-8 py-5 border-b border-slate-200 flex items-center justify-between bg-white z-10">
+                        <div className="px-8 py-5 border-b border-slate-200 flex items-center justify-between bg-white z-20">
                             <div>
                                 <h2 className="text-xl font-bold text-slate-900">{activeSuite ? activeSuite.name : 'Unknown Suite'}</h2>
                                 <p className="text-sm text-slate-500 mt-1">{filteredCases.length} test cases in this suite</p>
@@ -816,7 +816,7 @@ export default function Repository() {
                                         <Download className="w-4 h-4" /> Export <ChevronDown className="w-3 h-3" />
                                     </button>
                                     {isExportOpen && (
-                                        <div className="absolute right-0 mt-1 w-44 bg-white border border-slate-200 rounded-lg shadow-lg z-20 py-1">
+                                        <div className="absolute right-0 mt-1 w-44 bg-white border border-slate-200 rounded-lg shadow-lg z-50 py-1">
                                             <button onClick={() => handleExport('csv')} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">Export CSV</button>
                                             <button onClick={() => handleExport('json')} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">Export JSON</button>
                                             <hr className="my-1 border-slate-100" />
