@@ -28,6 +28,43 @@ async def lifespan(app: FastAPI):
         await conn.run_sync(Base.metadata.create_all)
     logger.info("Database tables initialized.")
 
+    # ── Safe column migrations (idempotent) ───────────────────────────────
+    # Add columns that were introduced after initial table creation.
+    # Uses IF NOT EXISTS equivalent: catch error if column already exists.
+    try:
+        async with engine.begin() as conn:
+            # PostgreSQL: use DO block to add column only if it doesn't exist
+            db_url = str(engine.url)
+            if "postgresql" in db_url or "asyncpg" in db_url:
+                await conn.execute(
+                    __import__("sqlalchemy").text(
+                        """
+                        DO $$
+                        BEGIN
+                            IF NOT EXISTS (
+                                SELECT 1 FROM information_schema.columns
+                                WHERE table_name='tcms_users' AND column_name='google_id'
+                            ) THEN
+                                ALTER TABLE tcms_users ADD COLUMN google_id VARCHAR UNIQUE;
+                            END IF;
+                        END $$;
+                        """
+                    )
+                )
+            else:
+                # SQLite: try to add, ignore if exists
+                try:
+                    await conn.execute(
+                        __import__("sqlalchemy").text(
+                            "ALTER TABLE tcms_users ADD COLUMN google_id VARCHAR UNIQUE"
+                        )
+                    )
+                except Exception:
+                    pass  # Column likely already exists in SQLite
+        logger.info("Column migration complete (google_id check).")
+    except Exception as e:
+        logger.warning(f"Column migration warning (non-fatal): {e}")
+
     # 啟動定期備份排程
     try:
         from app.services.backup_scheduler import init_scheduler
