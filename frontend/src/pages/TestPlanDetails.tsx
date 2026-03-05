@@ -194,9 +194,9 @@ export default function TestPlanDetails() {
     const completionRate = totalRuns > 0 ? Math.round((completedRuns / totalRuns) * 100) : 0;
 
     const pieData = [
-        { name: 'Passed', value: totalPassed, color: '#22c55e' },
-        { name: 'Failed', value: totalFailed, color: '#ef4444' },
-        { name: 'Untested', value: totalUntested, color: '#94a3b8' },
+        { name: 'Passed', value: totalPassed, color: '#10b981' }, // emarald-500
+        { name: 'Failed', value: totalFailed, color: '#f43f5e' }, // rose-500
+        { name: 'Untested', value: totalUntested, color: '#94a3b8' }, // slate-400
     ];
 
     const priorityColor: Record<string, string> = {
@@ -218,8 +218,8 @@ export default function TestPlanDetails() {
                         <ClipboardList className="w-5 h-5 text-teal-600" />
                     </div>
                     <div className="flex-1 min-w-0">
-                        <h1 className="text-2xl font-bold text-slate-900 truncate">{plan.title}</h1>
-                        <p className="text-sm text-slate-500 mt-0.5">{plan.description || 'No description provided.'}</p>
+                        <h1 className="text-3xl font-extrabold text-slate-900 flex-1 truncate tracking-tight">{plan.title}</h1>
+                        <p className="text-base text-slate-500 mt-1">{plan.description || 'No description provided.'}</p>
                     </div>
                     <div className="flex items-center gap-3">
                         <span className={`shrink-0 px-3 py-1 rounded-full text-xs font-semibold border ${STATUS_PILL[plan.status] ?? STATUS_PILL.Draft}`}>
@@ -243,26 +243,26 @@ export default function TestPlanDetails() {
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         {/* Documents */}
                         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 h-full flex flex-col">
-                            <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-6 flex items-center gap-2">
-                                <FileText className="w-4 h-4 text-slate-400" /> 文件連結
+                            <h3 className="text-base font-bold text-slate-700 uppercase tracking-wider mb-6 flex items-center gap-2">
+                                <FileText className="w-5 h-5 text-slate-400" /> 文件連結
                             </h3>
                             <div className="space-y-4 flex-1">
                                 {plan.prd_url && (
                                     <div className="flex flex-col gap-1 rounded-lg bg-slate-50 p-3 border border-slate-100">
-                                        <span className="text-xs font-semibold text-slate-500">PRD</span>
-                                        <a href={plan.prd_url} target="_blank" rel="noreferrer" className="text-sm font-medium text-primary-600 hover:text-primary-700 hover:underline truncate">
+                                        <span className="text-sm font-semibold text-slate-500">PRD</span>
+                                        <a href={plan.prd_url} target="_blank" rel="noreferrer" className="text-base font-medium text-primary-600 hover:text-primary-700 hover:underline truncate">
                                             {plan.prd_url}
                                         </a>
                                     </div>
                                 )}
                                 {((plan.sa_docs && plan.sa_docs.length > 0) || (plan.sd_docs && plan.sd_docs.length > 0)) && (
                                     <div className="flex flex-col gap-1 rounded-lg bg-slate-50 p-3 border border-slate-100">
-                                        <span className="text-xs font-semibold text-slate-500">SA / SD</span>
+                                        <span className="text-sm font-semibold text-slate-500">SA / SD</span>
                                         <div className="space-y-1.5 mt-1">
                                             {[...(plan.sa_docs || []), ...(plan.sd_docs || [])].map((d, i) => (
                                                 <a key={i} href={d.url} target="_blank" rel="noreferrer" className="flex items-center gap-2 group">
                                                     <div className="w-1.5 h-1.5 rounded-full bg-primary-400 group-hover:scale-125 transition-transform" />
-                                                    <span className="text-sm text-slate-700 group-hover:text-primary-600 transition-colors truncate">
+                                                    <span className="text-base text-slate-700 group-hover:text-primary-600 transition-colors truncate">
                                                         {d.title || d.url}
                                                     </span>
                                                 </a>
@@ -272,12 +272,12 @@ export default function TestPlanDetails() {
                                 )}
                                 {plan.ued_docs && plan.ued_docs.length > 0 && (
                                     <div className="flex flex-col gap-1 rounded-lg bg-slate-50 p-3 border border-slate-100">
-                                        <span className="text-xs font-semibold text-slate-500">UED</span>
+                                        <span className="text-sm font-semibold text-slate-500">UED</span>
                                         <div className="space-y-1.5 mt-1">
                                             {plan.ued_docs.map((d, i) => (
                                                 <a key={i} href={d.url} target="_blank" rel="noreferrer" className="flex items-center gap-2 group">
                                                     <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 group-hover:scale-125 transition-transform" />
-                                                    <span className="text-sm text-slate-700 group-hover:text-indigo-600 transition-colors truncate">
+                                                    <span className="text-base text-slate-700 group-hover:text-indigo-600 transition-colors truncate">
                                                         {d.title || d.url}
                                                     </span>
                                                 </a>
@@ -287,12 +287,12 @@ export default function TestPlanDetails() {
                                 )}
                                 {plan.qa_docs && plan.qa_docs.length > 0 && (
                                     <div className="flex flex-col gap-1 rounded-lg bg-slate-50 p-3 border border-slate-100">
-                                        <span className="text-xs font-semibold text-slate-500">QA</span>
+                                        <span className="text-sm font-semibold text-slate-500">QA</span>
                                         <div className="space-y-1.5 mt-1">
                                             {plan.qa_docs.map((d, i) => (
                                                 <a key={i} href={d.url} target="_blank" rel="noreferrer" className="flex items-center gap-2 group">
                                                     <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 group-hover:scale-125 transition-transform" />
-                                                    <span className="text-sm text-slate-700 group-hover:text-emerald-600 transition-colors truncate">
+                                                    <span className="text-base text-slate-700 group-hover:text-emerald-600 transition-colors truncate">
                                                         {d.title || d.url}
                                                     </span>
                                                 </a>
@@ -302,8 +302,8 @@ export default function TestPlanDetails() {
                                 )}
                                 {plan.mindmap_url && (
                                     <div className="flex flex-col gap-1 rounded-lg bg-slate-50 p-3 border border-slate-100">
-                                        <span className="text-xs font-semibold text-slate-500">Case Mindmap</span>
-                                        <a href={plan.mindmap_url} target="_blank" rel="noreferrer" className="text-sm font-medium text-amber-600 hover:text-amber-700 hover:underline truncate">
+                                        <span className="text-sm font-semibold text-slate-500">Case Mindmap</span>
+                                        <a href={plan.mindmap_url} target="_blank" rel="noreferrer" className="text-base font-medium text-amber-600 hover:text-amber-700 hover:underline truncate">
                                             {plan.mindmap_url}
                                         </a>
                                     </div>
@@ -314,16 +314,16 @@ export default function TestPlanDetails() {
                         {/* Timeline */}
                         {plan.timeline && (
                             <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 h-full flex flex-col">
-                                <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-6 flex items-center gap-2">
-                                    <Clock className="w-4 h-4 text-slate-400" /> 專案時程 (Timeline)
+                                <h3 className="text-base font-bold text-slate-700 uppercase tracking-wider mb-6 flex items-center gap-2">
+                                    <Clock className="w-5 h-5 text-slate-400" /> 專案時程 (Timeline)
                                 </h3>
                                 <div className="relative pl-6 space-y-6 flex-1 before:absolute before:inset-y-0 before:left-[11px] before:w-[2px] before:bg-slate-100">
                                     {plan.timeline.rd && (plan.timeline.rd.start || plan.timeline.rd.end) && (
                                         <div className="relative">
                                             <div className="absolute -left-[30px] top-1 w-[14px] h-[14px] rounded-full ring-4 ring-white bg-blue-500 z-10" />
                                             <div>
-                                                <h4 className="text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wide">RD 開發</h4>
-                                                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-blue-50 text-blue-700 text-sm font-medium border border-blue-100">
+                                                <h4 className="text-sm font-bold text-slate-700 mb-1.5 uppercase tracking-wide">RD 開發</h4>
+                                                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-blue-50 text-blue-700 text-base font-medium border border-blue-100">
                                                     {plan.timeline.rd.start || '未定'} → {plan.timeline.rd.end || '未定'}
                                                 </div>
                                             </div>
@@ -333,8 +333,8 @@ export default function TestPlanDetails() {
                                         <div className="relative">
                                             <div className="absolute -left-[30px] top-1 w-[14px] h-[14px] rounded-full ring-4 ring-white bg-indigo-500 z-10" />
                                             <div>
-                                                <h4 className="text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wide">UED 審核</h4>
-                                                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-indigo-50 text-indigo-700 text-sm font-medium border border-indigo-100">
+                                                <h4 className="text-sm font-bold text-slate-700 mb-1.5 uppercase tracking-wide">UED 審核</h4>
+                                                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-indigo-50 text-indigo-700 text-base font-medium border border-indigo-100">
                                                     {plan.timeline.ued.start || '未定'} → {plan.timeline.ued.end || '未定'}
                                                 </div>
                                             </div>
@@ -344,15 +344,15 @@ export default function TestPlanDetails() {
                                         <div className="relative">
                                             <div className="absolute -left-[30px] top-1 w-[14px] h-[14px] rounded-full ring-4 ring-white bg-emerald-500 z-10" />
                                             <div className="pb-1">
-                                                <h4 className="text-xs font-bold text-slate-700 mb-2 uppercase tracking-wide">QA 交付</h4>
+                                                <h4 className="text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">QA 交付</h4>
                                                 <div className="flex flex-col gap-2">
                                                     {plan.timeline.qa.map((q, i) => (
                                                         <div key={i} className="flex flex-col gap-1.5 p-3 rounded-lg border border-emerald-100 bg-emerald-50/50">
                                                             <div className="flex items-center justify-between">
-                                                                <span className="text-xs font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded uppercase tracking-wider">{q.platform}</span>
+                                                                <span className="text-xs font-bold text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded uppercase tracking-wider">{q.platform}</span>
                                                             </div>
-                                                            <div className="flex items-center gap-2 text-sm font-medium text-emerald-700">
-                                                                <Clock className="w-3.5 h-3.5 opacity-60" />
+                                                            <div className="flex items-center gap-2 text-base font-medium text-emerald-700">
+                                                                <Clock className="w-4 h-4 opacity-60" />
                                                                 {q.start || '未定'} → {q.end || '未定'}
                                                             </div>
                                                         </div>
@@ -375,11 +375,11 @@ export default function TestPlanDetails() {
                         { label: 'Test Runs', value: totalRuns, icon: <PlayCircle className="w-5 h-5 text-primary-500" /> },
                         { label: 'Test Cases', value: cases.length, icon: <FileText className="w-5 h-5 text-slate-400" /> },
                     ].map(m => (
-                        <div key={m.label} className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
+                        <div key={m.label} className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
                             <div>{m.icon}</div>
                             <div>
-                                <p className="text-xs font-medium text-slate-500">{m.label}</p>
-                                <p className="text-2xl font-bold text-slate-900">{m.value}</p>
+                                <p className="text-sm font-semibold text-slate-500 mb-1">{m.label}</p>
+                                <p className="text-3xl font-extrabold tracking-tight text-slate-900">{m.value}</p>
                             </div>
                         </div>
                     ))}
@@ -390,7 +390,7 @@ export default function TestPlanDetails() {
 
                     {/* Pie chart */}
                     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-                        <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-4">Result Distribution</h3>
+                        <h3 className="text-base font-bold text-slate-700 uppercase tracking-wider mb-4">Result Distribution</h3>
                         {totalCaseExecs > 0 ? (
                             <>
                                 <div className="h-56">
@@ -404,10 +404,10 @@ export default function TestPlanDetails() {
                                         </PieChart>
                                     </ResponsiveContainer>
                                 </div>
-                                <div className="mt-3 flex items-center justify-center gap-6 text-sm">
-                                    <span className="text-emerald-600 font-semibold">Passed: {totalPassed}</span>
-                                    <span className="text-red-600 font-semibold">Failed: {totalFailed}</span>
-                                    <span className="text-slate-600 font-semibold">Total: {totalCaseExecs}</span>
+                                <div className="mt-4 flex items-center justify-center gap-8 text-base">
+                                    <span className="text-emerald-600 font-bold">Passed: {totalPassed}</span>
+                                    <span className="text-rose-500 font-bold">Failed: {totalFailed}</span>
+                                    <span className="text-slate-500 font-bold">Total: {totalCaseExecs}</span>
                                 </div>
                             </>
                         ) : (
@@ -423,16 +423,16 @@ export default function TestPlanDetails() {
                         {/* Tab header */}
                         <div className="flex border-b border-slate-200 bg-slate-50/50 shrink-0">
                             <button onClick={() => setActiveTab('runs')}
-                                className={`flex items-center gap-2 px-5 py-3.5 text-sm font-medium border-b-2 transition-colors ${activeTab === 'runs' ? 'border-primary-500 text-primary-700 bg-white' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
-                                <PlayCircle className="w-4 h-4" />
+                                className={`flex items-center gap-2 px-6 py-4 text-base font-semibold border-b-2 transition-colors ${activeTab === 'runs' ? 'border-primary-500 text-primary-700 bg-white' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+                                <PlayCircle className="w-5 h-5" />
                                 Test Runs
-                                <span className="text-xs bg-slate-100 text-slate-500 rounded-full px-2 py-0.5">{totalRuns}</span>
+                                <span className="text-sm bg-slate-100 text-slate-600 rounded-full px-2.5 py-0.5">{totalRuns}</span>
                             </button>
                             <button onClick={() => setActiveTab('cases')}
-                                className={`flex items-center gap-2 px-5 py-3.5 text-sm font-medium border-b-2 transition-colors ${activeTab === 'cases' ? 'border-primary-500 text-primary-700 bg-white' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
-                                <FileText className="w-4 h-4" />
+                                className={`flex items-center gap-2 px-6 py-4 text-base font-semibold border-b-2 transition-colors ${activeTab === 'cases' ? 'border-primary-500 text-primary-700 bg-white' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+                                <FileText className="w-5 h-5" />
                                 Test Cases
-                                <span className="text-xs bg-slate-100 text-slate-500 rounded-full px-2 py-0.5">{cases.length}</span>
+                                <span className="text-sm bg-slate-100 text-slate-600 rounded-full px-2.5 py-0.5">{cases.length}</span>
                             </button>
                         </div>
 
@@ -442,9 +442,9 @@ export default function TestPlanDetails() {
                                 <table className="w-full text-left border-collapse">
                                     <thead>
                                         <tr className="border-b border-slate-200 bg-white">
-                                            <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Run Title</th>
-                                            <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
-                                            <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Progress</th>
+                                            <th className="px-6 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Run Title</th>
+                                            <th className="px-6 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Status</th>
+                                            <th className="px-6 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Progress</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100 bg-white">
@@ -456,7 +456,7 @@ export default function TestPlanDetails() {
                                             return (
                                                 <tr key={run.id} className="hover:bg-slate-50 transition-colors">
                                                     <td className="px-6 py-4">
-                                                        <Link to={`/runs/${run.id}`} className="text-sm font-semibold text-slate-900 hover:text-primary-600 transition-colors">
+                                                        <Link to={`/runs/${run.id}`} className="text-base font-semibold text-slate-900 hover:text-primary-600 transition-colors">
                                                             {run.title}
                                                         </Link>
                                                     </td>
@@ -487,8 +487,8 @@ export default function TestPlanDetails() {
                                 <table className="w-full text-left border-collapse">
                                     <thead>
                                         <tr className="border-b border-slate-200 bg-white">
-                                            <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Case Title</th>
-                                            <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Priority</th>
+                                            <th className="px-6 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Case Title</th>
+                                            <th className="px-6 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Priority</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100 bg-white">
@@ -496,7 +496,7 @@ export default function TestPlanDetails() {
                                             <tr><td colSpan={2} className="px-6 py-10 text-center text-sm text-slate-400">No test cases linked.</td></tr>
                                         ) : cases.map(tc => (
                                             <tr key={tc.id} className="hover:bg-slate-50 transition-colors">
-                                                <td className="px-6 py-4 text-sm font-medium text-slate-900">{tc.title}</td>
+                                                <td className="px-6 py-4 text-base font-medium text-slate-900">{tc.title}</td>
                                                 <td className="px-6 py-4">
                                                     <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${priorityColor[tc.priority] ?? priorityColor.Low}`}>
                                                         {tc.priority || 'Low'}
@@ -515,17 +515,17 @@ export default function TestPlanDetails() {
                 {
                     (plan.jira_unfix_filter_id || plan.jira_total_filter_id) && (
                         <div className="space-y-6">
-                            <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider">Jira Issues</h3>
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            <h3 className="text-base font-bold text-slate-700 uppercase tracking-wider">Jira Issues</h3>
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
                                 {plan.jira_unfix_filter_id && (
                                     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-full">
                                         <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-white">
-                                            <span className="text-sm font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
-                                                <Bug className="w-4 h-4 text-rose-400" /> Unfix Bugs
+                                            <span className="text-base font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                                                <Bug className="w-5 h-5 text-rose-400" /> Unfix Bugs
                                             </span>
                                             {jiraUnfix?.view_url && (
-                                                <a href={jiraUnfix.view_url} target="_blank" rel="noreferrer" className="text-xs text-primary-600 hover:underline flex items-center gap-1">
-                                                    <ExternalLink className="w-3 h-3" /> 在 Jira 開啟
+                                                <a href={jiraUnfix.view_url} target="_blank" rel="noreferrer" className="text-sm text-primary-600 hover:underline flex items-center gap-1">
+                                                    <ExternalLink className="w-4 h-4" /> 在 Jira 開啟
                                                 </a>
                                             )}
                                         </div>
@@ -538,26 +538,26 @@ export default function TestPlanDetails() {
                                                     <span className="text-xs text-red-400 mt-1 block">錯誤: {jiraError}</span>
                                                 </div>
                                             ) : jiraUnfix && jiraUnfix.issues.length > 0 ? (
-                                                <table className="w-full text-sm">
+                                                <table className="w-full text-left">
                                                     <thead>
                                                         <tr className="border-b border-slate-200 bg-white">
-                                                            <th className="px-4 py-2 text-left font-semibold text-slate-500">Key</th>
-                                                            <th className="px-4 py-2 text-left font-semibold text-slate-500">Summary</th>
-                                                            <th className="px-4 py-2 text-left font-semibold text-slate-500">Status</th>
-                                                            <th className="px-4 py-2 text-left font-semibold text-slate-500">Assignee</th>
-                                                            <th className="px-4 py-2 text-left font-semibold text-slate-500">Priority</th>
+                                                            <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Key</th>
+                                                            <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Summary</th>
+                                                            <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Status</th>
+                                                            <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Assignee</th>
+                                                            <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Priority</th>
                                                         </tr>
                                                     </thead>
                                                     <tbody>
                                                         {jiraUnfix.issues.map((issue, i) => (
                                                             <tr key={i} className="border-b border-slate-100 hover:bg-slate-50">
-                                                                <td className="px-4 py-2">
-                                                                    <a href={issue.url} target="_blank" rel="noreferrer" className="text-primary-600 hover:underline font-mono">{issue.key}</a>
+                                                                <td className="px-5 py-4">
+                                                                    <a href={issue.url} target="_blank" rel="noreferrer" className="text-base text-primary-600 hover:underline font-mono">{issue.key}</a>
                                                                 </td>
-                                                                <td className="px-4 py-2 truncate max-w-[180px]" title={issue.summary}>{issue.summary ?? '—'}</td>
-                                                                <td className="px-4 py-2">{issue.status ?? '—'}</td>
-                                                                <td className="px-4 py-2">{issue.assignee ?? '—'}</td>
-                                                                <td className="px-4 py-2">{issue.priority ?? '—'}</td>
+                                                                <td className="px-5 py-4 text-base text-slate-800 truncate max-w-[180px]" title={issue.summary}>{issue.summary ?? '—'}</td>
+                                                                <td className="px-5 py-4 text-base text-slate-600">{issue.status ?? '—'}</td>
+                                                                <td className="px-5 py-4 text-base text-slate-600">{issue.assignee ?? '—'}</td>
+                                                                <td className="px-5 py-4 text-base text-slate-600">{issue.priority ?? '—'}</td>
                                                             </tr>
                                                         ))}
                                                     </tbody>
@@ -571,12 +571,12 @@ export default function TestPlanDetails() {
                                 {plan.jira_total_filter_id && (
                                     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-full">
                                         <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-white">
-                                            <span className="text-sm font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
-                                                <ListChecks className="w-4 h-4 text-blue-400" /> Total Issues
+                                            <span className="text-base font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                                                <ListChecks className="w-5 h-5 text-blue-400" /> Total Issues
                                             </span>
                                             {jiraTotal?.view_url && (
-                                                <a href={jiraTotal.view_url} target="_blank" rel="noreferrer" className="text-xs text-primary-600 hover:underline flex items-center gap-1">
-                                                    <ExternalLink className="w-3 h-3" /> 在 Jira 開啟
+                                                <a href={jiraTotal.view_url} target="_blank" rel="noreferrer" className="text-sm text-primary-600 hover:underline flex items-center gap-1">
+                                                    <ExternalLink className="w-4 h-4" /> 在 Jira 開啟
                                                 </a>
                                             )}
                                         </div>
@@ -589,26 +589,26 @@ export default function TestPlanDetails() {
                                                     <span className="text-xs text-red-400 mt-1 block">錯誤: {jiraError}</span>
                                                 </div>
                                             ) : jiraTotal && jiraTotal.issues.length > 0 ? (
-                                                <table className="w-full text-sm">
+                                                <table className="w-full text-left">
                                                     <thead>
                                                         <tr className="border-b border-slate-200 bg-white">
-                                                            <th className="px-4 py-2 text-left font-semibold text-slate-500">Key</th>
-                                                            <th className="px-4 py-2 text-left font-semibold text-slate-500">Summary</th>
-                                                            <th className="px-4 py-2 text-left font-semibold text-slate-500">Status</th>
-                                                            <th className="px-4 py-2 text-left font-semibold text-slate-500">Assignee</th>
-                                                            <th className="px-4 py-2 text-left font-semibold text-slate-500">Priority</th>
+                                                            <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Key</th>
+                                                            <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Summary</th>
+                                                            <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Status</th>
+                                                            <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Assignee</th>
+                                                            <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Priority</th>
                                                         </tr>
                                                     </thead>
                                                     <tbody>
                                                         {jiraTotal.issues.map((issue, i) => (
                                                             <tr key={i} className="border-b border-slate-100 hover:bg-slate-50">
-                                                                <td className="px-4 py-2">
-                                                                    <a href={issue.url} target="_blank" rel="noreferrer" className="text-primary-600 hover:underline font-mono">{issue.key}</a>
+                                                                <td className="px-5 py-4">
+                                                                    <a href={issue.url} target="_blank" rel="noreferrer" className="text-base text-primary-600 hover:underline font-mono">{issue.key}</a>
                                                                 </td>
-                                                                <td className="px-4 py-2 truncate max-w-[180px]" title={issue.summary}>{issue.summary ?? '—'}</td>
-                                                                <td className="px-4 py-2">{issue.status ?? '—'}</td>
-                                                                <td className="px-4 py-2">{issue.assignee ?? '—'}</td>
-                                                                <td className="px-4 py-2">{issue.priority ?? '—'}</td>
+                                                                <td className="px-5 py-4 text-base text-slate-800 truncate max-w-[180px]" title={issue.summary}>{issue.summary ?? '—'}</td>
+                                                                <td className="px-5 py-4 text-base text-slate-600">{issue.status ?? '—'}</td>
+                                                                <td className="px-5 py-4 text-base text-slate-600">{issue.assignee ?? '—'}</td>
+                                                                <td className="px-5 py-4 text-base text-slate-600">{issue.priority ?? '—'}</td>
                                                             </tr>
                                                         ))}
                                                     </tbody>

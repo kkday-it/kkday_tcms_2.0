@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Loader2, Search, Plus, X } from 'lucide-react';
+import { Loader2, Search, Plus, X, UploadCloud } from 'lucide-react';
 import api from '../../lib/api';
 
 interface DocEntry {
@@ -347,10 +347,30 @@ export default function EditPlanModal({ plan, folders, runs, cases, onClose, onS
                                     </div>
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1">Case Mindmap（單一連結）</label>
-                                    <input type="url" value={mindmapUrl} onChange={e => setMindmapUrl(e.target.value)}
-                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
-                                        placeholder="https://..." />
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Case Mindmap（連結或上傳檔案）</label>
+                                    <div className="flex gap-2 items-center">
+                                        <input type="text" value={mindmapUrl} onChange={e => setMindmapUrl(e.target.value)}
+                                            className="flex-1 w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
+                                            placeholder="https://... 或點擊右側圖示上傳檔案" />
+                                        <input type="file" id="mindmap-upload" className="hidden" accept=".xmind"
+                                            onChange={async (e) => {
+                                                const file = e.target.files?.[0];
+                                                if (!file) return;
+                                                const formData = new FormData();
+                                                formData.append('file', file);
+                                                try {
+                                                    const res = await api.post('/uploads/', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+                                                    setMindmapUrl(res.data.url);
+                                                } catch (err) {
+                                                    console.error(err);
+                                                    alert('上傳失敗');
+                                                }
+                                            }}
+                                        />
+                                        <button type="button" onClick={() => document.getElementById('mindmap-upload')?.click()} className="p-2 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-500 shrink-0 h-[38px] flex items-center justify-center transition-colors" title="上傳檔案">
+                                            <UploadCloud className="w-4 h-4" />
+                                        </button>
+                                    </div>
                                 </div>
                             </>
                         )}
