@@ -106,10 +106,8 @@ export default function TestCasePreviewPane({ isOpen, onClose, caseId, onEditCli
     const assignee = users.find(u => u.id === testCase?.default_owner_id);
 
     return (
-        <div className="fixed inset-0 z-40 flex justify-end">
-            <div className="absolute inset-0 bg-slate-900/10 backdrop-blur-[1px]" onClick={onClose} />
-
-            <div className="relative w-full max-w-2xl bg-white h-full border-l border-slate-200 shadow-xl flex flex-col animate-in slide-in-from-right">
+        <div className="absolute inset-y-0 right-0 z-30 flex justify-end w-full max-w-2xl">
+            <div className="relative w-full bg-white h-full border-l border-slate-200 shadow-xl flex flex-col animate-in slide-in-from-right">
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50">
                     <div className="flex items-center gap-3">

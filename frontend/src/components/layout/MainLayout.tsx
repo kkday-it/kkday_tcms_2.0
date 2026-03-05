@@ -26,23 +26,25 @@ export default function MainLayout() {
     return (
         <div className="flex h-screen bg-white">
             {/* Global Sidebar */}
-            <div className="w-16 flex-shrink-0 flex flex-col items-center py-4 bg-slate-900 border-r border-slate-800">
+            <div className="w-20 flex-shrink-0 flex flex-col items-center py-4 bg-slate-900 border-r border-slate-800">
                 <div className="w-10 h-10 bg-primary-600 text-white rounded-lg flex items-center justify-center font-bold text-xl mb-8">
                     T
                 </div>
 
-                <nav className="flex-1 space-y-4">
+                <nav className="flex-1 space-y-2">
                     {navigation.map((item) => {
                         const isActive = location.pathname === item.href || (item.href !== '/' && location.pathname.startsWith(item.href));
+                        const label = item.name === 'Repository' ? 'Repo' : item.name === 'Test Plans' ? 'Plans' : item.name === 'Test Runs' ? 'Runs' : item.name;
                         return (
                             <Link
                                 key={item.name}
                                 to={item.href}
-                                className={`p-2 rounded-lg flex items-center justify-center transition-colors ${isActive ? 'bg-primary-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                                className={`flex flex-col items-center gap-1 px-1 py-2 rounded-lg transition-colors ${isActive ? 'bg-primary-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'
                                     }`}
                                 title={item.name}
                             >
-                                <item.icon className="w-6 h-6" />
+                                <item.icon className="w-5 h-5" />
+                                <span className="text-[10px] font-medium leading-none">{label}</span>
                             </Link>
                         );
                     })}
@@ -54,8 +56,8 @@ export default function MainLayout() {
                         <Link
                             to="/settings"
                             className={`p-2 rounded-lg flex items-center justify-center transition-colors ${location.pathname.startsWith('/settings')
-                                    ? 'bg-primary-600 text-white'
-                                    : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                                ? 'bg-primary-600 text-white'
+                                : 'text-slate-400 hover:text-white hover:bg-slate-800'
                                 }`}
                             title="Settings (Admin)"
                         >

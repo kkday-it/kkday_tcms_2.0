@@ -726,7 +726,7 @@ export default function Repository() {
             </div>
 
             {/* Cases List Main Area */}
-            <div className="flex-1 flex flex-col h-full bg-slate-50 relative">
+            <div className="flex-1 flex flex-col h-full bg-slate-50 relative overflow-hidden">
                 {!activeSuiteId ? (
                     <div className="flex-1 flex flex-col items-center justify-center h-full gap-8">
                         {/* Hero */}
