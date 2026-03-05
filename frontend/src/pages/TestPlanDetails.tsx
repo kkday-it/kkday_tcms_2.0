@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Loader2, ClipboardList, PlayCircle, FileText, CheckCircle2, XCircle, Clock, Edit2, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Loader2, ClipboardList, PlayCircle, FileText, CheckCircle2, XCircle, Clock, Edit2, ExternalLink, Bug, ListChecks } from 'lucide-react';
 import api from '../lib/api';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend } from 'recharts';
 import EditPlanModal from '../components/plans/EditPlanModal';
@@ -242,11 +242,11 @@ export default function TestPlanDetails() {
                 {(plan.prd_url || (plan.sa_docs && plan.sa_docs.length) || (plan.sd_docs && plan.sd_docs.length) || (plan.ued_docs && plan.ued_docs.length) || (plan.qa_docs && plan.qa_docs.length) || plan.mindmap_url || plan.timeline) && (
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         {/* Documents */}
-                        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-                            <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-5 flex items-center gap-2">
+                        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 h-full flex flex-col">
+                            <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-6 flex items-center gap-2">
                                 <FileText className="w-4 h-4 text-slate-400" /> 文件連結
                             </h3>
-                            <div className="space-y-4">
+                            <div className="space-y-4 flex-1">
                                 {plan.prd_url && (
                                     <div className="flex flex-col gap-1 rounded-lg bg-slate-50 p-3 border border-slate-100">
                                         <span className="text-xs font-semibold text-slate-500">PRD</span>
@@ -313,16 +313,16 @@ export default function TestPlanDetails() {
 
                         {/* Timeline */}
                         {plan.timeline && (
-                            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 flex flex-col">
+                            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 h-full flex flex-col">
                                 <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-6 flex items-center gap-2">
                                     <Clock className="w-4 h-4 text-slate-400" /> 專案時程 (Timeline)
                                 </h3>
-                                <div className="relative pl-6 space-y-8 before:absolute before:inset-y-0 before:left-[11px] before:w-[2px] before:bg-slate-100">
+                                <div className="relative pl-6 space-y-6 flex-1 before:absolute before:inset-y-0 before:left-[11px] before:w-[2px] before:bg-slate-100">
                                     {plan.timeline.rd && (plan.timeline.rd.start || plan.timeline.rd.end) && (
                                         <div className="relative">
                                             <div className="absolute -left-[30px] top-1 w-[14px] h-[14px] rounded-full ring-4 ring-white bg-blue-500 z-10" />
                                             <div>
-                                                <h4 className="text-sm font-bold text-slate-900 mb-1">RD 開發</h4>
+                                                <h4 className="text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wide">RD 開發</h4>
                                                 <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-blue-50 text-blue-700 text-sm font-medium border border-blue-100">
                                                     {plan.timeline.rd.start || '未定'} → {plan.timeline.rd.end || '未定'}
                                                 </div>
@@ -333,7 +333,7 @@ export default function TestPlanDetails() {
                                         <div className="relative">
                                             <div className="absolute -left-[30px] top-1 w-[14px] h-[14px] rounded-full ring-4 ring-white bg-indigo-500 z-10" />
                                             <div>
-                                                <h4 className="text-sm font-bold text-slate-900 mb-1">UED 審核</h4>
+                                                <h4 className="text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wide">UED 審核</h4>
                                                 <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-indigo-50 text-indigo-700 text-sm font-medium border border-indigo-100">
                                                     {plan.timeline.ued.start || '未定'} → {plan.timeline.ued.end || '未定'}
                                                 </div>
@@ -343,8 +343,8 @@ export default function TestPlanDetails() {
                                     {plan.timeline.qa && plan.timeline.qa.length > 0 && (
                                         <div className="relative">
                                             <div className="absolute -left-[30px] top-1 w-[14px] h-[14px] rounded-full ring-4 ring-white bg-emerald-500 z-10" />
-                                            <div>
-                                                <h4 className="text-sm font-bold text-slate-900 mb-3">QA 交付</h4>
+                                            <div className="pb-1">
+                                                <h4 className="text-xs font-bold text-slate-700 mb-2 uppercase tracking-wide">QA 交付</h4>
                                                 <div className="flex flex-col gap-2">
                                                     {plan.timeline.qa.map((q, i) => (
                                                         <div key={i} className="flex flex-col gap-1.5 p-3 rounded-lg border border-emerald-100 bg-emerald-50/50">
@@ -518,9 +518,11 @@ export default function TestPlanDetails() {
                             <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider">Jira Issues</h3>
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                                 {plan.jira_unfix_filter_id && (
-                                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                                        <div className="px-6 py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
-                                            <span className="font-semibold text-slate-700">Unfix Bugs</span>
+                                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-full">
+                                        <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-white">
+                                            <span className="text-sm font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                                                <Bug className="w-4 h-4 text-rose-400" /> Unfix Bugs
+                                            </span>
                                             {jiraUnfix?.view_url && (
                                                 <a href={jiraUnfix.view_url} target="_blank" rel="noreferrer" className="text-xs text-primary-600 hover:underline flex items-center gap-1">
                                                     <ExternalLink className="w-3 h-3" /> 在 Jira 開啟
@@ -567,9 +569,11 @@ export default function TestPlanDetails() {
                                     </div>
                                 )}
                                 {plan.jira_total_filter_id && (
-                                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                                        <div className="px-6 py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
-                                            <span className="font-semibold text-slate-700">Total Issues</span>
+                                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-full">
+                                        <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-white">
+                                            <span className="text-sm font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                                                <ListChecks className="w-4 h-4 text-blue-400" /> Total Issues
+                                            </span>
                                             {jiraTotal?.view_url && (
                                                 <a href={jiraTotal.view_url} target="_blank" rel="noreferrer" className="text-xs text-primary-600 hover:underline flex items-center gap-1">
                                                     <ExternalLink className="w-3 h-3" /> 在 Jira 開啟
