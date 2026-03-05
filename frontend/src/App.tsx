@@ -35,6 +35,9 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/force-change-password" element={<ForceChangePassword />} />
+        {/* 隱藏頁面（公開，read-only）：不需登入即可查看 */}
+        <Route path="/fe-log" element={<FeLog />} />
+        <Route path="/be-log" element={<BeLog />} />
 
         <Route element={
           <ProtectedRoute>
@@ -51,9 +54,7 @@ function App() {
           <Route path="/settings" element={<Settings />} />
           <Route path="/plans" element={<TestPlans />} />
           <Route path="/plans/:planId" element={<TestPlanDetails />} />
-          {/* 隱藏頁面：即時 log */}
-          <Route path="/fe-log" element={<FeLog />} />
-          <Route path="/be-log" element={<BeLog />} />
+
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
