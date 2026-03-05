@@ -8,9 +8,10 @@ import httpx
 
 from app.core.secrets import get_secret
 
+from app.core.config import settings
+
 logger = logging.getLogger(__name__)
 
-JIRA_HOST = "https://kkday.atlassian.net"
 DEFAULT_FIELDS = ["key", "summary", "status", "assignee", "priority"]
 
 
@@ -28,7 +29,7 @@ def _get_auth() -> tuple[str, str]:
 def _get_filter_jql(filter_id: int) -> str:
     """Fetch filter by ID and return its JQL."""
     username, api_token = _get_auth()
-    url = f"{JIRA_HOST}/rest/api/3/filter/{filter_id}"
+    url = f"{settings.JIRA_HOST}/rest/api/3/filter/{filter_id}"
     with httpx.Client(timeout=30) as client:
         resp = client.get(url, auth=(username, api_token))
         resp.raise_for_status()
@@ -63,12 +64,11 @@ def fetch_issues_by_filter_id(
     jira_fields = [field_map.get(f, f) for f in fields]
 
     username, api_token = _get_auth()
-    url = f"{JIRA_HOST}/rest/api/3/search"
+    url = f"{settings.JIRA_HOST}/rest/api/3/search/jql"
     payload = {
         "jql": jql,
         "fields": jira_fields,
         "maxResults": min(max_results, 500),
-        "startAt": 0,
     }
 
     with httpx.Client(timeout=30) as client:
@@ -86,7 +86,7 @@ def fetch_issues_by_filter_id(
     for i in issues:
         key = i.get("key", "")
         fs = i.get("fields", {})
-        row = {"key": key, "url": f"{JIRA_HOST}/browse/{key}"}
+        row = {"key": key, "url": f"{settings.JIRA_HOST}/browse/{key}"}
         if "summary" in jira_fields:
             row["summary"] = (fs.get("summary") or "")[:200]
         if "status" in jira_fields:
