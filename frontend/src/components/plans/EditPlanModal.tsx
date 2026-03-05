@@ -19,6 +19,11 @@ export interface TestRun {
     title: string;
 }
 
+export interface CaseFolder {
+    id: number;
+    name: string;
+}
+
 export interface TestCase {
     id: number;
     title: string;
@@ -49,11 +54,12 @@ export interface TestPlan {
     jira_display_fields?: string[];
 }
 
-export default function EditPlanModal({ plan, folders, runs, cases, onClose, onSaved }: {
+export default function EditPlanModal({ plan, folders, runs, cases, caseFolders, onClose, onSaved }: {
     plan: TestPlan | null;
     folders: PlanFolder[];
     runs: TestRun[];
     cases: TestCase[];
+    caseFolders: CaseFolder[];
     onClose: () => void;
     onSaved: () => void;
 }) {
@@ -80,6 +86,7 @@ export default function EditPlanModal({ plan, folders, runs, cases, onClose, onS
     const [selectedCaseIds, setSelectedCaseIds] = useState<number[]>([]);
     const [isSaving, setIsSaving] = useState(false);
     const [caseSearch, setCaseSearch] = useState('');
+    const [caseFolderFilter, setCaseFolderFilter] = useState<string>('');
     const [activeTab, setActiveTab] = useState<'runs' | 'cases'>('runs');
     const [metaTab, setMetaTab] = useState<'basic' | 'docs' | 'timeline' | 'jira' | 'runs'>('basic');
 
@@ -118,6 +125,7 @@ export default function EditPlanModal({ plan, folders, runs, cases, onClose, onS
             setJiraDisplayFields(['key', 'summary', 'status', 'assignee', 'priority']);
         }
         setCaseSearch('');
+        setCaseFolderFilter('');
         setActiveTab('runs');
         setMetaTab('basic');
     }, [plan]);
@@ -171,7 +179,9 @@ export default function EditPlanModal({ plan, folders, runs, cases, onClose, onS
     const toggleCase = (id: number) =>
         setSelectedCaseIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 
-    const filteredCases = cases.filter(c => c.title.toLowerCase().includes(caseSearch.toLowerCase()));
+    const filteredCases = cases
+        .filter(c => caseFolderFilter === '' || String(c.suite_id) === caseFolderFilter)
+        .filter(c => c.title.toLowerCase().includes(caseSearch.toLowerCase()));
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -488,6 +498,17 @@ export default function EditPlanModal({ plan, folders, runs, cases, onClose, onS
 
                                     {activeTab === 'cases' && (
                                         <>
+                                            {caseFolders.length > 0 && (
+                                                <div className="mb-3">
+                                                    <select value={caseFolderFilter} onChange={e => setCaseFolderFilter(e.target.value)}
+                                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary-500">
+                                                        <option value="">All Folders</option>
+                                                        {caseFolders.map(f => (
+                                                            <option key={f.id} value={String(f.id)}>{f.name}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                            )}
                                             <div className="relative mb-3">
                                                 <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                                                 <input type="text" placeholder="Search cases…" value={caseSearch}

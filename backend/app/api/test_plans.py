@@ -261,3 +261,39 @@ async def get_plan_jira_issues(
             raise HTTPException(status_code=502, detail=f"Jira API Request error: {str(e)}")
         else:
             raise HTTPException(status_code=502, detail=f"Jira API error: {str(e)}")
+
+
+@router.get("/jira/filter/{filter_id}/issues")
+async def get_jira_issues_by_filter(
+    filter_id: int,
+    fields: str = Query(
+        "status,priority,assignee,team",
+        description="Comma-separated field names: status,priority,assignee,team,labels,created",
+    ),
+):
+    """
+    Fetch Jira issues for ANY filter ID directly (not tied to a plan).
+    Supported fields: status, priority, assignee, team, labels, created, summary, key.
+    """
+    field_list = [f.strip() for f in fields.split(",") if f.strip()]
+    # Always include key/summary for identification
+    for required in ("key", "summary"):
+        if required not in field_list:
+            field_list.insert(0, required)
+    try:
+        from app.services.jira_issues import fetch_issues_by_filter_id
+        from app.core.config import settings
+        issues = fetch_issues_by_filter_id(filter_id=filter_id, fields=field_list, max_results=500)
+        return {
+            "issues": issues,
+            "filter_id": filter_id,
+            "view_url": f"{settings.JIRA_HOST}/issues/?filter={filter_id}",
+        }
+    except Exception as e:
+        import httpx
+        if isinstance(e, httpx.HTTPStatusError):
+            raise HTTPException(status_code=502, detail=f"Jira API error ({e.response.status_code}): {e.response.text}")
+        elif isinstance(e, httpx.RequestError):
+            raise HTTPException(status_code=502, detail=f"Jira request error: {str(e)}")
+        else:
+            raise HTTPException(status_code=502, detail=f"Jira error: {str(e)}")

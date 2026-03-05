@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft, Loader2, ClipboardList, PlayCircle, FileText, CheckCircle2, XCircle, Clock, Edit2, ExternalLink, Bug, ListChecks } from 'lucide-react';
 import api from '../lib/api';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend } from 'recharts';
-import EditPlanModal from '../components/plans/EditPlanModal';
+import EditPlanModal, { CaseFolder } from '../components/plans/EditPlanModal';
 
 interface DocEntry {
     title?: string;
@@ -44,6 +44,7 @@ interface JiraIssue {
     priority?: string;
     created?: string;
     labels?: string[];
+    team?: string[];
 }
 
 interface RunResult {
@@ -87,6 +88,7 @@ export default function TestPlanDetails() {
     const [folders, setFolders] = useState<any[]>([]);
     const [allRuns, setAllRuns] = useState<any[]>([]);
     const [allCases, setAllCases] = useState<any[]>([]);
+    const [allSuites, setAllSuites] = useState<CaseFolder[]>([]);
 
     // Jira issues
     const [jiraUnfix, setJiraUnfix] = useState<{ issues: JiraIssue[]; view_url?: string } | null>(null);
@@ -94,15 +96,24 @@ export default function TestPlanDetails() {
     const [jiraLoading, setJiraLoading] = useState(false);
     const [jiraError, setJiraError] = useState<string | null>(null);
 
+    // Jira chart controls
+    const [jiraChartFilterId, setJiraChartFilterId] = useState<string>('');
+    const [jiraChartFilterInput, setJiraChartFilterInput] = useState<string>('');
+    const [jiraChartField, setJiraChartField] = useState<'status' | 'priority' | 'assignee' | 'team'>('status');
+    const [jiraChartIssues, setJiraChartIssues] = useState<JiraIssue[]>([]);
+    const [jiraChartLoading, setJiraChartLoading] = useState(false);
+    const [jiraChartError, setJiraChartError] = useState<string | null>(null);
+
     const fetchData = async () => {
         setIsLoading(true);
         try {
             // All 4 independent; fetch in parallel
-            const [planRes, foldersRes, runsRes, casesRes] = await Promise.all([
+            const [planRes, foldersRes, runsRes, casesRes, suitesRes] = await Promise.all([
                 api.get(`/plans/${planId}`),
                 api.get(`/plan-folders/project/1`),
                 api.get(`/runs/project/1`),
                 api.get(`/cases/project/1`),
+                api.get(`/suites/project/1`),
             ]);
             const planData: TestPlan = planRes.data;
             setPlan(planData);
@@ -110,6 +121,7 @@ export default function TestPlanDetails() {
             setFolders(foldersRes.data);
             setAllRuns(runsRes.data);
             setAllCases(casesRes.data);
+            setAllSuites(suitesRes.data.map((s: any) => ({ id: s.id, name: s.name })));
 
             if (planData.run_ids?.length) {
                 const linkedRuns = (runsRes.data as any[])
@@ -176,6 +188,32 @@ export default function TestPlanDetails() {
         load();
     }, [plan?.id, plan?.jira_unfix_filter_id, plan?.jira_total_filter_id]);
 
+    // Fetch chart issues whenever jiraChartFilterId is committed
+    useEffect(() => {
+        if (!jiraChartFilterId) {
+            setJiraChartIssues([]);
+            setJiraChartError(null);
+            return;
+        }
+        const load = async () => {
+            setJiraChartLoading(true);
+            setJiraChartError(null);
+            try {
+                const res = await api.get(
+                    `/plans/jira/filter/${jiraChartFilterId}/issues`,
+                    { params: { fields: 'status,priority,assignee,team' } }
+                );
+                setJiraChartIssues(res.data.issues || []);
+            } catch (err: any) {
+                setJiraChartError(err.response?.data?.detail || err.message || 'Failed to fetch');
+                setJiraChartIssues([]);
+            } finally {
+                setJiraChartLoading(false);
+            }
+        };
+        load();
+    }, [jiraChartFilterId]);
+
     if (isLoading) return (
         <div className="flex-1 flex items-center justify-center bg-slate-50">
             <Loader2 className="w-8 h-8 animate-spin text-primary-500" />
@@ -203,6 +241,24 @@ export default function TestPlanDetails() {
         High: 'text-red-600 bg-red-50 border-red-200',
         Medium: 'text-amber-600 bg-amber-50 border-amber-200',
         Low: 'text-slate-500 bg-slate-50 border-slate-200',
+    };
+
+    const resolveUrl = (url: string) => {
+        if (!url) return url;
+        // Already an absolute URL — return as-is
+        if (url.startsWith('http://') || url.startsWith('https://')) return url;
+        // For relative backend paths like /api/v1/uploads/static/...
+        // Replace the /api/v1 prefix with whatever VITE_API_URL is set to
+        // (e.g. /tcms/api/v1 in production, /api/v1 in dev)
+        const apiBase = import.meta.env.VITE_API_URL || '/api/v1';
+        // apiBase might be e.g. "/tcms/api/v1" or "/api/v1"
+        // strip trailing slash
+        const cleanApiBase = apiBase.endsWith('/') ? apiBase.slice(0, -1) : apiBase;
+        // If the stored URL starts with "/api/v1/", replace that prefix with the configured base
+        if (url.startsWith('/api/v1/')) {
+            return cleanApiBase + url.slice('/api/v1'.length);
+        }
+        return url;
     };
 
     return (
@@ -250,7 +306,7 @@ export default function TestPlanDetails() {
                                 {plan.prd_url && (
                                     <div className="flex flex-col gap-1 rounded-lg bg-slate-50 p-3 border border-slate-100">
                                         <span className="text-sm font-semibold text-slate-500">PRD</span>
-                                        <a href={plan.prd_url} target="_blank" rel="noreferrer" className="text-base font-medium text-primary-600 hover:text-primary-700 hover:underline truncate">
+                                        <a href={resolveUrl(plan.prd_url)} target="_blank" rel="noreferrer" className="text-base font-medium text-primary-600 hover:text-primary-700 hover:underline truncate">
                                             {plan.prd_url}
                                         </a>
                                     </div>
@@ -260,7 +316,7 @@ export default function TestPlanDetails() {
                                         <span className="text-sm font-semibold text-slate-500">SA / SD</span>
                                         <div className="space-y-1.5 mt-1">
                                             {[...(plan.sa_docs || []), ...(plan.sd_docs || [])].map((d, i) => (
-                                                <a key={i} href={d.url} target="_blank" rel="noreferrer" className="flex items-center gap-2 group">
+                                                <a key={i} href={resolveUrl(d.url)} target="_blank" rel="noreferrer" className="flex items-center gap-2 group">
                                                     <div className="w-1.5 h-1.5 rounded-full bg-primary-400 group-hover:scale-125 transition-transform" />
                                                     <span className="text-base text-slate-700 group-hover:text-primary-600 transition-colors truncate">
                                                         {d.title || d.url}
@@ -275,7 +331,7 @@ export default function TestPlanDetails() {
                                         <span className="text-sm font-semibold text-slate-500">UED</span>
                                         <div className="space-y-1.5 mt-1">
                                             {plan.ued_docs.map((d, i) => (
-                                                <a key={i} href={d.url} target="_blank" rel="noreferrer" className="flex items-center gap-2 group">
+                                                <a key={i} href={resolveUrl(d.url)} target="_blank" rel="noreferrer" className="flex items-center gap-2 group">
                                                     <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 group-hover:scale-125 transition-transform" />
                                                     <span className="text-base text-slate-700 group-hover:text-indigo-600 transition-colors truncate">
                                                         {d.title || d.url}
@@ -290,7 +346,7 @@ export default function TestPlanDetails() {
                                         <span className="text-sm font-semibold text-slate-500">QA</span>
                                         <div className="space-y-1.5 mt-1">
                                             {plan.qa_docs.map((d, i) => (
-                                                <a key={i} href={d.url} target="_blank" rel="noreferrer" className="flex items-center gap-2 group">
+                                                <a key={i} href={resolveUrl(d.url)} target="_blank" rel="noreferrer" className="flex items-center gap-2 group">
                                                     <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 group-hover:scale-125 transition-transform" />
                                                     <span className="text-base text-slate-700 group-hover:text-emerald-600 transition-colors truncate">
                                                         {d.title || d.url}
@@ -303,7 +359,7 @@ export default function TestPlanDetails() {
                                 {plan.mindmap_url && (
                                     <div className="flex flex-col gap-1 rounded-lg bg-slate-50 p-3 border border-slate-100">
                                         <span className="text-sm font-semibold text-slate-500">Case Mindmap</span>
-                                        <a href={plan.mindmap_url} target="_blank" rel="noreferrer" className="text-base font-medium text-amber-600 hover:text-amber-700 hover:underline truncate">
+                                        <a href={resolveUrl(plan.mindmap_url)} target="_blank" rel="noreferrer" className="text-base font-medium text-amber-600 hover:text-amber-700 hover:underline truncate">
                                             {plan.mindmap_url}
                                         </a>
                                     </div>
@@ -516,7 +572,7 @@ export default function TestPlanDetails() {
                     (plan.jira_unfix_filter_id || plan.jira_total_filter_id) && (
                         <div className="space-y-6">
                             <h3 className="text-base font-bold text-slate-700 uppercase tracking-wider">Jira Issues</h3>
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+                            <div className="flex flex-col gap-6 mt-6">
                                 {plan.jira_unfix_filter_id && (
                                     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-full">
                                         <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-white">
@@ -620,6 +676,119 @@ export default function TestPlanDetails() {
                                     </div>
                                 )}
                             </div>
+
+                            {/* ── Jira Pie Chart ── */}
+                            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+                                {/* Header + controls */}
+                                <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+                                    <h4 className="text-base font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                                        <span className="inline-block w-3 h-3 rounded-full bg-primary-400" />
+                                        Jira 分佈圖
+                                    </h4>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        {/* Free filter ID input */}
+                                        <form
+                                            className="flex items-center gap-1.5"
+                                            onSubmit={e => { e.preventDefault(); setJiraChartFilterId(jiraChartFilterInput.trim()); }}
+                                        >
+                                            <input
+                                                type="number"
+                                                min={1}
+                                                value={jiraChartFilterInput}
+                                                onChange={e => setJiraChartFilterInput(e.target.value)}
+                                                placeholder="Filter ID…"
+                                                className="w-32 px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                                            />
+                                            <button
+                                                type="submit"
+                                                className="px-3 py-1.5 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors"
+                                            >
+                                                查詢
+                                            </button>
+                                            {jiraChartFilterId && (
+                                                <a
+                                                    href={`https://kkday.atlassian.net/issues/?filter=${jiraChartFilterId}`}
+                                                    target="_blank" rel="noreferrer"
+                                                    className="text-sm text-primary-600 hover:underline flex items-center gap-1"
+                                                >
+                                                    <ExternalLink className="w-3.5 h-3.5" />
+                                                </a>
+                                            )}
+                                        </form>
+                                        {/* Field selector */}
+                                        <select
+                                            value={jiraChartField}
+                                            onChange={e => setJiraChartField(e.target.value as 'status' | 'priority' | 'assignee' | 'team')}
+                                            className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                                        >
+                                            <option value="status">Status</option>
+                                            <option value="priority">Priority</option>
+                                            <option value="assignee">Assignee</option>
+                                            <option value="team">歸屬團隊</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {/* Chart body */}
+                                {!jiraChartFilterId ? (
+                                    <div className="h-40 flex items-center justify-center text-slate-400 text-sm">
+                                        輸入 Filter ID 後按「查詢」即可產生圖表
+                                    </div>
+                                ) : jiraChartLoading ? (
+                                    <div className="h-40 flex items-center justify-center">
+                                        <Loader2 className="w-6 h-6 animate-spin text-primary-500" />
+                                    </div>
+                                ) : jiraChartError ? (
+                                    <div className="py-6 text-center text-red-500 text-sm bg-red-50 rounded-lg">
+                                        {jiraChartError}
+                                    </div>
+                                ) : jiraChartIssues.length === 0 ? (
+                                    <div className="h-40 flex items-center justify-center text-slate-400 text-sm">無資料</div>
+                                ) : (() => {
+                                    // Aggregate by field
+                                    const counts: Record<string, number> = {};
+                                    jiraChartIssues.forEach(issue => {
+                                        const raw = issue[jiraChartField];
+                                        // team is string[], others are string
+                                        const vals: string[] = Array.isArray(raw)
+                                            ? (raw as string[]).length ? raw as string[] : ['(empty)']
+                                            : [(raw as string) || '(unknown)'];
+                                        vals.forEach(v => { counts[v] = (counts[v] ?? 0) + 1; });
+                                    });
+                                    const COLORS = [
+                                        '#6366f1', '#f43f5e', '#10b981', '#f59e0b', '#3b82f6',
+                                        '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#64748b',
+                                    ];
+                                    const pieData = Object.entries(counts)
+                                        .sort((a, b) => b[1] - a[1])
+                                        .map(([name, value], i) => ({ name, value, color: COLORS[i % COLORS.length] }));
+                                    return (
+                                        <div className="flex flex-col sm:flex-row items-center gap-6">
+                                            <div className="w-56 h-56 shrink-0">
+                                                <ResponsiveContainer width="100%" height="100%">
+                                                    <PieChart>
+                                                        <Pie data={pieData} cx="50%" cy="50%"
+                                                            innerRadius={52} outerRadius={80}
+                                                            paddingAngle={3} dataKey="value">
+                                                            {pieData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                                                        </Pie>
+                                                        <RechartsTooltip contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px' }} />
+                                                    </PieChart>
+                                                </ResponsiveContainer>
+                                            </div>
+                                            <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                {pieData.map((entry, i) => (
+                                                    <div key={i} className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-slate-50 border border-slate-100">
+                                                        <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: entry.color }} />
+                                                        <span className="text-sm text-slate-700 truncate flex-1" title={entry.name}>{entry.name}</span>
+                                                        <span className="text-sm font-bold text-slate-900 tabular-nums shrink-0">{entry.value}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
+                            </div>
                         </div>
                     )
                 }
@@ -631,6 +800,7 @@ export default function TestPlanDetails() {
                     folders={folders}
                     runs={allRuns}
                     cases={allCases}
+                    caseFolders={allSuites}
                     onClose={() => setIsEditModalOpen(false)}
                     onSaved={fetchData}
                 />

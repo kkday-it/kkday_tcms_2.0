@@ -14,6 +14,18 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_FIELDS = ["key", "summary", "status", "assignee", "priority"]
 
+# Maps our logical field names → Jira field IDs
+FIELD_MAP = {
+    "key": "key",
+    "summary": "summary",
+    "status": "status",
+    "assignee": "assignee",
+    "priority": "priority",
+    "created": "created",
+    "labels": "labels",
+    "team": "customfield_10088",   # 歸屬團隊
+}
+
 
 def _get_auth() -> tuple[str, str]:
     data = get_secret(key="production_atlassian", return_value=True)
@@ -51,17 +63,7 @@ def fetch_issues_by_filter_id(
     """
     jql = _get_filter_jql(filter_id)
     fields = fields or DEFAULT_FIELDS
-    # Map display names to Jira field IDs
-    field_map = {
-        "key": "key",
-        "summary": "summary",
-        "status": "status",
-        "assignee": "assignee",
-        "priority": "priority",
-        "created": "created",
-        "labels": "labels",
-    }
-    jira_fields = [field_map.get(f, f) for f in fields]
+    jira_fields = [FIELD_MAP.get(f, f) for f in fields]
 
     username, api_token = _get_auth()
     url = f"{settings.JIRA_HOST}/rest/api/3/search/jql"
@@ -102,6 +104,10 @@ def fetch_issues_by_filter_id(
             row["created"] = fs.get("created") or ""
         if "labels" in jira_fields:
             row["labels"] = fs.get("labels") or []
+        if "customfield_10088" in jira_fields:
+            opts = fs.get("customfield_10088") or []
+            row["team"] = [o.get("value", "") for o in opts if isinstance(o, dict)]
         result.append(row)
 
     return result
+
