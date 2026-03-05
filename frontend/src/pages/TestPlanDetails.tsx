@@ -96,13 +96,10 @@ export default function TestPlanDetails() {
     const [jiraLoading, setJiraLoading] = useState(false);
     const [jiraError, setJiraError] = useState<string | null>(null);
 
-    // Jira chart controls
-    const [jiraChartFilterId, setJiraChartFilterId] = useState<string>('');
-    const [jiraChartFilterInput, setJiraChartFilterInput] = useState<string>('');
-    const [jiraChartField, setJiraChartField] = useState<'status' | 'priority' | 'assignee' | 'team'>('status');
-    const [jiraChartIssues, setJiraChartIssues] = useState<JiraIssue[]>([]);
-    const [jiraChartLoading, setJiraChartLoading] = useState(false);
-    const [jiraChartError, setJiraChartError] = useState<string | null>(null);
+    // Jira table pagination (8 rows/page)
+    const JIRA_PAGE_SIZE = 8;
+    const [unfixPage, setUnfixPage] = useState(1);
+    const [totalPage, setTotalPage] = useState(1);
 
     const fetchData = async () => {
         setIsLoading(true);
@@ -187,32 +184,6 @@ export default function TestPlanDetails() {
         };
         load();
     }, [plan?.id, plan?.jira_unfix_filter_id, plan?.jira_total_filter_id]);
-
-    // Fetch chart issues whenever jiraChartFilterId is committed
-    useEffect(() => {
-        if (!jiraChartFilterId) {
-            setJiraChartIssues([]);
-            setJiraChartError(null);
-            return;
-        }
-        const load = async () => {
-            setJiraChartLoading(true);
-            setJiraChartError(null);
-            try {
-                const res = await api.get(
-                    `/plans/jira/filter/${jiraChartFilterId}/issues`,
-                    { params: { fields: 'status,priority,assignee,team' } }
-                );
-                setJiraChartIssues(res.data.issues || []);
-            } catch (err: any) {
-                setJiraChartError(err.response?.data?.detail || err.message || 'Failed to fetch');
-                setJiraChartIssues([]);
-            } finally {
-                setJiraChartLoading(false);
-            }
-        };
-        load();
-    }, [jiraChartFilterId]);
 
     if (isLoading) return (
         <div className="flex-1 flex items-center justify-center bg-slate-50">
@@ -585,7 +556,7 @@ export default function TestPlanDetails() {
                                                 </a>
                                             )}
                                         </div>
-                                        <div className="overflow-x-auto max-h-64">
+                                        <div className="overflow-x-auto">
                                             {jiraLoading ? (
                                                 <div className="p-8 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-primary-500" /></div>
                                             ) : jiraError ? (
@@ -593,32 +564,53 @@ export default function TestPlanDetails() {
                                                     無資料或 Jira API 未設定<br />
                                                     <span className="text-xs text-red-400 mt-1 block">錯誤: {jiraError}</span>
                                                 </div>
-                                            ) : jiraUnfix && jiraUnfix.issues.length > 0 ? (
-                                                <table className="w-full text-left">
-                                                    <thead>
-                                                        <tr className="border-b border-slate-200 bg-white">
-                                                            <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Key</th>
-                                                            <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Summary</th>
-                                                            <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Status</th>
-                                                            <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Assignee</th>
-                                                            <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Priority</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        {jiraUnfix.issues.map((issue, i) => (
-                                                            <tr key={i} className="border-b border-slate-100 hover:bg-slate-50">
-                                                                <td className="px-5 py-4">
-                                                                    <a href={issue.url} target="_blank" rel="noreferrer" className="text-base text-primary-600 hover:underline font-mono">{issue.key}</a>
-                                                                </td>
-                                                                <td className="px-5 py-4 text-base text-slate-800 truncate max-w-[180px]" title={issue.summary}>{issue.summary ?? '—'}</td>
-                                                                <td className="px-5 py-4 text-base text-slate-600">{issue.status ?? '—'}</td>
-                                                                <td className="px-5 py-4 text-base text-slate-600">{issue.assignee ?? '—'}</td>
-                                                                <td className="px-5 py-4 text-base text-slate-600">{issue.priority ?? '—'}</td>
-                                                            </tr>
-                                                        ))}
-                                                    </tbody>
-                                                </table>
-                                            ) : (
+                                            ) : jiraUnfix && jiraUnfix.issues.length > 0 ? (() => {
+                                                const total = jiraUnfix.issues.length;
+                                                const totalPages = Math.ceil(total / JIRA_PAGE_SIZE);
+                                                const start = (unfixPage - 1) * JIRA_PAGE_SIZE;
+                                                const pageItems = jiraUnfix.issues.slice(start, start + JIRA_PAGE_SIZE);
+                                                return (
+                                                    <>
+                                                        <table className="w-full text-left">
+                                                            <thead>
+                                                                <tr className="border-b border-slate-200 bg-white">
+                                                                    <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Key</th>
+                                                                    <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Summary</th>
+                                                                    <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Status</th>
+                                                                    <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Assignee</th>
+                                                                    <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Priority</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                {pageItems.map((issue, i) => (
+                                                                    <tr key={i} className="border-b border-slate-100 hover:bg-slate-50">
+                                                                        <td className="px-5 py-4"><a href={issue.url} target="_blank" rel="noreferrer" className="text-base text-primary-600 hover:underline font-mono">{issue.key}</a></td>
+                                                                        <td className="px-5 py-4 text-base text-slate-800 truncate max-w-[180px]" title={issue.summary}>{issue.summary ?? '—'}</td>
+                                                                        <td className="px-5 py-4 text-base text-slate-600">{issue.status ?? '—'}</td>
+                                                                        <td className="px-5 py-4 text-base text-slate-600">{issue.assignee ?? '—'}</td>
+                                                                        <td className="px-5 py-4 text-base text-slate-600">{issue.priority ?? '—'}</td>
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                        {totalPages > 1 && (
+                                                            <div className="flex items-center justify-between px-5 py-3 border-t border-slate-100 bg-slate-50 text-sm text-slate-500">
+                                                                <span>{start + 1}–{Math.min(start + JIRA_PAGE_SIZE, total)} / {total}</span>
+                                                                <div className="flex items-center gap-1">
+                                                                    <button onClick={() => setUnfixPage(p => Math.max(1, p - 1))} disabled={unfixPage === 1}
+                                                                        className="px-2 py-1 rounded hover:bg-slate-200 disabled:opacity-40">‹</button>
+                                                                    {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
+                                                                        <button key={p} onClick={() => setUnfixPage(p)}
+                                                                            className={`px-2 py-1 rounded ${p === unfixPage ? 'bg-primary-100 text-primary-700 font-bold' : 'hover:bg-slate-200'}`}>{p}</button>
+                                                                    ))}
+                                                                    <button onClick={() => setUnfixPage(p => Math.min(totalPages, p + 1))} disabled={unfixPage === totalPages}
+                                                                        className="px-2 py-1 rounded hover:bg-slate-200 disabled:opacity-40">›</button>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </>
+                                                );
+                                            })() : (
                                                 <div className="p-6 text-center text-slate-400 text-sm">無資料或 Jira API 未設定</div>
                                             )}
                                         </div>
@@ -636,7 +628,7 @@ export default function TestPlanDetails() {
                                                 </a>
                                             )}
                                         </div>
-                                        <div className="overflow-x-auto max-h-64">
+                                        <div className="overflow-x-auto">
                                             {jiraLoading ? (
                                                 <div className="p-8 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-primary-500" /></div>
                                             ) : jiraError ? (
@@ -644,32 +636,53 @@ export default function TestPlanDetails() {
                                                     無資料或 Jira API 未設定<br />
                                                     <span className="text-xs text-red-400 mt-1 block">錯誤: {jiraError}</span>
                                                 </div>
-                                            ) : jiraTotal && jiraTotal.issues.length > 0 ? (
-                                                <table className="w-full text-left">
-                                                    <thead>
-                                                        <tr className="border-b border-slate-200 bg-white">
-                                                            <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Key</th>
-                                                            <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Summary</th>
-                                                            <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Status</th>
-                                                            <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Assignee</th>
-                                                            <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Priority</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        {jiraTotal.issues.map((issue, i) => (
-                                                            <tr key={i} className="border-b border-slate-100 hover:bg-slate-50">
-                                                                <td className="px-5 py-4">
-                                                                    <a href={issue.url} target="_blank" rel="noreferrer" className="text-base text-primary-600 hover:underline font-mono">{issue.key}</a>
-                                                                </td>
-                                                                <td className="px-5 py-4 text-base text-slate-800 truncate max-w-[180px]" title={issue.summary}>{issue.summary ?? '—'}</td>
-                                                                <td className="px-5 py-4 text-base text-slate-600">{issue.status ?? '—'}</td>
-                                                                <td className="px-5 py-4 text-base text-slate-600">{issue.assignee ?? '—'}</td>
-                                                                <td className="px-5 py-4 text-base text-slate-600">{issue.priority ?? '—'}</td>
-                                                            </tr>
-                                                        ))}
-                                                    </tbody>
-                                                </table>
-                                            ) : (
+                                            ) : jiraTotal && jiraTotal.issues.length > 0 ? (() => {
+                                                const total = jiraTotal.issues.length;
+                                                const totalPages = Math.ceil(total / JIRA_PAGE_SIZE);
+                                                const start = (totalPage - 1) * JIRA_PAGE_SIZE;
+                                                const pageItems = jiraTotal.issues.slice(start, start + JIRA_PAGE_SIZE);
+                                                return (
+                                                    <>
+                                                        <table className="w-full text-left">
+                                                            <thead>
+                                                                <tr className="border-b border-slate-200 bg-white">
+                                                                    <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Key</th>
+                                                                    <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Summary</th>
+                                                                    <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Status</th>
+                                                                    <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Assignee</th>
+                                                                    <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Priority</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                {pageItems.map((issue, i) => (
+                                                                    <tr key={i} className="border-b border-slate-100 hover:bg-slate-50">
+                                                                        <td className="px-5 py-4"><a href={issue.url} target="_blank" rel="noreferrer" className="text-base text-primary-600 hover:underline font-mono">{issue.key}</a></td>
+                                                                        <td className="px-5 py-4 text-base text-slate-800 truncate max-w-[180px]" title={issue.summary}>{issue.summary ?? '—'}</td>
+                                                                        <td className="px-5 py-4 text-base text-slate-600">{issue.status ?? '—'}</td>
+                                                                        <td className="px-5 py-4 text-base text-slate-600">{issue.assignee ?? '—'}</td>
+                                                                        <td className="px-5 py-4 text-base text-slate-600">{issue.priority ?? '—'}</td>
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                        {totalPages > 1 && (
+                                                            <div className="flex items-center justify-between px-5 py-3 border-t border-slate-100 bg-slate-50 text-sm text-slate-500">
+                                                                <span>{start + 1}–{Math.min(start + JIRA_PAGE_SIZE, total)} / {total}</span>
+                                                                <div className="flex items-center gap-1">
+                                                                    <button onClick={() => setTotalPage(p => Math.max(1, p - 1))} disabled={totalPage === 1}
+                                                                        className="px-2 py-1 rounded hover:bg-slate-200 disabled:opacity-40">‹</button>
+                                                                    {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
+                                                                        <button key={p} onClick={() => setTotalPage(p)}
+                                                                            className={`px-2 py-1 rounded ${p === totalPage ? 'bg-primary-100 text-primary-700 font-bold' : 'hover:bg-slate-200'}`}>{p}</button>
+                                                                    ))}
+                                                                    <button onClick={() => setTotalPage(p => Math.min(totalPages, p + 1))} disabled={totalPage === totalPages}
+                                                                        className="px-2 py-1 rounded hover:bg-slate-200 disabled:opacity-40">›</button>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </>
+                                                );
+                                            })() : (
                                                 <div className="p-6 text-center text-slate-400 text-sm">無資料或 Jira API 未設定</div>
                                             )}
                                         </div>
@@ -677,122 +690,10 @@ export default function TestPlanDetails() {
                                 )}
                             </div>
 
-                            {/* ── Jira Pie Chart ── */}
-                            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-                                {/* Header + controls */}
-                                <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
-                                    <h4 className="text-base font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
-                                        <span className="inline-block w-3 h-3 rounded-full bg-primary-400" />
-                                        Jira 分佈圖
-                                    </h4>
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                        {/* Free filter ID input */}
-                                        <form
-                                            className="flex items-center gap-1.5"
-                                            onSubmit={e => { e.preventDefault(); setJiraChartFilterId(jiraChartFilterInput.trim()); }}
-                                        >
-                                            <input
-                                                type="number"
-                                                min={1}
-                                                value={jiraChartFilterInput}
-                                                onChange={e => setJiraChartFilterInput(e.target.value)}
-                                                placeholder="Filter ID…"
-                                                className="w-32 px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                                            />
-                                            <button
-                                                type="submit"
-                                                className="px-3 py-1.5 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors"
-                                            >
-                                                查詢
-                                            </button>
-                                            {jiraChartFilterId && (
-                                                <a
-                                                    href={`https://kkday.atlassian.net/issues/?filter=${jiraChartFilterId}`}
-                                                    target="_blank" rel="noreferrer"
-                                                    className="text-sm text-primary-600 hover:underline flex items-center gap-1"
-                                                >
-                                                    <ExternalLink className="w-3.5 h-3.5" />
-                                                </a>
-                                            )}
-                                        </form>
-                                        {/* Field selector */}
-                                        <select
-                                            value={jiraChartField}
-                                            onChange={e => setJiraChartField(e.target.value as 'status' | 'priority' | 'assignee' | 'team')}
-                                            className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary-500"
-                                        >
-                                            <option value="status">Status</option>
-                                            <option value="priority">Priority</option>
-                                            <option value="assignee">Assignee</option>
-                                            <option value="team">歸屬團隊</option>
-                                        </select>
-                                    </div>
-                                </div>
-
-                                {/* Chart body */}
-                                {!jiraChartFilterId ? (
-                                    <div className="h-40 flex items-center justify-center text-slate-400 text-sm">
-                                        輸入 Filter ID 後按「查詢」即可產生圖表
-                                    </div>
-                                ) : jiraChartLoading ? (
-                                    <div className="h-40 flex items-center justify-center">
-                                        <Loader2 className="w-6 h-6 animate-spin text-primary-500" />
-                                    </div>
-                                ) : jiraChartError ? (
-                                    <div className="py-6 text-center text-red-500 text-sm bg-red-50 rounded-lg">
-                                        {jiraChartError}
-                                    </div>
-                                ) : jiraChartIssues.length === 0 ? (
-                                    <div className="h-40 flex items-center justify-center text-slate-400 text-sm">無資料</div>
-                                ) : (() => {
-                                    // Aggregate by field
-                                    const counts: Record<string, number> = {};
-                                    jiraChartIssues.forEach(issue => {
-                                        const raw = issue[jiraChartField];
-                                        // team is string[], others are string
-                                        const vals: string[] = Array.isArray(raw)
-                                            ? (raw as string[]).length ? raw as string[] : ['(empty)']
-                                            : [(raw as string) || '(unknown)'];
-                                        vals.forEach(v => { counts[v] = (counts[v] ?? 0) + 1; });
-                                    });
-                                    const COLORS = [
-                                        '#6366f1', '#f43f5e', '#10b981', '#f59e0b', '#3b82f6',
-                                        '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#64748b',
-                                    ];
-                                    const pieData = Object.entries(counts)
-                                        .sort((a, b) => b[1] - a[1])
-                                        .map(([name, value], i) => ({ name, value, color: COLORS[i % COLORS.length] }));
-                                    return (
-                                        <div className="flex flex-col sm:flex-row items-center gap-6">
-                                            <div className="w-56 h-56 shrink-0">
-                                                <ResponsiveContainer width="100%" height="100%">
-                                                    <PieChart>
-                                                        <Pie data={pieData} cx="50%" cy="50%"
-                                                            innerRadius={52} outerRadius={80}
-                                                            paddingAngle={3} dataKey="value">
-                                                            {pieData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
-                                                        </Pie>
-                                                        <RechartsTooltip contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px' }} />
-                                                    </PieChart>
-                                                </ResponsiveContainer>
-                                            </div>
-                                            <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                                {pieData.map((entry, i) => (
-                                                    <div key={i} className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-slate-50 border border-slate-100">
-                                                        <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: entry.color }} />
-                                                        <span className="text-sm text-slate-700 truncate flex-1" title={entry.name}>{entry.name}</span>
-                                                        <span className="text-sm font-bold text-slate-900 tabular-nums shrink-0">{entry.value}</span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    );
-                                })()}
-                            </div>
                         </div>
                     )
                 }
-            </div >
+            </div>
 
             {isEditModalOpen && (
                 <EditPlanModal
@@ -805,6 +706,6 @@ export default function TestPlanDetails() {
                     onSaved={fetchData}
                 />
             )}
-        </div >
+        </div>
     );
 }

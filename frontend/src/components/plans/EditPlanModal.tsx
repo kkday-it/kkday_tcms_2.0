@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Loader2, Search, Plus, X, UploadCloud } from 'lucide-react';
+import { Loader2, Search, Plus, X, UploadCloud, ExternalLink } from 'lucide-react';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 import api from '../../lib/api';
 
 interface DocEntry {
@@ -90,7 +91,31 @@ export default function EditPlanModal({ plan, folders, runs, cases, caseFolders,
     const [activeTab, setActiveTab] = useState<'runs' | 'cases'>('runs');
     const [metaTab, setMetaTab] = useState<'basic' | 'docs' | 'timeline' | 'jira' | 'runs'>('basic');
 
+    // Jira pie chart (inside modal)
+    const [chartFilterInput, setChartFilterInput] = useState('');
+    const [chartFilterId, setChartFilterId] = useState('');
+    const [chartField, setChartField] = useState<'status' | 'priority' | 'assignee' | 'team'>('status');
+    const [chartIssues, setChartIssues] = useState<{ key: string; status?: string; priority?: string; assignee?: string; team?: string[] }[]>([]);
+    const [chartLoading, setChartLoading] = useState(false);
+    const [chartError, setChartError] = useState<string | null>(null);
+
     const JIRA_FIELD_OPTIONS = ['key', 'summary', 'status', 'assignee', 'priority', 'created', 'labels'];
+
+    // Fetch chart issues when chartFilterId committed
+    useEffect(() => {
+        if (!chartFilterId) { setChartIssues([]); setChartError(null); return; }
+        const load = async () => {
+            setChartLoading(true); setChartError(null);
+            try {
+                const res = await api.get(`/plans/jira/filter/${chartFilterId}/issues`, { params: { fields: 'status,priority,assignee,team' } });
+                setChartIssues(res.data.issues || []);
+            } catch (err: any) {
+                setChartError(err.response?.data?.detail || err.message || 'Failed to fetch');
+                setChartIssues([]);
+            } finally { setChartLoading(false); }
+        };
+        load();
+    }, [chartFilterId]);
 
     useEffect(() => {
         if (plan) {
@@ -465,6 +490,83 @@ export default function EditPlanModal({ plan, folders, runs, cases, caseFolders,
                                             </label>
                                         ))}
                                     </div>
+                                </div>
+                                {/* ── Jira Pie Chart ── */}
+                                <div className="border-t border-slate-100 pt-4 mt-2">
+                                    <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+                                        <span className="text-sm font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                                            <span className="inline-block w-2.5 h-2.5 rounded-full bg-primary-400" /> Jira 分佈圖
+                                        </span>
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <form className="flex items-center gap-1.5"
+                                                onSubmit={e => { e.preventDefault(); setChartFilterId(chartFilterInput.trim()); }}>
+                                                <input type="number" min={1} value={chartFilterInput}
+                                                    onChange={e => setChartFilterInput(e.target.value)}
+                                                    placeholder="Filter ID…"
+                                                    className="w-28 px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                                                <button type="submit"
+                                                    className="px-3 py-1.5 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700">查詢</button>
+                                                {chartFilterId && (
+                                                    <a href={`https://kkday.atlassian.net/issues/?filter=${chartFilterId}`}
+                                                        target="_blank" rel="noreferrer"
+                                                        className="text-primary-600 hover:underline">
+                                                        <ExternalLink className="w-3.5 h-3.5" />
+                                                    </a>
+                                                )}
+                                            </form>
+                                            <select value={chartField}
+                                                onChange={e => setChartField(e.target.value as 'status' | 'priority' | 'assignee' | 'team')}
+                                                className="px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary-500">
+                                                <option value="status">Status</option>
+                                                <option value="priority">Priority</option>
+                                                <option value="assignee">Assignee</option>
+                                                <option value="team">歸屬團隊</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    {!chartFilterId ? (
+                                        <div className="h-32 flex items-center justify-center text-slate-400 text-sm">輸入 Filter ID 後按「查詢」即可產生圖表</div>
+                                    ) : chartLoading ? (
+                                        <div className="h-32 flex items-center justify-center"><Loader2 className="w-5 h-5 animate-spin text-primary-500" /></div>
+                                    ) : chartError ? (
+                                        <div className="py-4 text-center text-red-500 text-sm bg-red-50 rounded-lg">{chartError}</div>
+                                    ) : chartIssues.length === 0 ? (
+                                        <div className="h-32 flex items-center justify-center text-slate-400 text-sm">無資料</div>
+                                    ) : (() => {
+                                        const counts: Record<string, number> = {};
+                                        chartIssues.forEach(issue => {
+                                            const raw = issue[chartField];
+                                            const vals: string[] = Array.isArray(raw)
+                                                ? (raw as string[]).length ? raw as string[] : ['(empty)']
+                                                : [(raw as string) || '(unknown)'];
+                                            vals.forEach(v => { counts[v] = (counts[v] ?? 0) + 1; });
+                                        });
+                                        const COLORS = ['#6366f1', '#f43f5e', '#10b981', '#f59e0b', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#64748b'];
+                                        const pd = Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([name, value], i) => ({ name, value, color: COLORS[i % COLORS.length] }));
+                                        return (
+                                            <div className="flex flex-col sm:flex-row items-center gap-4">
+                                                <div className="w-44 h-44 shrink-0">
+                                                    <ResponsiveContainer width="100%" height="100%">
+                                                        <PieChart>
+                                                            <Pie data={pd} cx="50%" cy="50%" innerRadius={40} outerRadius={64} paddingAngle={3} dataKey="value">
+                                                                {pd.map((e, i) => <Cell key={i} fill={e.color} />)}
+                                                            </Pie>
+                                                            <RechartsTooltip contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '12px' }} />
+                                                        </PieChart>
+                                                    </ResponsiveContainer>
+                                                </div>
+                                                <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                                                    {pd.map((e, i) => (
+                                                        <div key={i} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-100">
+                                                            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: e.color }} />
+                                                            <span className="text-xs text-slate-700 truncate flex-1" title={e.name}>{e.name}</span>
+                                                            <span className="text-xs font-bold text-slate-900 tabular-nums shrink-0">{e.value}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
                                 </div>
                             </>
                         )}
