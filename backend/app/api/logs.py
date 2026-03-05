@@ -10,18 +10,27 @@ from fastapi.responses import StreamingResponse
 
 router = APIRouter()
 
-LOG_DIR = os.environ.get("TCMS_LOG_DIR", "/app/logs")
+LOG_DIR = os.environ.get("TCMS_LOG_DIR", "/app/logs" if os.environ.get("USE_QA_DATABASE_SECRET") == "true" else os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../logs")))
 BE_LOG = os.path.join(LOG_DIR, "backend.log")
-FE_ACCESS_LOG = os.path.join(LOG_DIR, "access.log")
+FE_ACCESS_LOG = os.path.join(LOG_DIR, "frontend.log")
 FE_ERROR_LOG = os.path.join(LOG_DIR, "error.log")
 
 
 def _tail_file(filepath: str, out_queue: queue.Queue, max_lines: int = 500):
     """在背景 thread 讀取 log 並放入 queue"""
     if not os.path.exists(filepath):
-        out_queue.put(f"# Log file not found: {filepath}\n")
-        out_queue.put(None)
-        return
+        if "access.log" in filepath or "error.log" in filepath:
+            out_queue.put("# [INFO] 目前可能為本機開發環境 (Vite)，不會產生 Nginx log。\n")
+            out_queue.put("# 請直接查看瀏覽器 Console 或 Terminal 輸出。\n")
+            out_queue.put(f"# 預期讀取路徑: {filepath}\n")
+        else:
+            out_queue.put(f"# Log file not found: {filepath}\n")
+        
+        # 等待檔案被建立，這樣即使後來才產生 log 檔也能印出來
+        while not os.path.exists(filepath):
+            time.sleep(2)
+            
+        out_queue.put(f"\n# [INFO] 檔案已建立: {filepath}，開始即時讀取...\n")
 
     with open(filepath, "r", encoding="utf-8", errors="replace") as f:
         lines = f.readlines()
@@ -38,16 +47,19 @@ def _tail_file(filepath: str, out_queue: queue.Queue, max_lines: int = 500):
                 time.sleep(0.2)
 
 
-def sse_generator(filepath: str):
-    """同步 generator，在 background thread 執行 tail，主 generator 從 queue 讀取"""
+import asyncio
+
+async def sse_generator(filepath: str):
+    """異步 generator，避免佔用 FastAPI 的 threadpool 導致其他 API 卡死"""
     q = queue.Queue()
     t = threading.Thread(target=_tail_file, args=(filepath, q), daemon=True)
     t.start()
 
     while True:
         try:
-            line = q.get(timeout=1.0)
+            line = q.get_nowait()
         except queue.Empty:
+            await asyncio.sleep(1.0)
             yield ": keepalive\n\n"
             continue
         if line is None:

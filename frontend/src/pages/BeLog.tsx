@@ -40,7 +40,7 @@ export default function BeLog() {
       <pre ref={preRef} className="flex-1 p-4 overflow-auto text-sm text-amber-200 font-mono whitespace-pre-wrap">
         {logs.length === 0 && status === 'connecting' && 'Connecting...'}
         {logs.length === 0 && status === 'error' && 'Connection failed. Check if backend is running.'}
-        {logs.join('')}
+        {logs.join('\n')}
       </pre>
     </div>
   );
