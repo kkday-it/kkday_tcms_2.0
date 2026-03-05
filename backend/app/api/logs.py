@@ -12,16 +12,18 @@ router = APIRouter()
 
 LOG_DIR = os.environ.get("TCMS_LOG_DIR", "/app/logs" if os.environ.get("USE_QA_DATABASE_SECRET") == "true" else os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../logs")))
 BE_LOG = os.path.join(LOG_DIR, "backend.log")
-FE_ACCESS_LOG = os.path.join(LOG_DIR, "frontend.log")
-FE_ERROR_LOG = os.path.join(LOG_DIR, "error.log")
+# Docker: Nginx writes to access.log (mounted from /var/log/nginx)
+# Local:  Vite plugin writes to frontend.log
+FE_ACCESS_LOG = os.path.join(LOG_DIR, "access.log")
+FE_LOCAL_LOG = os.path.join(LOG_DIR, "frontend.log")
 
 
 def _tail_file(filepath: str, out_queue: queue.Queue, max_lines: int = 500):
     """在背景 thread 讀取 log 並放入 queue"""
     if not os.path.exists(filepath):
-        if "access.log" in filepath or "error.log" in filepath:
-            out_queue.put("# [INFO] 目前可能為本機開發環境 (Vite)，不會產生 Nginx log。\n")
-            out_queue.put("# 請直接查看瀏覽器 Console 或 Terminal 輸出。\n")
+        if "access.log" in filepath or "frontend.log" in filepath:
+            out_queue.put("# [INFO] Log 檔案尚未建立。\n")
+            out_queue.put("# 本機開發：Vite 啟動後會自動寫入 frontend.log。\n")
             out_queue.put(f"# 預期讀取路徑: {filepath}\n")
         else:
             out_queue.put(f"# Log file not found: {filepath}\n")
@@ -77,7 +79,11 @@ async def stream_logs(
     if source == "be":
         filepath = BE_LOG
     elif source == "fe":
-        filepath = FE_ACCESS_LOG if os.path.exists(FE_ACCESS_LOG) else FE_ERROR_LOG
+        # Prefer Docker/Nginx access.log, then Vite local frontend.log
+        if os.path.exists(FE_ACCESS_LOG):
+            filepath = FE_ACCESS_LOG
+        else:
+            filepath = FE_LOCAL_LOG
     else:
         return {"error": "Invalid source. Use 'be' or 'fe'"}
 
