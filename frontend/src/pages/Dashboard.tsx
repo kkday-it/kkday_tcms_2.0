@@ -332,6 +332,7 @@ export default function Dashboard() {
                                             outerRadius={110}
                                             paddingAngle={5}
                                             dataKey="value"
+                                            label={({ value }) => value}
                                         >
                                             {summary.run_types_distribution.map((_, index) => (
                                                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />

@@ -191,14 +191,11 @@ export default function TestCaseExecutionPane({ resultId, onClose, onUpdated }: 
 
     return (
         <>
-            {/* Backdrop */}
-            <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-40" onClick={onClose} />
-
             {/* Slide-over */}
             <div
                 ref={sidebarRef}
                 style={{ width: `${width}px` }}
-                className={`fixed top-0 right-0 h-full bg-white shadow-2xl z-50 flex flex-col transform transition-transform duration-300 ease-in-out ${isResizing ? 'transition-none' : ''}`}
+                className={`fixed top-0 right-0 h-full bg-white shadow-2xl z-40 flex flex-col transform transition-transform duration-300 ease-in-out border-l border-slate-200 ${isResizing ? 'transition-none' : ''}`}
             >
                 {/* Resizer Handle */}
                 <div
