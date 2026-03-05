@@ -34,6 +34,9 @@ class TestPlanCreate(TestPlanBase):
     prd_url: Optional[str] = None
     sa_docs: Optional[List[dict]] = None
     sd_docs: Optional[List[dict]] = None
+    ued_docs: Optional[List[dict]] = None
+    qa_docs: Optional[List[dict]] = None
+    mindmap_url: Optional[str] = None
     timeline: Optional[dict] = None
     jira_unfix_filter_id: Optional[int] = None
     jira_total_filter_id: Optional[int] = None
@@ -50,6 +53,9 @@ class TestPlanUpdate(BaseModel):
     prd_url: Optional[str] = None
     sa_docs: Optional[List[dict]] = None
     sd_docs: Optional[List[dict]] = None
+    ued_docs: Optional[List[dict]] = None
+    qa_docs: Optional[List[dict]] = None
+    mindmap_url: Optional[str] = None
     timeline: Optional[dict] = None
     jira_unfix_filter_id: Optional[int] = None
     jira_total_filter_id: Optional[int] = None
@@ -65,6 +71,9 @@ class TestPlanResponse(TestPlanBase):
     prd_url: Optional[str] = None
     sa_docs: Optional[List[dict]] = None
     sd_docs: Optional[List[dict]] = None
+    ued_docs: Optional[List[dict]] = None
+    qa_docs: Optional[List[dict]] = None
+    mindmap_url: Optional[str] = None
     timeline: Optional[dict] = None
     jira_unfix_filter_id: Optional[int] = None
     jira_total_filter_id: Optional[int] = None

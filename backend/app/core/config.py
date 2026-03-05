@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     SERVICE_URL: Optional[str] = None          # fallback alias (QA-automation 使用此名)
     AUTOMATION_TOKEN: Optional[str] = None    # Bearer token for secret API
 
+    # Jira
+    JIRA_HOST: str = "https://kkday.atlassian.net"
+
     # Dify Knowledge Base 設定
     DIFY_BASE_URL: Optional[str] = None        # e.g. https://dify.example.com
     DIFY_API_KEY: Optional[str] = None         # Knowledge Base API Key

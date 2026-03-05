@@ -33,7 +33,7 @@ async def lifespan(app: FastAPI):
     # Uses IF NOT EXISTS equivalent: catch error if column already exists.
     try:
         async with engine.begin() as conn:
-            # PostgreSQL: use DO block to add column only if it doesn't exist
+            # PostgreSQL: use DO block to add columns only if they don't exist
             db_url = str(engine.url)
             if "postgresql" in db_url or "asyncpg" in db_url:
                 await conn.execute(
@@ -47,6 +47,15 @@ async def lifespan(app: FastAPI):
                             ) THEN
                                 ALTER TABLE tcms_users ADD COLUMN google_id VARCHAR UNIQUE;
                             END IF;
+
+                            IF NOT EXISTS (
+                                SELECT 1 FROM information_schema.columns
+                                WHERE table_name='tcms_test_plans' AND column_name='ued_docs'
+                            ) THEN
+                                ALTER TABLE tcms_test_plans ADD COLUMN ued_docs JSON;
+                                ALTER TABLE tcms_test_plans ADD COLUMN qa_docs JSON;
+                                ALTER TABLE tcms_test_plans ADD COLUMN mindmap_url TEXT;
+                            END IF;
                         END $$;
                         """
                     )
@@ -54,14 +63,16 @@ async def lifespan(app: FastAPI):
             else:
                 # SQLite: try to add, ignore if exists
                 try:
-                    await conn.execute(
-                        __import__("sqlalchemy").text(
-                            "ALTER TABLE tcms_users ADD COLUMN google_id VARCHAR UNIQUE"
-                        )
-                    )
+                    await conn.execute(__import__("sqlalchemy").text("ALTER TABLE tcms_users ADD COLUMN google_id VARCHAR UNIQUE"))
                 except Exception:
-                    pass  # Column likely already exists in SQLite
-        logger.info("Column migration complete (google_id check).")
+                    pass
+                try:
+                    await conn.execute(__import__("sqlalchemy").text("ALTER TABLE tcms_test_plans ADD COLUMN ued_docs JSON"))
+                    await conn.execute(__import__("sqlalchemy").text("ALTER TABLE tcms_test_plans ADD COLUMN qa_docs JSON"))
+                    await conn.execute(__import__("sqlalchemy").text("ALTER TABLE tcms_test_plans ADD COLUMN mindmap_url TEXT"))
+                except Exception:
+                    pass
+        logger.info("Column migration complete (google_id & test_plan docs check).")
     except Exception as e:
         logger.warning(f"Column migration warning (non-fatal): {e}")
 

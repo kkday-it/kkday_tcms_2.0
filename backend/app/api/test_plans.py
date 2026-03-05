@@ -44,6 +44,9 @@ def _plan_to_response(plan: TestPlan) -> dict:
         "prd_url": getattr(plan, "prd_url", None),
         "sa_docs": getattr(plan, "sa_docs", None) or [],
         "sd_docs": getattr(plan, "sd_docs", None) or [],
+        "ued_docs": getattr(plan, "ued_docs", None) or [],
+        "qa_docs": getattr(plan, "qa_docs", None) or [],
+        "mindmap_url": getattr(plan, "mindmap_url", None),
         "timeline": getattr(plan, "timeline", None),
         "jira_unfix_filter_id": getattr(plan, "jira_unfix_filter_id", None),
         "jira_total_filter_id": getattr(plan, "jira_total_filter_id", None),
@@ -243,10 +246,18 @@ async def get_plan_jira_issues(
             "priority",
         ]
         issues = fetch_issues_by_filter_id(filter_id=filter_id, fields=fields)
+        from app.core.config import settings
         return {
             "issues": issues,
             "filter_id": filter_id,
-            "view_url": f"https://kkday.atlassian.net/issues/?filter={filter_id}",
+            "view_url": f"{settings.JIRA_HOST}/issues/?filter={filter_id}",
         }
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Jira API error: {str(e)}")
+        import httpx
+        if isinstance(e, httpx.HTTPStatusError):
+            err_text = e.response.text
+            raise HTTPException(status_code=502, detail=f"Jira API error ({e.response.status_code}): {err_text}")
+        elif isinstance(e, httpx.RequestError):
+            raise HTTPException(status_code=502, detail=f"Jira API Request error: {str(e)}")
+        else:
+            raise HTTPException(status_code=502, detail=f"Jira API error: {str(e)}")

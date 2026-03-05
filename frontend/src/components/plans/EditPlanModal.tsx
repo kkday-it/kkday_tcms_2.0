@@ -36,6 +36,9 @@ export interface TestPlan {
     prd_url?: string | null;
     sa_docs?: DocEntry[];
     sd_docs?: DocEntry[];
+    ued_docs?: DocEntry[];
+    qa_docs?: DocEntry[];
+    mindmap_url?: string | null;
     timeline?: {
         rd?: { start?: string; end?: string };
         ued?: { start?: string; end?: string };
@@ -62,6 +65,9 @@ export default function EditPlanModal({ plan, folders, runs, cases, onClose, onS
     const [prdUrl, setPrdUrl] = useState('');
     const [saDocs, setSaDocs] = useState<DocEntry[]>([]);
     const [sdDocs, setSdDocs] = useState<DocEntry[]>([]);
+    const [uedDocs, setUedDocs] = useState<DocEntry[]>([]);
+    const [qaDocs, setQaDocs] = useState<DocEntry[]>([]);
+    const [mindmapUrl, setMindmapUrl] = useState('');
     const [timeline, setTimeline] = useState<{
         rd?: { start: string; end: string };
         ued?: { start: string; end: string };
@@ -88,6 +94,9 @@ export default function EditPlanModal({ plan, folders, runs, cases, onClose, onS
             setPrdUrl(plan.prd_url || '');
             setSaDocs(plan.sa_docs || []);
             setSdDocs(plan.sd_docs || []);
+            setUedDocs(plan.ued_docs || []);
+            setQaDocs(plan.qa_docs || []);
+            setMindmapUrl(plan.mindmap_url || '');
             const t = plan.timeline || {};
             setTimeline({
                 rd: t.rd ? { start: t.rd.start || '', end: t.rd.end || '' } : undefined,
@@ -103,6 +112,7 @@ export default function EditPlanModal({ plan, folders, runs, cases, onClose, onS
             setTitle(''); setDescription(''); setStatus('Draft');
             setFolderId(''); setSelectedRunIds([]); setSelectedCaseIds([]);
             setPrdUrl(''); setSaDocs([]); setSdDocs([]);
+            setUedDocs([]); setQaDocs([]); setMindmapUrl('');
             setTimeline({ qa: [] });
             setJiraUnfixFilterId(''); setJiraTotalFilterId('');
             setJiraDisplayFields(['key', 'summary', 'status', 'assignee', 'priority']);
@@ -112,19 +122,29 @@ export default function EditPlanModal({ plan, folders, runs, cases, onClose, onS
         setMetaTab('basic');
     }, [plan]);
 
-    const addDocEntry = (target: 'sa' | 'sd') => {
+    const addDocEntry = (target: 'sa' | 'sd' | 'ued' | 'qa') => {
         if (target === 'sa') setSaDocs([...saDocs, { url: '' }]);
-        else setSdDocs([...sdDocs, { url: '' }]);
+        else if (target === 'sd') setSdDocs([...sdDocs, { url: '' }]);
+        else if (target === 'ued') setUedDocs([...uedDocs, { url: '' }]);
+        else if (target === 'qa') setQaDocs([...qaDocs, { url: '' }]);
     };
-    const updateDocEntry = (target: 'sa' | 'sd', idx: number, field: keyof DocEntry, value: string) => {
-        const arr = target === 'sa' ? [...saDocs] : [...sdDocs];
+    const updateDocEntry = (target: 'sa' | 'sd' | 'ued' | 'qa', idx: number, field: keyof DocEntry, value: string) => {
+        let arr: DocEntry[] = [];
+        if (target === 'sa') arr = [...saDocs];
+        else if (target === 'sd') arr = [...sdDocs];
+        else if (target === 'ued') arr = [...uedDocs];
+        else if (target === 'qa') arr = [...qaDocs];
         arr[idx] = { ...arr[idx], [field]: value };
         if (target === 'sa') setSaDocs(arr);
-        else setSdDocs(arr);
+        else if (target === 'sd') setSdDocs(arr);
+        else if (target === 'ued') setUedDocs(arr);
+        else if (target === 'qa') setQaDocs(arr);
     };
-    const removeDocEntry = (target: 'sa' | 'sd', idx: number) => {
+    const removeDocEntry = (target: 'sa' | 'sd' | 'ued' | 'qa', idx: number) => {
         if (target === 'sa') setSaDocs(saDocs.filter((_, i) => i !== idx));
-        else setSdDocs(sdDocs.filter((_, i) => i !== idx));
+        else if (target === 'sd') setSdDocs(sdDocs.filter((_, i) => i !== idx));
+        else if (target === 'ued') setUedDocs(uedDocs.filter((_, i) => i !== idx));
+        else if (target === 'qa') setQaDocs(qaDocs.filter((_, i) => i !== idx));
     };
 
     const addQaEntry = () => {
@@ -161,10 +181,10 @@ export default function EditPlanModal({ plan, folders, runs, cases, onClose, onS
             const tPayload =
                 timeline.rd || timeline.ued || (timeline.qa && timeline.qa.length)
                     ? {
-                          rd: timeline.rd?.start || timeline.rd?.end ? timeline.rd : undefined,
-                          ued: timeline.ued?.start || timeline.ued?.end ? timeline.ued : undefined,
-                          qa: timeline.qa?.filter(x => x.start || x.end).length ? timeline.qa : undefined,
-                      }
+                        rd: timeline.rd?.start || timeline.rd?.end ? timeline.rd : undefined,
+                        ued: timeline.ued?.start || timeline.ued?.end ? timeline.ued : undefined,
+                        qa: timeline.qa?.filter(x => x.start || x.end).length ? timeline.qa : undefined,
+                    }
                     : null;
             const payload = {
                 title: title.trim(),
@@ -174,6 +194,9 @@ export default function EditPlanModal({ plan, folders, runs, cases, onClose, onS
                 prd_url: prdUrl.trim() || null,
                 sa_docs: saDocs.filter(d => d.url.trim()).map(d => ({ title: d.title?.trim() || undefined, url: d.url.trim() })),
                 sd_docs: sdDocs.filter(d => d.url.trim()).map(d => ({ title: d.title?.trim() || undefined, url: d.url.trim() })),
+                ued_docs: uedDocs.filter(d => d.url.trim()).map(d => ({ title: d.title?.trim() || undefined, url: d.url.trim() })),
+                qa_docs: qaDocs.filter(d => d.url.trim()).map(d => ({ title: d.title?.trim() || undefined, url: d.url.trim() })),
+                mindmap_url: mindmapUrl.trim() || null,
                 timeline: tPayload,
                 jira_unfix_filter_id: jiraUnfixFilterId.trim() ? parseInt(jiraUnfixFilterId, 10) : null,
                 jira_total_filter_id: jiraTotalFilterId.trim() ? parseInt(jiraTotalFilterId, 10) : null,
@@ -265,7 +288,7 @@ export default function EditPlanModal({ plan, folders, runs, cases, onClose, onS
                                 </div>
                                 <div>
                                     <div className="flex items-center justify-between mb-1">
-                                        <label className="block text-sm font-medium text-slate-700">SA（可多份）</label>
+                                        <label className="block text-sm font-medium text-slate-700">SA / SD（可多份）</label>
                                         <button type="button" onClick={() => addDocEntry('sa')}
                                             className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-1">
                                             <Plus className="w-3 h-3" /> 新增
@@ -285,23 +308,49 @@ export default function EditPlanModal({ plan, folders, runs, cases, onClose, onS
                                 </div>
                                 <div>
                                     <div className="flex items-center justify-between mb-1">
-                                        <label className="block text-sm font-medium text-slate-700">SD（可多份）</label>
-                                        <button type="button" onClick={() => addDocEntry('sd')}
+                                        <label className="block text-sm font-medium text-slate-700">UED（可多份）</label>
+                                        <button type="button" onClick={() => addDocEntry('ued')}
                                             className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-1">
                                             <Plus className="w-3 h-3" /> 新增
                                         </button>
                                     </div>
                                     <div className="space-y-2">
-                                        {sdDocs.map((d, i) => (
+                                        {uedDocs.map((d, i) => (
                                             <div key={i} className="flex gap-2 items-center">
-                                                <input type="text" placeholder="標題（選填）" value={d.title || ''} onChange={e => updateDocEntry('sd', i, 'title', e.target.value)}
+                                                <input type="text" placeholder="標題（選填）" value={d.title || ''} onChange={e => updateDocEntry('ued', i, 'title', e.target.value)}
                                                     className="flex-1 min-w-0 px-3 py-2 border border-slate-200 rounded-lg text-sm" />
-                                                <input type="url" placeholder="URL" value={d.url} onChange={e => updateDocEntry('sd', i, 'url', e.target.value)}
+                                                <input type="url" placeholder="URL" value={d.url} onChange={e => updateDocEntry('ued', i, 'url', e.target.value)}
                                                     className="flex-[2] min-w-0 px-3 py-2 border border-slate-200 rounded-lg text-sm" />
-                                                <button type="button" onClick={() => removeDocEntry('sd', i)} className="p-2 text-slate-400 hover:text-red-600"><X className="w-4 h-4" /></button>
+                                                <button type="button" onClick={() => removeDocEntry('ued', i)} className="p-2 text-slate-400 hover:text-red-600"><X className="w-4 h-4" /></button>
                                             </div>
                                         ))}
                                     </div>
+                                </div>
+                                <div>
+                                    <div className="flex items-center justify-between mb-1">
+                                        <label className="block text-sm font-medium text-slate-700">QA (可多份)</label>
+                                        <button type="button" onClick={() => addDocEntry('qa')}
+                                            className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-1">
+                                            <Plus className="w-3 h-3" /> 新增
+                                        </button>
+                                    </div>
+                                    <div className="space-y-2">
+                                        {qaDocs.map((d, i) => (
+                                            <div key={i} className="flex gap-2 items-center">
+                                                <input type="text" placeholder="標題（選填）" value={d.title || ''} onChange={e => updateDocEntry('qa', i, 'title', e.target.value)}
+                                                    className="flex-1 min-w-0 px-3 py-2 border border-slate-200 rounded-lg text-sm" />
+                                                <input type="url" placeholder="URL" value={d.url} onChange={e => updateDocEntry('qa', i, 'url', e.target.value)}
+                                                    className="flex-[2] min-w-0 px-3 py-2 border border-slate-200 rounded-lg text-sm" />
+                                                <button type="button" onClick={() => removeDocEntry('qa', i)} className="p-2 text-slate-400 hover:text-red-600"><X className="w-4 h-4" /></button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Case Mindmap（單一連結）</label>
+                                    <input type="url" value={mindmapUrl} onChange={e => setMindmapUrl(e.target.value)}
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm"
+                                        placeholder="https://..." />
                                 </div>
                             </>
                         )}
@@ -391,56 +440,56 @@ export default function EditPlanModal({ plan, folders, runs, cases, onClose, onS
                         )}
 
                         {metaTab === 'runs' && (
-                        <>
-                        {/* Tabs: Test Runs / Test Cases */}
-                        <div className="pt-2">
-                            <div className="flex gap-1 border-b border-slate-200 mb-4">
-                                {(['runs', 'cases'] as const).map(tab => (
-                                    <button key={tab} type="button" onClick={() => setActiveTab(tab)}
-                                        className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${activeTab === tab ? 'bg-white border-t border-x border-slate-200 text-primary-700 -mb-px relative z-10' : 'text-slate-500 hover:text-slate-700 border-t border-x border-transparent'}`}>
-                                        {tab === 'runs' ? `Test Runs (${selectedRunIds.length})` : `Test Cases (${selectedCaseIds.length})`}
-                                    </button>
-                                ))}
-                            </div>
-
-                            {activeTab === 'runs' && (
-                                <div className="max-h-48 overflow-y-auto rounded-lg border border-slate-200 divide-y divide-slate-100 bg-white">
-                                    {runs.length === 0 && <p className="text-sm text-slate-400 p-4 text-center">No test runs available.</p>}
-                                    {runs.map(run => (
-                                        <label key={run.id} className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 cursor-pointer transition-colors">
-                                            <input type="checkbox" checked={selectedRunIds.includes(run.id)}
-                                                onChange={() => toggleRun(run.id)}
-                                                className="w-4 h-4 rounded border-slate-300 text-primary-600 focus:ring-primary-600" />
-                                            <span className="text-sm text-slate-700 font-medium">{run.title}</span>
-                                        </label>
-                                    ))}
-                                </div>
-                            )}
-
-                            {activeTab === 'cases' && (
-                                <>
-                                    <div className="relative mb-3">
-                                        <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                                        <input type="text" placeholder="Search cases…" value={caseSearch}
-                                            onChange={e => setCaseSearch(e.target.value)}
-                                            className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all" />
-                                    </div>
-                                    <div className="max-h-44 overflow-y-auto rounded-lg border border-slate-200 divide-y divide-slate-100 bg-white">
-                                        {filteredCases.length === 0 && <p className="text-sm text-slate-400 p-4 text-center">No cases found.</p>}
-                                        {filteredCases.map(tc => (
-                                            <label key={tc.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 cursor-pointer transition-colors">
-                                                <input type="checkbox" checked={selectedCaseIds.includes(tc.id)}
-                                                    onChange={() => toggleCase(tc.id)}
-                                                    className="w-4 h-4 rounded border-slate-300 text-primary-600 focus:ring-primary-600" />
-                                                <span className="text-xs font-mono text-slate-400 w-12 shrink-0">TC-{tc.id}</span>
-                                                <span className="text-sm text-slate-700 truncate">{tc.title}</span>
-                                            </label>
+                            <>
+                                {/* Tabs: Test Runs / Test Cases */}
+                                <div className="pt-2">
+                                    <div className="flex gap-1 border-b border-slate-200 mb-4">
+                                        {(['runs', 'cases'] as const).map(tab => (
+                                            <button key={tab} type="button" onClick={() => setActiveTab(tab)}
+                                                className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${activeTab === tab ? 'bg-white border-t border-x border-slate-200 text-primary-700 -mb-px relative z-10' : 'text-slate-500 hover:text-slate-700 border-t border-x border-transparent'}`}>
+                                                {tab === 'runs' ? `Test Runs (${selectedRunIds.length})` : `Test Cases (${selectedCaseIds.length})`}
+                                            </button>
                                         ))}
                                     </div>
-                                </>
-                            )}
-                        </div>
-                        </>
+
+                                    {activeTab === 'runs' && (
+                                        <div className="max-h-48 overflow-y-auto rounded-lg border border-slate-200 divide-y divide-slate-100 bg-white">
+                                            {runs.length === 0 && <p className="text-sm text-slate-400 p-4 text-center">No test runs available.</p>}
+                                            {runs.map(run => (
+                                                <label key={run.id} className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 cursor-pointer transition-colors">
+                                                    <input type="checkbox" checked={selectedRunIds.includes(run.id)}
+                                                        onChange={() => toggleRun(run.id)}
+                                                        className="w-4 h-4 rounded border-slate-300 text-primary-600 focus:ring-primary-600" />
+                                                    <span className="text-sm text-slate-700 font-medium">{run.title}</span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {activeTab === 'cases' && (
+                                        <>
+                                            <div className="relative mb-3">
+                                                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                                                <input type="text" placeholder="Search cases…" value={caseSearch}
+                                                    onChange={e => setCaseSearch(e.target.value)}
+                                                    className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all" />
+                                            </div>
+                                            <div className="max-h-44 overflow-y-auto rounded-lg border border-slate-200 divide-y divide-slate-100 bg-white">
+                                                {filteredCases.length === 0 && <p className="text-sm text-slate-400 p-4 text-center">No cases found.</p>}
+                                                {filteredCases.map(tc => (
+                                                    <label key={tc.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 cursor-pointer transition-colors">
+                                                        <input type="checkbox" checked={selectedCaseIds.includes(tc.id)}
+                                                            onChange={() => toggleCase(tc.id)}
+                                                            className="w-4 h-4 rounded border-slate-300 text-primary-600 focus:ring-primary-600" />
+                                                        <span className="text-xs font-mono text-slate-400 w-12 shrink-0">TC-{tc.id}</span>
+                                                        <span className="text-sm text-slate-700 truncate">{tc.title}</span>
+                                                    </label>
+                                                ))}
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                            </>
                         )}
                     </div>
 

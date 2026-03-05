@@ -29,10 +29,13 @@ class TestPlan(Base):
     status = Column(String, default="Draft")
     folder_id = Column(Integer, ForeignKey("tcms_test_plan_folders.id", ondelete="SET NULL"), nullable=True)
 
-    # PRD / SA / SD
+    # PRD / SA / SD / UED / QA / Mindmap
     prd_url = Column(Text, nullable=True)
     sa_docs = Column(JSON, nullable=True)  # [{title, url}, ...]
     sd_docs = Column(JSON, nullable=True)  # [{title, url}, ...]
+    ued_docs = Column(JSON, nullable=True) # [{title, url}, ...]
+    qa_docs = Column(JSON, nullable=True)  # [{title, url}, ...]
+    mindmap_url = Column(Text, nullable=True)
 
     # Timeline: {rd: {start,end}, ued: {...}, qa: [{platform,start,end},...]}
     timeline = Column(JSON, nullable=True)
