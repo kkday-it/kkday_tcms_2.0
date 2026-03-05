@@ -6,7 +6,7 @@ import { CSS } from '@dnd-kit/utilities';
 import api from '../lib/api';
 import PlanFolderNode from '../components/plans/PlanFolderNode';
 import EditPlanFolderModal from '../components/plans/EditPlanFolderModal';
-import EditPlanModal from '../components/plans/EditPlanModal';
+import EditPlanModal, { CaseFolder } from '../components/plans/EditPlanModal';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -115,6 +115,7 @@ export default function TestPlans() {
     const [folders, setFolders] = useState<PlanFolder[]>([]);
     const [runs, setRuns] = useState<TestRun[]>([]);
     const [cases, setCases] = useState<TestCase[]>([]);
+    const [caseFolders, setCaseFolders] = useState<CaseFolder[]>([]);
 
     const [activeFolderId, setActiveFolderId] = useState<number | null>(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -194,7 +195,14 @@ export default function TestPlans() {
         } catch (e) { /* silent */ }
     };
 
-    useEffect(() => { fetchFolders(); fetchRuns(); fetchCases(); }, []);
+    const fetchSuites = async () => {
+        try {
+            const res = await api.get(`/suites/project/${projectId}`);
+            setCaseFolders(res.data.map((s: any) => ({ id: s.id, name: s.name })));
+        } catch (e) { /* silent */ }
+    };
+
+    useEffect(() => { fetchFolders(); fetchRuns(); fetchCases(); fetchSuites(); }, []);
     useEffect(() => { fetchPlans(); }, [activeFolderId]);
 
     // ── Export ─────────────────────────────────────────────────────────────────
@@ -431,6 +439,7 @@ export default function TestPlans() {
                     folders={folders}
                     runs={runs}
                     cases={cases}
+                    caseFolders={caseFolders}
                     onClose={() => setEditingPlan(undefined)}
                     onSaved={() => { fetchPlans(); setEditingPlan(undefined); }}
                 />
