@@ -14,6 +14,7 @@ import ResetPassword from './pages/ResetPassword';
 import ForceChangePassword from './pages/ForceChangePassword';
 import FeLog from './pages/FeLog';
 import BeLog from './pages/BeLog';
+import GoogleCallback from './pages/GoogleCallback';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const token = localStorage.getItem('tcms_token');
@@ -38,6 +39,8 @@ function App() {
         {/* 隱藏頁面（公開，read-only）：不需登入即可查看 */}
         <Route path="/fe-log" element={<FeLog />} />
         <Route path="/be-log" element={<BeLog />} />
+        {/* Google OAuth callback — public, no token required */}
+        <Route path="/auth/google/callback" element={<GoogleCallback />} />
 
         <Route element={
           <ProtectedRoute>

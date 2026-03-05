@@ -13,6 +13,7 @@ class User(Base):
     hashed_password = Column(String, nullable=True) # Optional for now to not break existing data
     is_active = Column(Boolean, default=True)
     force_change_password = Column(Boolean, default=True)
+    google_id = Column(String, unique=True, nullable=True)  # Google OAuth subject ID
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

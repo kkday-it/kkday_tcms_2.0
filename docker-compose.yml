@@ -13,6 +13,11 @@ services:
       - backend/.env
     environment:
       - USE_QA_DATABASE_SECRET=true
+      # Google OAuth 2.0 - override in backend/.env for local; defaults work for EC2
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-268197566244-5ckrn0agou350fqajumm8oi6etpipvi5.apps.googleusercontent.com}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-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}
+      - GOOGLE_OAUTH_REDIRECT_URI=${GOOGLE_OAUTH_REDIRECT_URI:-http://autotest-service.sit.kkday.com:8081/tcms/api/v1/users/google-oauth/callback}
+      - FRONTEND_BASE_URL=${FRONTEND_BASE_URL:-/tcms/}
     volumes:
       - tcms_data:/app/data
       - tcms_uploads:/app/uploads

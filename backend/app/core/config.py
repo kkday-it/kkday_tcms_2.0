@@ -16,6 +16,13 @@ class Settings(BaseSettings):
     DIFY_API_KEY: Optional[str] = None         # Knowledge Base API Key
     DIFY_DATASET_ID: Optional[str] = None      # Knowledge Base (Dataset) ID
 
+    # Google OAuth 2.0
+    GOOGLE_CLIENT_ID: Optional[str] = None
+    GOOGLE_CLIENT_SECRET: Optional[str] = None
+    GOOGLE_OAUTH_REDIRECT_URI: Optional[str] = None
+    # After successful Google login, redirect browser to this frontend base URL
+    FRONTEND_BASE_URL: str = "/tcms/"
+
     class Config:
         env_file = ".env"
         extra = "ignore"  # 忽略 .env 中未定義的 key

@@ -42,3 +42,6 @@ router.include_router(xmind_import_router, prefix="/cases", tags=["XMind Import"
 
 from app.api.logs import router as logs_router
 router.include_router(logs_router, prefix="/logs", tags=["Logs"])
+
+from app.api.google_auth import router as google_auth_router
+router.include_router(google_auth_router, prefix="/users/google-oauth", tags=["Google OAuth"])
