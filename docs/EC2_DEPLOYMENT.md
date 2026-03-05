@@ -43,10 +43,10 @@ curl -X POST http://localhost:19425/api/v1/users/ \
 
 ## 5. 隱藏頁面：即時 Log
 
-登入後可直達以下 URL 查看即時 log（不在側邊欄顯示）：
+以下 URL **不需要登入**即可直接查看（read-only，隔離於主系統）：
 
-- **FE Log**：`/tcms/fe-log` — Nginx access log
-- **BE Log**：`/tcms/be-log` — Uvicorn/Backend log
+- **FE Log**：`https://autotest-service.sit.kkday.com:8081/tcms/fe-log` — Nginx access log
+- **BE Log**：`https://autotest-service.sit.kkday.com:8081/tcms/be-log` — Uvicorn/Backend log
 
 ## 6. 驗證
 
@@ -60,18 +60,13 @@ docker compose logs backend | tail -20
 
 ## 7. Nginx 反向代理（若使用 /tcms 路徑）
 
-若 TCMS 掛在 `https://host/tcms/` 下，需重建 frontend 並指定 API 路徑與 base。
+`docker-compose.yml` 已將 `VITE_BASE_URL` 預設為 `/tcms/`，`VITE_API_URL` 預設為 `/tcms/api/v1`。
 
-**方式 A：使用 .env（建議）**
-```bash
-cp .env.tcms.example .env
-docker compose build frontend
-docker compose up -d
-```
+**直接建立即可，不需額外 `.env`：**
 
-**方式 B：直接指定 build-arg**
 ```bash
-docker compose build --build-arg VITE_API_URL=/tcms/api/v1 --build-arg VITE_BASE_URL=/tcms/ frontend
+git pull
+docker compose build --no-cache frontend
 docker compose up -d
 ```
 
@@ -120,15 +115,16 @@ Nginx 設定檔說明請參考 `deployment_nginx.md`。
 
 ### 8.2 常見原因與處理
 
-1. **URL 少了 `/tcms`**  
+1. **URL 少了 `/tcms`**
    - 已透過 `BrowserRouter basename` 修正。需**重新 build frontend** 才能生效。
-2. **API 打到錯誤路徑**  
-   - 登入請求應為 `.../tcms/api/v1/users/login`。若打到 `/api/v1/`，代表 frontend 未用 `VITE_API_URL=/tcms/api/v1`  build。  
-   - 處理：用 `cp .env.tcms.example .env` 後，`docker compose build --no-cache frontend` 再 up。
-3. **密碼不符**  
-   - 前端用 SHA-256 hash，後端比對 hash。若曾用 migrate-passwords 設為 `1234`，需確認 hash 正確。  
-   - 可重新執行 migrate-passwords 再試。
-4. **CORS / 404**  
+2. **API 打到錯誤路徑**
+   - 登入請求應為 `.../tcms/api/v1/users/login`。若打到 `/api/v1/`，代表 frontend 未用正確的 `VITE_API_URL` build。
+   - 處理：`docker compose build --no-cache frontend && docker compose up -d`
+3. **靜態資源 404（assets/index-xxx.js）**
+   - 資源路徑應為 `/tcms/assets/`，若為 `/assets/` 代表 `VITE_BASE_URL` 未設為 `/tcms/`，需重新 build frontend。
+4. **密碼不符**
+   - 前端用 `crypto-js` SHA-256 hash，後端比對 hash。若曾用 migrate-passwords 設為 `1234`，需確認 hash 正確。
+5. **CORS / 404**
    - 確認 Nginx 含 TCMS 設定且已 reload（`sudo systemctl reload nginx`）。
 
 ### 8.3 驗證登入流程

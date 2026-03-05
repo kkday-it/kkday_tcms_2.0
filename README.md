@@ -37,32 +37,31 @@ KKday 測試案例管理系統（Test Case Management System），提供 Test Ca
 
 ## 本機啟動
 
-### macOS
+### 1. 啟動 Backend
 
 ```bash
-chmod +x setup_macos.sh
-./setup_macos.sh   # 不需要 sudo
-./start.sh
+cd kk_tcms_1.5/backend
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn main:app --reload --host 0.0.0.0 --port 19425
 ```
 
-### Ubuntu
+### 2. 啟動 Frontend
 
 ```bash
-chmod +x setup_ubuntu.sh
-sudo ./setup_ubuntu.sh
-./start.sh
+cd kk_tcms_1.5/frontend
+npm install
+npm run dev
 ```
 
-`setup_*.sh` 會自動：
-- 安裝 Python 3.11 + 建立 `.venv` + 安裝 pip 套件
-- 安裝 Node.js 20 + 執行 `npm install`
-- 執行 Alembic migration
-- 產生 `frontend/.env`（`VITE_API_URL=/api/v1`）
+Vite 啟動後已設定 proxy：`/api` → `http://localhost:19425`，不需要額外設定。
 
 服務啟動後：
 - Frontend → http://localhost:8085
 - Backend API → http://localhost:19425
 - API 文件 → http://localhost:19425/api/v1/docs
+- FE Log（公開）→ http://localhost:8085/fe-log
+- BE Log（公開）→ http://localhost:8085/be-log
 
 ---
 
@@ -81,6 +80,8 @@ docker compose up -d
 ```
 
 與本機模式使用相同 Port（`8085` / `19425`）。預設使用 remote DB（qa_database）。
+
+> **EC2 子路徑部署**：`docker-compose.yml` 已將 `VITE_BASE_URL` 預設為 `/tcms/`，`VITE_API_URL` 預設為 `/tcms/api/v1`，直接 build 即可，**不需要額外設定 `.env`**。
 
 ---
 
