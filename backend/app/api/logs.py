@@ -12,9 +12,10 @@ router = APIRouter()
 
 LOG_DIR = os.environ.get("TCMS_LOG_DIR", "/app/logs" if os.environ.get("USE_QA_DATABASE_SECRET") == "true" else os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../logs")))
 BE_LOG = os.path.join(LOG_DIR, "backend.log")
-# Docker: Nginx writes to access.log (mounted from /var/log/nginx)
-# Local:  Vite plugin writes to frontend.log
-FE_ACCESS_LOG = os.path.join(LOG_DIR, "access.log")
+# Docker: Nginx writes access.log to /var/log/nginx/ (mounted via docker-compose volume)
+# Local:  Vite plugin writes to frontend.log in the local logs/ dir
+NGINX_LOG_DIR = os.environ.get("NGINX_LOG_DIR", "/var/log/nginx")
+FE_ACCESS_LOG = os.path.join(NGINX_LOG_DIR, "access.log")
 FE_LOCAL_LOG = os.path.join(LOG_DIR, "frontend.log")
 
 

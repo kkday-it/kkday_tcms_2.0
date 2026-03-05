@@ -97,22 +97,28 @@ export default function SuiteNode({
                     <Folder className={`w-4 h-4 flex-shrink-0 transition-colors ${isActive ? 'text-primary-500' : 'text-slate-400 group-hover:text-primary-500'}`} />
                     <span className="text-sm font-medium truncate">{suite.name}</span>
                 </div>
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-inherit pl-1 pointer-events-auto shrink-0">
-                    <button
-                        onClick={(e) => onEdit(e, suite)}
-                        className="p-1 text-slate-400 hover:text-primary-600 hover:bg-primary-50 rounded"
-                        title="Edit/Move Suite"
-                    >
-                        <Edit2 className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                        onClick={(e) => onDelete(e, suite.id)}
-                        className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded"
-                        title="Delete Suite"
-                    >
-                        <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                    <span className="text-xs text-slate-400 ml-1 pointer-events-none w-4 text-right">{suite.cases || 0}</span>
+                <div className="flex items-center gap-1 shrink-0">
+                    {/* Case count: always visible */}
+                    {(suite.cases ?? 0) > 0 && (
+                        <span className="text-xs text-slate-400 w-5 text-right pointer-events-none">{suite.cases}</span>
+                    )}
+                    {/* Edit / Delete: hover only */}
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-inherit pl-1 pointer-events-auto">
+                        <button
+                            onClick={(e) => onEdit(e, suite)}
+                            className="p-1 text-slate-400 hover:text-primary-600 hover:bg-primary-50 rounded"
+                            title="Edit/Move Suite"
+                        >
+                            <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                            onClick={(e) => onDelete(e, suite.id)}
+                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded"
+                            title="Delete Suite"
+                        >
+                            <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                    </div>
                 </div>
             </div>
             {childrenNodes && isExpanded && (
