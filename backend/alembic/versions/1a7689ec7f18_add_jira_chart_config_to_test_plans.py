@@ -54,8 +54,36 @@ def upgrade() -> None:
     op.drop_index('idx_sessions_user_updated_desc', table_name='chat_sessions')
     op.drop_table('chat_sessions')
     op.drop_table('automation_test_suite')
-    op.add_column('tcms_test_plans', sa.Column('jira_chart_filter_id', sa.Integer(), nullable=True))
-    op.add_column('tcms_test_plans', sa.Column('jira_chart_field', sa.String(), nullable=True))
+    
+    bind = op.get_bind()
+    if bind.engine.name == 'postgresql':
+        op.execute("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name='tcms_test_plans' AND column_name='jira_chart_filter_id'
+                ) THEN
+                    ALTER TABLE tcms_test_plans ADD COLUMN jira_chart_filter_id INTEGER;
+                END IF;
+
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name='tcms_test_plans' AND column_name='jira_chart_field'
+                ) THEN
+                    ALTER TABLE tcms_test_plans ADD COLUMN jira_chart_field VARCHAR;
+                END IF;
+            END $$;
+        """)
+    else:
+        # For non-PostgreSQL (like SQLite in tests), add columns normally
+        # SQLite doesn't strictly enforce DuplicateColumn in the same way, or you can use try/except.
+        try:
+            op.add_column('tcms_test_plans', sa.Column('jira_chart_filter_id', sa.Integer(), nullable=True))
+            op.add_column('tcms_test_plans', sa.Column('jira_chart_field', sa.String(), nullable=True))
+        except Exception:
+            pass
+
     op.alter_column('tcms_test_plans', 'sa_docs',
                existing_type=postgresql.JSONB(astext_type=sa.Text()),
                type_=sa.JSON(),
@@ -96,8 +124,33 @@ def downgrade() -> None:
                existing_type=sa.JSON(),
                type_=postgresql.JSONB(astext_type=sa.Text()),
                existing_nullable=True)
-    op.drop_column('tcms_test_plans', 'jira_chart_field')
-    op.drop_column('tcms_test_plans', 'jira_chart_filter_id')
+
+    bind = op.get_bind()
+    if bind.engine.name == 'postgresql':
+        op.execute("""
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name='tcms_test_plans' AND column_name='jira_chart_field'
+                ) THEN
+                    ALTER TABLE tcms_test_plans DROP COLUMN jira_chart_field;
+                END IF;
+
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name='tcms_test_plans' AND column_name='jira_chart_filter_id'
+                ) THEN
+                    ALTER TABLE tcms_test_plans DROP COLUMN jira_chart_filter_id;
+                END IF;
+            END $$;
+        """)
+    else:
+        try:
+            op.drop_column('tcms_test_plans', 'jira_chart_field')
+            op.drop_column('tcms_test_plans', 'jira_chart_filter_id')
+        except Exception:
+            pass
     op.create_table('automation_test_suite',
     sa.Column('id', sa.INTEGER(), server_default=sa.text("nextval('automation_test_suite_id_seq'::regclass)"), autoincrement=True, nullable=False),
     sa.Column('uuid', sa.VARCHAR(length=36), autoincrement=False, nullable=False),
