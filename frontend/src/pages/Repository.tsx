@@ -263,6 +263,7 @@ export default function Repository() {
     const { users } = useUsers();
     const [selectedCases, setSelectedCases] = useState<Set<number>>(new Set());
     const [batchOwnerId, setBatchOwnerId] = useState<string>('');
+    const [batchMoveSuiteId, setBatchMoveSuiteId] = useState<string>('');
 
     // Fetch Suites for Project
     const fetchSuites = async () => {
@@ -422,6 +423,33 @@ export default function Repository() {
         } catch (err) {
             console.error("Batch assign failed", err);
             alert("Failed to batch assign owner");
+        }
+    };
+
+    const handleBatchDeleteCases = async () => {
+        if (!window.confirm(`Are you sure you want to delete ${selectedCases.size} test cases?`)) return;
+        try {
+            await api.delete('/cases/batch', { data: { case_ids: Array.from(selectedCases) } });
+            setSelectedCases(new Set());
+            fetchCases();
+            fetchSuites(); // updates folder counts
+        } catch (err) {
+            console.error("Batch delete failed", err);
+            alert("Failed to batch delete cases");
+        }
+    };
+
+    const handleBatchMoveCases = async () => {
+        if (!batchMoveSuiteId) return;
+        try {
+            await api.put('/cases/batch-move', { case_ids: Array.from(selectedCases), suite_id: Number(batchMoveSuiteId) });
+            setSelectedCases(new Set());
+            setBatchMoveSuiteId('');
+            fetchCases();
+            fetchSuites(); // updates folder counts
+        } catch (err) {
+            console.error("Batch move failed", err);
+            alert("Failed to batch move cases");
         }
     };
 
@@ -998,6 +1026,34 @@ export default function Repository() {
                                     >
                                         Apply
                                     </button>
+
+                                    <div className="h-4 w-px bg-primary-200 mx-2" />
+                                    <span className="text-sm text-slate-600 font-medium">Move to:</span>
+                                    <select
+                                        value={batchMoveSuiteId}
+                                        onChange={e => setBatchMoveSuiteId(e.target.value)}
+                                        className="text-sm rounded-md border-slate-300 py-1.5 pl-2 pr-8 shadow-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500 max-w-[200px]"
+                                    >
+                                        <option value="">— Select Folder —</option>
+                                        {suites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                    </select>
+                                    <button
+                                        onClick={handleBatchMoveCases}
+                                        disabled={!batchMoveSuiteId}
+                                        className="px-4 py-1.5 text-sm font-semibold text-white bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors shadow-sm disabled:opacity-50"
+                                    >
+                                        Move
+                                    </button>
+
+                                    <div className="h-4 w-px bg-primary-200 mx-2" />
+                                    <button
+                                        onClick={handleBatchDeleteCases}
+                                        className="px-4 py-1.5 text-sm font-semibold text-rose-600 bg-rose-50 border border-rose-200 rounded-lg hover:bg-rose-100 transition-colors shadow-sm flex items-center gap-1.5"
+                                    >
+                                        <Trash2 className="w-4 h-4" /> Delete
+                                    </button>
+
+                                    <div className="h-4 w-px bg-primary-200 mx-2" />
                                     <button
                                         onClick={() => setSelectedCases(new Set())}
                                         className="px-3 py-1.5 text-sm font-medium text-slate-500 bg-white border border-slate-200 rounded-lg hover:bg-slate-50"

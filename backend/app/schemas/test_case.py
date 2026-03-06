@@ -60,3 +60,10 @@ class TestCaseResponse(TestCaseBase):
 
     class Config:
         from_attributes = True
+
+class TestCaseBatchDelete(BaseModel):
+    case_ids: List[int]
+
+class TestCaseBatchMove(BaseModel):
+    case_ids: List[int]
+    suite_id: int
