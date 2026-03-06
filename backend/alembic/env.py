@@ -22,9 +22,14 @@ _db_url: str | None = os.environ.get("DATABASE_URL")
 if os.environ.get("USE_QA_DATABASE_SECRET", "").lower() in ("true", "1", "yes"):
     from app.core.secrets import get_secret
     from urllib.parse import quote_plus
-    data = get_secret(key="qa_database", return_value=True)
+    try:
+        data = get_secret(key="qa_database", return_value=True)
+    except Exception as e:
+        raise ValueError(f"get_secret failed: {e}")
+
     if not data or not isinstance(data, dict):
-        raise ValueError("USE_QA_DATABASE_SECRET=true 但 get_secret(key='qa_database') 無資料")
+        raise ValueError("get_secret failed: USE_QA_DATABASE_SECRET=true 但 qa_database 無資料")
+
     user = data.get("user", "")
     pw = data.get("password", "") or data.get("pass", "")
     host = data.get("host", "")
