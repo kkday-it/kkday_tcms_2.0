@@ -32,6 +32,8 @@ interface TestPlan {
     jira_unfix_filter_id?: number | null;
     jira_total_filter_id?: number | null;
     jira_display_fields?: string[];
+    jira_chart_filter_id?: number | null;
+    jira_chart_field?: string | null;
     created_at: string;
 }
 
@@ -100,6 +102,11 @@ export default function TestPlanDetails() {
     const JIRA_PAGE_SIZE = 8;
     const [unfixPage, setUnfixPage] = useState(1);
     const [totalPage, setTotalPage] = useState(1);
+
+    // Jira Pie Chart State
+    const [jiraChartIssues, setJiraChartIssues] = useState<JiraIssue[]>([]);
+    const [jiraChartLoading, setJiraChartLoading] = useState(false);
+    const [jiraChartError, setJiraChartError] = useState<string | null>(null);
 
     const fetchData = async () => {
         setIsLoading(true);
@@ -184,6 +191,35 @@ export default function TestPlanDetails() {
         };
         load();
     }, [plan?.id, plan?.jira_unfix_filter_id, plan?.jira_total_filter_id]);
+
+    // Fetch Jira Pie Chart Issues
+    useEffect(() => {
+        if (!plan?.jira_chart_filter_id) {
+            setJiraChartIssues([]);
+            setJiraChartError(null);
+            return;
+        }
+        const loadChart = async () => {
+            setJiraChartLoading(true);
+            setJiraChartError(null);
+            try {
+                // Determine the requested field to ensure we ask the backend for it
+                // 'team' is custom field, others are standard. The backend endpoint ?fields=... 
+                // tells Jira what to return.
+                const f = plan.jira_chart_field || 'status';
+                const fieldsParam = ['status', 'priority', 'assignee', 'team'].includes(f) ? f : 'status,priority,assignee,team';
+
+                const res = await api.get(`/plans/jira/filter/${plan.jira_chart_filter_id}/issues`, { params: { fields: fieldsParam } });
+                setJiraChartIssues(res.data.issues || []);
+            } catch (err: any) {
+                setJiraChartError(err.response?.data?.detail || err.message || 'Failed to fetch chart issues');
+                setJiraChartIssues([]);
+            } finally {
+                setJiraChartLoading(false);
+            }
+        };
+        loadChart();
+    }, [plan?.id, plan?.jira_chart_filter_id, plan?.jira_chart_field]);
 
     if (isLoading) return (
         <div className="flex-1 flex items-center justify-center bg-slate-50">
@@ -689,6 +725,77 @@ export default function TestPlanDetails() {
                                     </div>
                                 )}
                             </div>
+
+                            {/* Jira Pie Chart Dashboard View */}
+                            {plan.jira_chart_filter_id && (
+                                <div className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-slate-100 p-6 xl:p-8 mt-6">
+                                    <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+                                        <h4 className="text-base font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                                            <span className="inline-block w-3 h-3 rounded-full bg-primary-400" />
+                                            Jira 分佈圖
+                                        </h4>
+                                        <div className="flex items-center gap-4 text-sm text-slate-500">
+                                            <span className="flex items-center gap-1.5"><ListChecks className="w-4 h-4 text-slate-400" />依據「{plan.jira_chart_field === 'team' ? '歸屬團隊' : plan.jira_chart_field}」顯示</span>
+                                            <a
+                                                href={`https://kkday.atlassian.net/issues/?filter=${plan.jira_chart_filter_id}`}
+                                                target="_blank" rel="noreferrer"
+                                                className="text-primary-600 hover:text-primary-700 hover:underline flex items-center gap-1 font-medium bg-primary-50 px-2 py-1 rounded-md"
+                                            >
+                                                Filter: {plan.jira_chart_filter_id} <ExternalLink className="w-3.5 h-3.5" />
+                                            </a>
+                                        </div>
+                                    </div>
+
+                                    {jiraChartLoading ? (
+                                        <div className="h-48 flex items-center justify-center">
+                                            <Loader2 className="w-6 h-6 animate-spin text-primary-500" />
+                                        </div>
+                                    ) : jiraChartError ? (
+                                        <div className="py-6 text-center text-red-500 text-sm bg-red-50 rounded-lg">
+                                            {jiraChartError}
+                                        </div>
+                                    ) : jiraChartIssues.length === 0 ? (
+                                        <div className="h-48 flex items-center justify-center text-slate-400 text-sm">無資料</div>
+                                    ) : (() => {
+                                        const counts: Record<string, number> = {};
+                                        const f = plan.jira_chart_field || 'status';
+                                        jiraChartIssues.forEach((issue: any) => {
+                                            const raw = issue[f];
+                                            const vals: string[] = Array.isArray(raw)
+                                                ? (raw as string[]).length ? raw.map(String) : ['(empty)']
+                                                : [(raw as string) || '(unknown)'];
+                                            vals.forEach(v => { counts[v] = (counts[v] ?? 0) + 1; });
+                                        });
+                                        const COLORS = ['#6366f1', '#f43f5e', '#10b981', '#f59e0b', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#64748b'];
+                                        const pd = Object.entries(counts)
+                                            .sort((a, b) => b[1] - a[1])
+                                            .map(([name, value], i) => ({ name, value, color: COLORS[i % COLORS.length] }));
+                                        return (
+                                            <div className="flex flex-col sm:flex-row items-center gap-8">
+                                                <div className="w-64 h-64 shrink-0">
+                                                    <ResponsiveContainer width="100%" height="100%">
+                                                        <PieChart>
+                                                            <Pie data={pd} cx="50%" cy="50%" innerRadius={60} outerRadius={90} paddingAngle={3} dataKey="value">
+                                                                {pd.map((e, i) => <Cell key={i} fill={e.color} />)}
+                                                            </Pie>
+                                                            <RechartsTooltip contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px' }} />
+                                                        </PieChart>
+                                                    </ResponsiveContainer>
+                                                </div>
+                                                <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 w-full">
+                                                    {pd.map((e, i) => (
+                                                        <div key={i} className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-100/60 shadow-sm">
+                                                            <span className="w-3.5 h-3.5 rounded-full shrink-0" style={{ backgroundColor: e.color }} />
+                                                            <span className="text-sm text-slate-700 truncate flex-1 font-medium" title={e.name}>{e.name}</span>
+                                                            <span className="text-sm font-bold text-slate-900 tabular-nums shrink-0">{e.value}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
+                                </div>
+                            )}
 
                         </div>
                     )

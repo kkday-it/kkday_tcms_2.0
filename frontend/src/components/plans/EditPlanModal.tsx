@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { Loader2, Search, Plus, X, UploadCloud, ExternalLink } from 'lucide-react';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 import api from '../../lib/api';
 
 interface DocEntry {
@@ -53,6 +52,8 @@ export interface TestPlan {
     jira_unfix_filter_id?: number | null;
     jira_total_filter_id?: number | null;
     jira_display_fields?: string[];
+    jira_chart_filter_id?: number | null;
+    jira_chart_field?: string | null;
 }
 
 export default function EditPlanModal({ plan, folders, runs, cases, caseFolders, onClose, onSaved }: {
@@ -95,27 +96,8 @@ export default function EditPlanModal({ plan, folders, runs, cases, caseFolders,
     const [chartFilterInput, setChartFilterInput] = useState('');
     const [chartFilterId, setChartFilterId] = useState('');
     const [chartField, setChartField] = useState<'status' | 'priority' | 'assignee' | 'team'>('status');
-    const [chartIssues, setChartIssues] = useState<{ key: string; status?: string; priority?: string; assignee?: string; team?: string[] }[]>([]);
-    const [chartLoading, setChartLoading] = useState(false);
-    const [chartError, setChartError] = useState<string | null>(null);
 
     const JIRA_FIELD_OPTIONS = ['key', 'summary', 'status', 'assignee', 'priority', 'created', 'labels'];
-
-    // Fetch chart issues when chartFilterId committed
-    useEffect(() => {
-        if (!chartFilterId) { setChartIssues([]); setChartError(null); return; }
-        const load = async () => {
-            setChartLoading(true); setChartError(null);
-            try {
-                const res = await api.get(`/plans/jira/filter/${chartFilterId}/issues`, { params: { fields: 'status,priority,assignee,team' } });
-                setChartIssues(res.data.issues || []);
-            } catch (err: any) {
-                setChartError(err.response?.data?.detail || err.message || 'Failed to fetch');
-                setChartIssues([]);
-            } finally { setChartLoading(false); }
-        };
-        load();
-    }, [chartFilterId]);
 
     useEffect(() => {
         if (plan) {
@@ -138,6 +120,9 @@ export default function EditPlanModal({ plan, folders, runs, cases, caseFolders,
             setJiraUnfixFilterId(plan.jira_unfix_filter_id != null ? String(plan.jira_unfix_filter_id) : '');
             setJiraTotalFilterId(plan.jira_total_filter_id != null ? String(plan.jira_total_filter_id) : '');
             setJiraDisplayFields(plan.jira_display_fields?.length ? plan.jira_display_fields : ['key', 'summary', 'status', 'assignee', 'priority']);
+            setChartFilterId(plan.jira_chart_filter_id != null ? String(plan.jira_chart_filter_id) : '');
+            setChartFilterInput(plan.jira_chart_filter_id != null ? String(plan.jira_chart_filter_id) : '');
+            setChartField((plan.jira_chart_field as any) || 'status');
             setSelectedRunIds(plan.run_ids || []);
             setSelectedCaseIds(plan.case_ids || []);
         } else {
@@ -148,6 +133,7 @@ export default function EditPlanModal({ plan, folders, runs, cases, caseFolders,
             setTimeline({ qa: [] });
             setJiraUnfixFilterId(''); setJiraTotalFilterId('');
             setJiraDisplayFields(['key', 'summary', 'status', 'assignee', 'priority']);
+            setChartFilterId(''); setChartFilterInput(''); setChartField('status');
         }
         setCaseSearch('');
         setCaseFolderFilter('');
@@ -236,6 +222,8 @@ export default function EditPlanModal({ plan, folders, runs, cases, caseFolders,
                 jira_unfix_filter_id: jiraUnfixFilterId.trim() ? parseInt(jiraUnfixFilterId, 10) : null,
                 jira_total_filter_id: jiraTotalFilterId.trim() ? parseInt(jiraTotalFilterId, 10) : null,
                 jira_display_fields: jiraDisplayFields.length ? jiraDisplayFields : ['key', 'summary', 'status', 'assignee', 'priority'],
+                jira_chart_filter_id: chartFilterId.trim() ? parseInt(chartFilterId, 10) : null,
+                jira_chart_field: chartField,
                 run_ids: selectedRunIds,
                 case_ids: selectedCaseIds,
             };
@@ -524,49 +512,9 @@ export default function EditPlanModal({ plan, folders, runs, cases, caseFolders,
                                             </select>
                                         </div>
                                     </div>
-                                    {!chartFilterId ? (
-                                        <div className="h-32 flex items-center justify-center text-slate-400 text-sm">輸入 Filter ID 後按「查詢」即可產生圖表</div>
-                                    ) : chartLoading ? (
-                                        <div className="h-32 flex items-center justify-center"><Loader2 className="w-5 h-5 animate-spin text-primary-500" /></div>
-                                    ) : chartError ? (
-                                        <div className="py-4 text-center text-red-500 text-sm bg-red-50 rounded-lg">{chartError}</div>
-                                    ) : chartIssues.length === 0 ? (
-                                        <div className="h-32 flex items-center justify-center text-slate-400 text-sm">無資料</div>
-                                    ) : (() => {
-                                        const counts: Record<string, number> = {};
-                                        chartIssues.forEach(issue => {
-                                            const raw = issue[chartField];
-                                            const vals: string[] = Array.isArray(raw)
-                                                ? (raw as string[]).length ? raw as string[] : ['(empty)']
-                                                : [(raw as string) || '(unknown)'];
-                                            vals.forEach(v => { counts[v] = (counts[v] ?? 0) + 1; });
-                                        });
-                                        const COLORS = ['#6366f1', '#f43f5e', '#10b981', '#f59e0b', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#64748b'];
-                                        const pd = Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([name, value], i) => ({ name, value, color: COLORS[i % COLORS.length] }));
-                                        return (
-                                            <div className="flex flex-col sm:flex-row items-center gap-4">
-                                                <div className="w-44 h-44 shrink-0">
-                                                    <ResponsiveContainer width="100%" height="100%">
-                                                        <PieChart>
-                                                            <Pie data={pd} cx="50%" cy="50%" innerRadius={40} outerRadius={64} paddingAngle={3} dataKey="value">
-                                                                {pd.map((e, i) => <Cell key={i} fill={e.color} />)}
-                                                            </Pie>
-                                                            <RechartsTooltip contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '12px' }} />
-                                                        </PieChart>
-                                                    </ResponsiveContainer>
-                                                </div>
-                                                <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                                                    {pd.map((e, i) => (
-                                                        <div key={i} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-100">
-                                                            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: e.color }} />
-                                                            <span className="text-xs text-slate-700 truncate flex-1" title={e.name}>{e.name}</span>
-                                                            <span className="text-xs font-bold text-slate-900 tabular-nums shrink-0">{e.value}</span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        );
-                                    })()}
+                                    <div className="text-slate-400 text-sm py-4 text-center">
+                                        設定 Filter ID 後，圖表將顯示在 Test Plan 詳情頁
+                                    </div>
                                 </div>
                             </>
                         )}

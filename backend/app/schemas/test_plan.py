@@ -41,6 +41,8 @@ class TestPlanCreate(TestPlanBase):
     jira_unfix_filter_id: Optional[int] = None
     jira_total_filter_id: Optional[int] = None
     jira_display_fields: Optional[List[str]] = None
+    jira_chart_filter_id: Optional[int] = None
+    jira_chart_field: Optional[str] = None
 
 
 class TestPlanUpdate(BaseModel):
@@ -60,6 +62,8 @@ class TestPlanUpdate(BaseModel):
     jira_unfix_filter_id: Optional[int] = None
     jira_total_filter_id: Optional[int] = None
     jira_display_fields: Optional[List[str]] = None
+    jira_chart_filter_id: Optional[int] = None
+    jira_chart_field: Optional[str] = None
 
 
 class TestPlanResponse(TestPlanBase):
@@ -78,6 +82,8 @@ class TestPlanResponse(TestPlanBase):
     jira_unfix_filter_id: Optional[int] = None
     jira_total_filter_id: Optional[int] = None
     jira_display_fields: Optional[List[str]] = None
+    jira_chart_filter_id: Optional[int] = None
+    jira_chart_field: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
 

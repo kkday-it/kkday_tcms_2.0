@@ -44,6 +44,8 @@ class TestPlan(Base):
     jira_unfix_filter_id = Column(Integer, nullable=True)
     jira_total_filter_id = Column(Integer, nullable=True)
     jira_display_fields = Column(JSON, nullable=True)  # ['key','summary','status','assignee','priority']
+    jira_chart_filter_id = Column(Integer, nullable=True)
+    jira_chart_field = Column(String, nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
