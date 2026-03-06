@@ -40,11 +40,6 @@ def upgrade() -> None:
     op.drop_table('automation_auth')
     op.drop_table('automation_data')
     op.drop_table('automation_test_case')
-    op.drop_index('idx_sessions_created_at', table_name='chat_sessions')
-    op.drop_index('idx_sessions_updated_at', table_name='chat_sessions')
-    op.drop_index('idx_sessions_user_id', table_name='chat_sessions')
-    op.drop_index('idx_sessions_user_updated_desc', table_name='chat_sessions')
-    op.drop_table('chat_sessions')
     op.drop_index('idx_messages_role', table_name='chat_messages')
     op.drop_index('idx_messages_session_id', table_name='chat_messages')
     op.drop_index('idx_messages_timestamp', table_name='chat_messages')
@@ -53,6 +48,11 @@ def upgrade() -> None:
     op.drop_index('idx_messages_user_session_role', table_name='chat_messages')
     op.drop_index('idx_messages_user_session_time', table_name='chat_messages')
     op.drop_table('chat_messages')
+    op.drop_index('idx_sessions_created_at', table_name='chat_sessions')
+    op.drop_index('idx_sessions_updated_at', table_name='chat_sessions')
+    op.drop_index('idx_sessions_user_id', table_name='chat_sessions')
+    op.drop_index('idx_sessions_user_updated_desc', table_name='chat_sessions')
+    op.drop_table('chat_sessions')
     op.drop_table('automation_test_suite')
     op.add_column('tcms_test_plans', sa.Column('jira_chart_filter_id', sa.Integer(), nullable=True))
     op.add_column('tcms_test_plans', sa.Column('jira_chart_field', sa.String(), nullable=True))
@@ -141,6 +141,19 @@ def downgrade() -> None:
     sa.PrimaryKeyConstraint('sub_team_id', name='automation_sub_teams_pkey')
     )
     op.create_index('idx_parent_team', 'automation_sub_teams', ['parent_team_id'], unique=False)
+    op.create_table('chat_sessions',
+    sa.Column('session_id', sa.VARCHAR(length=255), autoincrement=False, nullable=False, comment='會話唯一標識符'),
+    sa.Column('user_id', sa.VARCHAR(length=255), autoincrement=False, nullable=False, comment='用戶唯一標識符'),
+    sa.Column('title', sa.VARCHAR(length=500), autoincrement=False, nullable=False, comment='會話標題'),
+    sa.Column('created_at', postgresql.TIMESTAMP(), server_default=sa.text('CURRENT_TIMESTAMP'), autoincrement=False, nullable=False, comment='創建時間'),
+    sa.Column('updated_at', postgresql.TIMESTAMP(), server_default=sa.text('CURRENT_TIMESTAMP'), autoincrement=False, nullable=False, comment='最後更新時間'),
+    sa.PrimaryKeyConstraint('session_id', name='chat_sessions_pkey'),
+    comment='聊天會話表（支持用戶隔離）'
+    )
+    op.create_index('idx_sessions_user_updated_desc', 'chat_sessions', ['user_id', sa.text('updated_at DESC')], unique=False)
+    op.create_index('idx_sessions_user_id', 'chat_sessions', ['user_id'], unique=False)
+    op.create_index('idx_sessions_updated_at', 'chat_sessions', [sa.text('updated_at DESC')], unique=False)
+    op.create_index('idx_sessions_created_at', 'chat_sessions', ['created_at'], unique=False)
     op.create_table('chat_messages',
     sa.Column('id', sa.UUID(), server_default=sa.text('gen_random_uuid()'), autoincrement=False, nullable=False, comment='訊息唯一標識符 (UUID)'),
     sa.Column('session_id', sa.VARCHAR(length=255), autoincrement=False, nullable=False, comment='所屬會話ID'),
@@ -161,19 +174,6 @@ def downgrade() -> None:
     op.create_index('idx_messages_timestamp', 'chat_messages', ['timestamp'], unique=False)
     op.create_index('idx_messages_session_id', 'chat_messages', ['session_id'], unique=False)
     op.create_index('idx_messages_role', 'chat_messages', ['role'], unique=False)
-    op.create_table('chat_sessions',
-    sa.Column('session_id', sa.VARCHAR(length=255), autoincrement=False, nullable=False, comment='會話唯一標識符'),
-    sa.Column('user_id', sa.VARCHAR(length=255), autoincrement=False, nullable=False, comment='用戶唯一標識符'),
-    sa.Column('title', sa.VARCHAR(length=500), autoincrement=False, nullable=False, comment='會話標題'),
-    sa.Column('created_at', postgresql.TIMESTAMP(), server_default=sa.text('CURRENT_TIMESTAMP'), autoincrement=False, nullable=False, comment='創建時間'),
-    sa.Column('updated_at', postgresql.TIMESTAMP(), server_default=sa.text('CURRENT_TIMESTAMP'), autoincrement=False, nullable=False, comment='最後更新時間'),
-    sa.PrimaryKeyConstraint('session_id', name='chat_sessions_pkey'),
-    comment='聊天會話表（支持用戶隔離）'
-    )
-    op.create_index('idx_sessions_user_updated_desc', 'chat_sessions', ['user_id', sa.text('updated_at DESC')], unique=False)
-    op.create_index('idx_sessions_user_id', 'chat_sessions', ['user_id'], unique=False)
-    op.create_index('idx_sessions_updated_at', 'chat_sessions', [sa.text('updated_at DESC')], unique=False)
-    op.create_index('idx_sessions_created_at', 'chat_sessions', ['created_at'], unique=False)
     op.create_table('automation_test_case',
     sa.Column('id', sa.INTEGER(), server_default=sa.text("nextval('automation_test_case_id_seq'::regclass)"), autoincrement=True, nullable=False),
     sa.Column('case_id', sa.VARCHAR(), autoincrement=False, nullable=False),
