@@ -66,7 +66,8 @@ async def list_cases_by_project(
         exclude_labels_list = [l.strip().lower() for l in exclude_labels.split(',')]
         for label in exclude_labels_list:
             query = query.where((TestCase.labels.is_(None)) | (~TestCase.labels.ilike(f"%{label}%")))
-
+    query = query.where(TestCase.status != "Archived")
+    
     result = await db.execute(query)
     return result.scalars().all()
 
@@ -88,6 +89,7 @@ async def list_cases_by_suite(suite_id: int, db: AsyncSession = Depends(get_db))
         select(TestCase)
         .options(selectinload(TestCase.steps))
         .where(TestCase.suite_id.in_(select(hierarchy.c.id)))
+        .where(TestCase.status != "Archived")
     )
     return result.scalars().all()
 
@@ -319,10 +321,18 @@ async def batch_delete_cases(payload: TestCaseBatchDelete, db: AsyncSession = De
         raise HTTPException(status_code=404, detail="No matching TestCases found")
         
     for case in cases:
-        await db.delete(case)
+        case.status = "Archived"
+        # Create history record
+        history = TestCaseHistory(
+            case_id=case.id,
+            user_id=1,
+            action="Archived",
+            changed_fields=json.dumps({"status": "Active -> Archived"}, ensure_ascii=False)
+        )
+        db.add(history)
         
     await db.commit()
-    return {"message": f"Successfully deleted {len(cases)} TestCases"}
+    return {"message": f"Successfully archived {len(cases)} TestCases"}
 
 @router.put("/batch-move")
 async def batch_move_cases(payload: TestCaseBatchMove, db: AsyncSession = Depends(get_db)):
@@ -361,9 +371,42 @@ async def delete_case(case_id: int, db: AsyncSession = Depends(get_db)):
     if not case:
         raise HTTPException(status_code=404, detail="TestCase not found")
     
-    await db.delete(case)
+    case.status = "Archived"
+    
+    # Create history record
+    history = TestCaseHistory(
+        case_id=case.id,
+        user_id=1,
+        action="Archived",
+        changed_fields=json.dumps({"status": "Active -> Archived"}, ensure_ascii=False)
+    )
+    db.add(history)
+    
     await db.commit()
-    return {"message": "TestCase deleted successfully"}
+    return {"message": "TestCase archived successfully"}
+
+@router.post("/{case_id}/restore")
+async def restore_case(case_id: int, db: AsyncSession = Depends(get_db)):
+    case = await db.get(TestCase, case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="TestCase not found")
+    
+    if case.status != "Archived":
+        return {"message": "TestCase is not archived"}
+
+    case.status = "Active"
+    
+    # Create history record
+    history = TestCaseHistory(
+        case_id=case.id,
+        user_id=1,
+        action="Restored",
+        changed_fields=json.dumps({"status": "Archived -> Active"}, ensure_ascii=False)
+    )
+    db.add(history)
+    
+    await db.commit()
+    return {"message": "TestCase restored successfully"}
 
 @router.get("/{case_id}/history", response_model=List[TestCaseHistoryResponse])
 async def get_case_history(case_id: int, db: AsyncSession = Depends(get_db)):

@@ -9,4 +9,6 @@ from app.models.test_result import TestResult
 from app.models.test_step_result import TestStepResult
 from app.models.user import User
 from app.models.test_plan import TestPlan
+from app.models.test_plan_history import TestPlanHistory
+from app.models.test_run_history import TestRunHistory
 from app.db.database import Base

@@ -15,9 +15,11 @@ from app.db.database import get_db
 from app.models.test_case import TestCase
 from app.models.test_result import TestResult
 from app.models.test_run import TestRun
+from app.models.test_run_history import TestRunHistory
 from app.models.test_suite import TestSuite
 from app.models.user import User
 from app.schemas.test_run import TestRunCreate, TestRunResponse, TestRunUpdate
+from app.schemas.test_run_history import TestRunHistoryResponse
 
 router = APIRouter()
 
@@ -73,6 +75,7 @@ async def export_runs(
         select(TestRun)
         .options(selectinload(TestRun.assignees))
         .where(TestRun.project_id == project_id)
+        .where(TestRun.status != "Archived")
         .order_by(desc(TestRun.created_at))
     )
     if run_id:
@@ -190,6 +193,7 @@ async def list_runs_by_project(project_id: int, db: AsyncSession = Depends(get_d
         .options(selectinload(TestRun.assignees))
         .outerjoin(TestResult, TestRun.id == TestResult.run_id)
         .where(TestRun.project_id == project_id)
+        .where(TestRun.status != "Archived")
         .group_by(TestRun.id)
         .order_by(desc(TestRun.created_at))
     )
@@ -308,6 +312,15 @@ async def update_run(run_id: int, run_in: TestRunUpdate, db: AsyncSession = Depe
             ]
             db.add_all(new_results)
 
+    # History record
+    history = TestRunHistory(
+        run_id=run.id,
+        user_id=1,
+        action="Updated",
+        changed_fields=json.dumps({"update": "Run fields or results modified"}, ensure_ascii=False)
+    )
+    db.add(history)
+
     await db.commit()
 
     run = await _get_run_with_assignees(run_id, db)
@@ -334,9 +347,42 @@ async def delete_run(run_id: int, db: AsyncSession = Depends(get_db)):
     if not run:
         raise HTTPException(status_code=404, detail="TestRun not found")
 
-    await db.delete(run)
+    run.status = "Archived"
+    
+    # History record
+    history = TestRunHistory(
+        run_id=run.id,
+        user_id=1,
+        action="Archived",
+        changed_fields=json.dumps({"status": "Active -> Archived"}, ensure_ascii=False)
+    )
+    db.add(history)
+    
     await db.commit()
-    return {"message": "TestRun deleted successfully"}
+    return {"message": "TestRun archived successfully"}
+
+@router.post("/{run_id}/restore")
+async def restore_test_run(run_id: int, db: AsyncSession = Depends(get_db)):
+    run = await db.get(TestRun, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="TestRun not found")
+    
+    if run.status != "Archived":
+        return {"message": "TestRun is not archived"}
+
+    run.status = "Pending"
+    
+    # History record
+    history = TestRunHistory(
+        run_id=run.id,
+        user_id=1,
+        action="Restored",
+        changed_fields=json.dumps({"status": "Archived -> Pending"}, ensure_ascii=False)
+    )
+    db.add(history)
+    
+    await db.commit()
+    return {"message": "TestRun restored successfully"}
 
 
 @router.post("/{run_id}/duplicate", response_model=TestRunResponse)
@@ -378,3 +424,14 @@ async def duplicate_run(run_id: int, db: AsyncSession = Depends(get_db)):
 
     new_run = await _get_run_with_assignees(new_run.id, db)
     return _build_response(new_run, 0, 0, 0, len(original_results), len(original_results))
+
+
+@router.get("/{run_id}/history", response_model=List[TestRunHistoryResponse])
+async def get_test_run_history(run_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(TestRunHistory)
+        .options(selectinload(TestRunHistory.user))
+        .where(TestRunHistory.run_id == run_id)
+        .order_by(TestRunHistory.created_at.desc())
+    )
+    return result.scalars().all()

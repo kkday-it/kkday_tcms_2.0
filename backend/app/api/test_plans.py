@@ -13,8 +13,10 @@ from sqlalchemy.orm import selectinload
 from app.db.database import get_db
 from app.models.test_case import TestCase
 from app.models.test_plan import TestPlan, plan_cases, plan_runs
+from app.models.test_plan_history import TestPlanHistory
 from app.models.test_run import TestRun
 from app.schemas.test_plan import TestPlanCreate, TestPlanResponse, TestPlanUpdate
+from app.schemas.test_plan_history import TestPlanHistoryResponse
 
 router = APIRouter()
 
@@ -85,6 +87,7 @@ async def export_plans(
         select(TestPlan)
         .options(selectinload(TestPlan.linked_runs), selectinload(TestPlan.linked_cases))
         .where(TestPlan.project_id == project_id)
+        .where(TestPlan.status != "Archived")
         .order_by(TestPlan.id)
     )
     plans = result.scalars().all()
@@ -154,6 +157,7 @@ async def get_test_plans_by_project(project_id: int, db: AsyncSession = Depends(
         select(TestPlan)
         .options(selectinload(TestPlan.linked_runs), selectinload(TestPlan.linked_cases))
         .where(TestPlan.project_id == project_id)
+        .where(TestPlan.status != "Archived")
     )
     return [_plan_to_response(p) for p in result.scalars().all()]
 
@@ -163,6 +167,7 @@ async def get_test_plans(project_id: int = None, db: AsyncSession = Depends(get_
     query = select(TestPlan).options(selectinload(TestPlan.linked_runs), selectinload(TestPlan.linked_cases))
     if project_id:
         query = query.where(TestPlan.project_id == project_id)
+    query = query.where(TestPlan.status != "Archived")
     result = await db.execute(query)
     return [_plan_to_response(p) for p in result.scalars().all()]
 
@@ -176,6 +181,15 @@ async def create_test_plan(plan_in: TestPlanCreate, db: AsyncSession = Depends(g
 
     await _set_runs(db, db_plan.id, plan_in.run_ids or [])
     await _set_cases(db, db_plan.id, plan_in.case_ids or [])
+    
+    # Create history
+    history = TestPlanHistory(
+        plan_id=db_plan.id,
+        user_id=1,
+        action="Created",
+        changed_fields=json.dumps({"title": db_plan.title})
+    )
+    db.add(history)
 
     await db.commit()
     return _plan_to_response(await _load_plan(db, db_plan.id))
@@ -201,6 +215,15 @@ async def update_test_plan(plan_id: int, plan_update: TestPlanUpdate, db: AsyncS
     if plan_update.case_ids is not None:
         await _set_cases(db, plan_id, plan_update.case_ids)
 
+    # History record (Simplified for now)
+    history = TestPlanHistory(
+        plan_id=db_plan.id,
+        user_id=1,
+        action="Updated",
+        changed_fields=json.dumps({"update": "Plan fields or linked items modified"}, ensure_ascii=False)
+    )
+    db.add(history)
+
     await db.commit()
     return _plan_to_response(await _load_plan(db, plan_id))
 
@@ -210,9 +233,42 @@ async def delete_test_plan(plan_id: int, db: AsyncSession = Depends(get_db)):
     db_plan = await db.get(TestPlan, plan_id)
     if not db_plan:
         raise HTTPException(status_code=404, detail="Test Plan not found")
-    await db.delete(db_plan)
+    db_plan.status = "Archived"
+    
+    # History record
+    history = TestPlanHistory(
+        plan_id=db_plan.id,
+        user_id=1,
+        action="Archived",
+        changed_fields=json.dumps({"status": "Active -> Archived"}, ensure_ascii=False)
+    )
+    db.add(history)
+    
     await db.commit()
-    return {"message": "Test Plan deleted"}
+    return {"message": "Test Plan archived"}
+
+@router.post("/{plan_id}/restore")
+async def restore_test_plan(plan_id: int, db: AsyncSession = Depends(get_db)):
+    db_plan = await db.get(TestPlan, plan_id)
+    if not db_plan:
+        raise HTTPException(status_code=404, detail="Test Plan not found")
+    
+    if db_plan.status != "Archived":
+        return {"message": "Test Plan is not archived"}
+
+    db_plan.status = "Draft"
+    
+    # History record
+    history = TestPlanHistory(
+        plan_id=db_plan.id,
+        user_id=1,
+        action="Restored",
+        changed_fields=json.dumps({"status": "Archived -> Draft"}, ensure_ascii=False)
+    )
+    db.add(history)
+    
+    await db.commit()
+    return {"message": "Test Plan restored successfully"}
 
 
 @router.get("/{plan_id}/jira-issues")
@@ -297,3 +353,14 @@ async def get_jira_issues_by_filter(
             raise HTTPException(status_code=502, detail=f"Jira request error: {str(e)}")
         else:
             raise HTTPException(status_code=502, detail=f"Jira error: {str(e)}")
+
+
+@router.get("/{plan_id}/history", response_model=List[TestPlanHistoryResponse])
+async def get_test_plan_history(plan_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(TestPlanHistory)
+        .options(selectinload(TestPlanHistory.user))
+        .where(TestPlanHistory.plan_id == plan_id)
+        .order_by(TestPlanHistory.created_at.desc())
+    )
+    return result.scalars().all()
