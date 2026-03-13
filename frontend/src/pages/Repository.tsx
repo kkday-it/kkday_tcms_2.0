@@ -946,6 +946,7 @@ export default function Repository() {
                                         className="w-full text-sm rounded-md border-slate-200 py-1.5 shadow-sm focus:border-primary-500 focus:ring-primary-500"
                                     >
                                         <option value="">All</option>
+                                        <option value="Highest">Highest</option>
                                         <option value="High">High</option>
                                         <option value="Medium">Medium</option>
                                         <option value="Low">Low</option>
@@ -1118,7 +1119,22 @@ export default function Repository() {
                                                         {tc.status}
                                                     </span>
                                                 </td>
-                                                <td className="py-3.5 px-4 text-sm text-slate-600">{tc.priority}</td>
+                                                <td className="py-3.5 px-4 font-medium">
+                                                    {(() => {
+                                                        const p = tc.priority || 'Medium';
+                                                        const colors = {
+                                                            'Highest': 'text-rose-600 bg-rose-50 border-rose-100',
+                                                            'High': 'text-orange-600 bg-orange-50 border-orange-100',
+                                                            'Medium': 'text-blue-600 bg-blue-50 border-blue-100',
+                                                            'Low': 'text-slate-500 bg-slate-50 border-slate-100'
+                                                        }[p] || 'text-slate-500 bg-slate-50 border-slate-100';
+                                                        return (
+                                                            <span className={`px-2 py-0.5 rounded text-[11px] font-bold border uppercase tracking-tight ${colors}`}>
+                                                                {p}
+                                                            </span>
+                                                        );
+                                                    })()}
+                                                </td>
                                                 <td className="py-3.5 px-4">
                                                     <span className={`text-xs px-2.5 py-1 rounded-full border ${tc.automation_status === 'Automated' ? 'border-primary-200 text-primary-700 bg-primary-50' : 'border-slate-200 text-slate-500 bg-white'}`}>
                                                         {tc.automation_status}

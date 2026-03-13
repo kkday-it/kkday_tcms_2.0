@@ -165,9 +165,20 @@ export default function TestCasePreviewPane({ isOpen, onClose, caseId, onEditCli
                                         <span className={`inline-flex items-baseline px-2.5 py-1 rounded-full border ${testCase.automation_status === 'Automated' ? 'border-primary-200 text-primary-700 bg-primary-50' : 'border-slate-200 text-slate-600 bg-slate-50'}`}>
                                             <span className="font-semibold mr-1">Auto:</span> {testCase.automation_status || 'Manual'}
                                         </span>
-                                        <span className="inline-flex items-baseline px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                                            <span className="font-semibold mr-1">Priority:</span> {testCase.priority || 'Medium'}
-                                        </span>
+                                        {(() => {
+                                            const p = testCase.priority || 'Medium';
+                                            const colors = {
+                                                'Highest': 'text-rose-600 bg-rose-50 border-rose-100',
+                                                'High': 'text-orange-600 bg-orange-50 border-orange-100',
+                                                'Medium': 'text-blue-600 bg-blue-50 border-blue-100',
+                                                'Low': 'text-slate-500 bg-slate-50 border-slate-100'
+                                            }[p] || 'text-slate-500 bg-slate-100 border-slate-200';
+                                            return (
+                                                <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold border capitalize ${colors}`}>
+                                                    <span className="font-semibold mr-1 opacity-70">Priority:</span> {p}
+                                                </span>
+                                            );
+                                        })()}
                                         <span className="inline-flex items-baseline px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
                                             <span className="font-semibold mr-1">Layer:</span> {testCase.layer || 'E2E'}
                                         </span>

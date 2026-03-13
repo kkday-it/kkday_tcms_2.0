@@ -285,6 +285,7 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
                                             onChange={(e) => setPriority(e.target.value)}
                                             className="w-full rounded-md border border-slate-200 py-2 px-3 text-slate-900 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 sm:text-sm bg-white"
                                         >
+                                            <option value="Highest">Highest</option>
                                             <option value="High">High</option>
                                             <option value="Medium">Medium</option>
                                             <option value="Low">Low</option>
@@ -405,7 +406,7 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
                                                     <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Action</span>
                                                     <RichTextEditor
                                                         value={step.action}
-                                                        onChange={(v) => handleStepChange(idx, 'action', v)}
+                                                        onChange={(v: string) => handleStepChange(idx, 'action', v)}
                                                         placeholder="Action"
                                                         minHeight="48px"
                                                     />
@@ -414,7 +415,7 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
                                                     <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Test Data</span>
                                                     <RichTextEditor
                                                         value={step.data || ''}
-                                                        onChange={(v) => handleStepChange(idx, 'data', v)}
+                                                        onChange={(v: string) => handleStepChange(idx, 'data', v)}
                                                         placeholder="Test Data (optional)"
                                                         minHeight="48px"
                                                     />
@@ -423,7 +424,7 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
                                                     <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Expected Result</span>
                                                     <RichTextEditor
                                                         value={step.expected_result}
-                                                        onChange={(v) => handleStepChange(idx, 'expected_result', v)}
+                                                        onChange={(v: string) => handleStepChange(idx, 'expected_result', v)}
                                                         placeholder="Expected Result"
                                                         minHeight="48px"
                                                     />

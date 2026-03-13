@@ -3,6 +3,7 @@ import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import Placeholder from '@tiptap/extension-placeholder';
 import { Bold, Italic, UnderlineIcon, List, ListOrdered, Minus } from 'lucide-react';
+import React, { useEffect } from 'react';
 
 interface RichTextEditorProps {
     value: string;       // HTML string
@@ -12,11 +13,7 @@ interface RichTextEditorProps {
     className?: string;
 }
 
-/**
- * Lightweight Tiptap-based rich text editor.
- * Stores and emits HTML strings, compatible with react-markdown + rehype-raw in PreviewPane.
- */
-export default function RichTextEditor({
+function RichTextEditor({
     value,
     onChange,
     placeholder = 'Enter content...',
@@ -26,7 +23,6 @@ export default function RichTextEditor({
     const editor = useEditor({
         extensions: [
             StarterKit.configure({
-                // Disable heading to keep it simple
                 heading: false,
                 codeBlock: false,
             }),
@@ -36,20 +32,24 @@ export default function RichTextEditor({
         content: value || '',
         onUpdate({ editor }) {
             const html = editor.getHTML();
-            // Treat an empty paragraph as empty string
             onChange(html === '<p></p>' ? '' : html);
         },
-    }, []);
+        editorProps: {
+            attributes: {
+                class: 'focus:outline-none',
+            },
+        },
+    });
 
-    // Sync external value changes (e.g. on case load)
-    // Only update if the content actually differs to avoid cursor jumps
-    if (editor && value !== undefined) {
+    // Sync external value changes
+    useEffect(() => {
+        if (!editor) return;
         const current = editor.getHTML();
         const incoming = value || '';
         if (current !== incoming && !(current === '<p></p>' && incoming === '')) {
             editor.commands.setContent(incoming, false);
         }
-    }
+    }, [value, editor]);
 
     if (!editor) return null;
 
@@ -69,8 +69,8 @@ export default function RichTextEditor({
             onMouseDown={(e) => { e.preventDefault(); onClick(); }}
             title={title}
             className={`p-1 rounded transition-colors ${active
-                    ? 'bg-primary-100 text-primary-700'
-                    : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100'
+                ? 'bg-primary-100 text-primary-700'
+                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100'
                 }`}
         >
             {children}
@@ -78,9 +78,9 @@ export default function RichTextEditor({
     );
 
     return (
-        <div className={`border border-slate-200 rounded-md focus-within:border-primary-500 focus-within:ring-1 focus-within:ring-primary-500 transition-all bg-white ${className}`}>
+        <div className={`flex flex-col border border-slate-200 rounded-md bg-white transition-all focus-within:ring-2 focus-within:ring-primary-100 focus-within:border-primary-500 ${className}`}>
             {/* Toolbar */}
-            <div className="flex items-center gap-0.5 px-2 py-1 border-b border-slate-100 bg-slate-50 rounded-t-md">
+            <div className="flex items-center gap-0.5 px-2 py-1 border-b border-slate-100 bg-slate-50/50 rounded-t-md">
                 <ToolbarBtn
                     onClick={() => editor.chain().focus().toggleBold().run()}
                     active={editor.isActive('bold')}
@@ -128,11 +128,18 @@ export default function RichTextEditor({
             </div>
 
             {/* Editor area */}
-            <EditorContent
-                editor={editor}
-                className="prose prose-sm max-w-none px-3 py-2 text-sm text-slate-900 focus:outline-none"
+            <div
+                className="overflow-y-auto px-3 py-2"
                 style={{ minHeight }}
-            />
+                onClick={() => editor.commands.focus()}
+            >
+                <EditorContent
+                    editor={editor}
+                    className="prose prose-sm max-w-none text-sm text-slate-900"
+                />
+            </div>
         </div>
     );
 }
+
+export default React.memo(RichTextEditor);

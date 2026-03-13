@@ -537,6 +537,7 @@ export default function EditRunModal({ isOpen, onClose, run, folders, onUpdated 
                                         className="w-full text-xs rounded border-slate-300 py-1"
                                     >
                                         <option value="">All</option>
+                                        <option value="Highest">Highest</option>
                                         <option value="High">High</option>
                                         <option value="Medium">Medium</option>
                                         <option value="Low">Low</option>
