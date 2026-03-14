@@ -23,10 +23,10 @@ async def lifespan(app: FastAPI):
     # ── 啟動 ──────────────────────────────────────────────
     logger.info("Starting up FastAPI server...")
 
-    # 初始化資料庫
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    logger.info("Database tables initialized.")
+    # 初始化資料庫 (SIT/Prod 環境建議由 Alembic 管理)
+    # async with engine.begin() as conn:
+    #     await conn.run_sync(Base.metadata.create_all)
+    # logger.info("Database tables initialization check skipped.")
 
     # ── Safe column migrations (idempotent) ───────────────────────────────
     # Add columns that were introduced after initial table creation.
