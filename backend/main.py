@@ -23,10 +23,14 @@ async def lifespan(app: FastAPI):
     # ── 啟動 ──────────────────────────────────────────────
     logger.info("Starting up FastAPI server...")
 
-    # 初始化資料庫 (SIT/Prod 環境建議由 Alembic 管理)
-    # async with engine.begin() as conn:
-    #     await conn.run_sync(Base.metadata.create_all)
-    # logger.info("Database tables initialization check skipped.")
+    # 資料庫健康檢查 (取代之前的自動 create_all)
+    from app.db.health import check_schema_health
+    is_healthy, missing_tables, missing_columns = await check_schema_health()
+    if not is_healthy:
+        logger.warning(f"Database schema mismatch detected! Missing tables: {missing_tables}, Missing columns: {missing_columns}")
+        logger.warning("Please run manual sync or migrations.")
+    else:
+        logger.info("Database schema is healthy.")
 
     # ── Safe column migrations (idempotent) ───────────────────────────────
     # Add columns that were introduced after initial table creation.

@@ -1,1 +1,21 @@
-\n# Logs\nlogs/\n*.log
+# Logs
+logs/
+*.log
+
+# Database
+backend/tcms_1_5.db
+*.db
+*.db-journal
+
+# Temporary files
+backend/*.txt
+backend/check_tables.py
+backend/fetch_epic.py
+backend/fix_all_permissions.py
+backend/fix_db_history_tables*.py
+backend/test_db.py
+
+# Env
+.env
+.venv/
+node_modules/
