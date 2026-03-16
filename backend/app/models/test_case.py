@@ -35,6 +35,6 @@ class TestCase(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     suite = relationship("TestSuite", back_populates="test_cases")
-    steps = relationship("TestStep", back_populates="test_case", cascade="all, delete-orphan", order_by="TestStep.order")
+    steps = relationship("TestStep", back_populates="test_case", cascade="all", order_by="TestStep.order")
     results = relationship("TestResult", back_populates="test_case", cascade="all, delete-orphan")
     default_owner = relationship("User", backref="owned_cases")

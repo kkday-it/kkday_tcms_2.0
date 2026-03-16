@@ -11,5 +11,6 @@ class TestStep(Base):
     action = Column(String, nullable=False)
     data = Column(String, nullable=True)
     expected_result = Column(String, nullable=True)
+    status = Column(String, default="Active")  # Active, Archived
 
     test_case = relationship("TestCase", back_populates="steps")

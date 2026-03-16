@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, with_loader_criteria
 
 from app.db.database import get_db
 from app.models.test_case import TestCase
@@ -68,6 +68,9 @@ async def list_cases_by_project(
             query = query.where((TestCase.labels.is_(None)) | (~TestCase.labels.ilike(f"%{label}%")))
     query = query.where(TestCase.status != "Archived")
     
+    query = query.where(TestCase.status != "Archived")
+    query = query.options(with_loader_criteria(TestStep, TestStep.status != "Archived"))
+    
     result = await db.execute(query)
     return result.scalars().all()
 
@@ -88,6 +91,7 @@ async def list_cases_by_suite(suite_id: int, db: AsyncSession = Depends(get_db))
     result = await db.execute(
         select(TestCase)
         .options(selectinload(TestCase.steps))
+        .options(with_loader_criteria(TestStep, TestStep.status != "Archived"))
         .where(TestCase.suite_id.in_(select(hierarchy.c.id)))
         .where(TestCase.status != "Archived")
     )
@@ -118,7 +122,12 @@ async def create_case(case_in: TestCaseCreate, db: AsyncSession = Depends(get_db
     await db.refresh(case)
     
     # Reload with steps
-    result = await db.execute(select(TestCase).options(selectinload(TestCase.steps)).where(TestCase.id == case.id))
+    result = await db.execute(
+        select(TestCase)
+        .options(selectinload(TestCase.steps))
+        .options(with_loader_criteria(TestStep, TestStep.status != "Archived"))
+        .where(TestCase.id == case.id)
+    )
     return result.scalar_one()
 
 @router.get("/export")
@@ -255,7 +264,12 @@ async def export_cases(
 
 @router.get("/{case_id}", response_model=TestCaseResponse)
 async def get_case(case_id: int, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(TestCase).options(selectinload(TestCase.steps)).where(TestCase.id == case_id))
+    result = await db.execute(
+        select(TestCase)
+        .options(selectinload(TestCase.steps))
+        .options(with_loader_criteria(TestStep, TestStep.status != "Archived"))
+        .where(TestCase.id == case_id)
+    )
     case = result.scalar_one_or_none()
     if not case:
         raise HTTPException(status_code=404, detail="TestCase not found")
@@ -279,24 +293,40 @@ async def update_case(case_id: int, case_in: TestCaseUpdate, db: AsyncSession = 
             changes[key] = f"{old_val} -> {value}"
         setattr(case, key, value)
     
-    # Handle steps
+    # Handle steps (Smart Update)
     steps_changed = False
     if case_in.steps is not None:
         steps_changed = True
-        # Simplistic approach: delete old, add new
-        for step in case.steps:
-            await db.delete(step)
+        existing_steps = {s.id: s for s in case.steps}
+        incoming_step_ids = {s.id for s in case_in.steps if s.id is not None}
+        
+        # 1. Update or Insert
         for step_in in case_in.steps:
-            step = TestStep(**step_in.model_dump(), test_case_id=case.id)
-            db.add(step)
+            if step_in.id and step_in.id in existing_steps:
+                # Update existing
+                step = existing_steps[step_in.id]
+                for key, value in step_in.model_dump(exclude={"id"}).items():
+                    setattr(step, key, value)
+                step.status = "Active" # Ensure it's active if it was archived
+            else:
+                # Insert new
+                new_step = TestStep(**step_in.model_dump(exclude={"id"}), test_case_id=case.id)
+                db.add(new_step)
+        
+        # 2. Soft-Delete Orphans
+        for step_id, step in existing_steps.items():
+            if step_id not in incoming_step_ids:
+                step.status = "Archived"
+                # To really "un-link" it from the current case view if needed, 
+                # but we usually just filter it out in the relationship query.
             
     if steps_changed:
-        changes["steps"] = "Steps modified"
+        changes["steps"] = "Steps modified (Smart Update)"
 
     if changes:
         history = TestCaseHistory(
             case_id=case.id,
-            user_id=1,  # Hardcoded to user 1 for now
+            user_id=1,  # Hardcoded
             action="Updated",
             changed_fields=json.dumps(changes, ensure_ascii=False)
         )
@@ -305,7 +335,12 @@ async def update_case(case_id: int, case_in: TestCaseUpdate, db: AsyncSession = 
     await db.commit()
     
     # Reload
-    result = await db.execute(select(TestCase).options(selectinload(TestCase.steps)).where(TestCase.id == case.id))
+    result = await db.execute(
+        select(TestCase)
+        .options(selectinload(TestCase.steps))
+        .options(with_loader_criteria(TestStep, TestStep.status != "Archived"))
+        .where(TestCase.id == case.id)
+    )
     return result.scalar_one()
 
 @router.delete("/batch")

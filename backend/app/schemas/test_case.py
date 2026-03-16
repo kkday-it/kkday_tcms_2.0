@@ -11,6 +11,9 @@ class TestStepBase(BaseModel):
 class TestStepCreate(TestStepBase):
     pass
 
+class TestStepUpdate(TestStepBase):
+    id: Optional[int] = None
+
 class TestStepResponse(TestStepBase):
     id: int
     test_case_id: int
@@ -49,7 +52,7 @@ class TestCaseCreate(TestCaseBase):
 class TestCaseUpdate(TestCaseBase):
     title: Optional[str] = None
     suite_id: Optional[int] = None
-    steps: Optional[List[TestStepCreate]] = None
+    steps: Optional[List[TestStepUpdate]] = None
 
 class TestCaseResponse(TestCaseBase):
     id: int
