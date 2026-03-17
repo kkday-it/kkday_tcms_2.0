@@ -116,7 +116,8 @@ class TestCasesAPI:
         assert del_res.status_code == 200
 
         get_res = await client.get(f"/api/v1/cases/{case_id}")
-        assert get_res.status_code == 404
+        assert get_res.status_code == 200
+        assert get_res.json()["status"] == "Archived"
 
     async def test_list_cases_by_suite(self, client: AsyncClient, suite_id: int):
         await client.post("/api/v1/cases/", json={"title": "Case 1", "suite_id": suite_id})

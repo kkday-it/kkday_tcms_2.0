@@ -92,7 +92,8 @@ class TestRunsCRUD:
         del_res = await client.delete(f"/api/v1/runs/{run['id']}")
         assert del_res.status_code == 200
         get_res = await client.get(f"/api/v1/runs/{run['id']}")
-        assert get_res.status_code == 404
+        assert get_res.status_code == 200
+        assert get_res.json()["status"] == "Archived"
 
     async def test_delete_run_not_found(self, client: AsyncClient):
         res = await client.delete("/api/v1/runs/999999")

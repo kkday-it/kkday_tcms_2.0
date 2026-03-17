@@ -60,15 +60,28 @@ def _plan_to_response(plan: TestPlan) -> dict:
 
 
 async def _set_runs(db: AsyncSession, plan_id: int, run_ids: List[int]):
-    # Smart update for many-to-many: only add what's missing
-    # To truly "remove" without DELETE permission, we would need a status column in the association table.
-    # For now, we will attempt to only INSERT new ones to avoid permission errors on DELETE.
+    # Smart update for many-to-many:
+    # - Always INSERT missing
+    # - Try DELETE removed (may fail on restricted DB roles; ignore permission errors)
     result = await db.execute(select(plan_runs.c.run_id).where(plan_runs.c.plan_id == plan_id))
     existing_run_ids = {row[0] for row in result.all()}
     
     new_run_ids = [rid for rid in run_ids if rid not in existing_run_ids]
     if new_run_ids:
         await db.execute(insert(plan_runs).values([{"plan_id": plan_id, "run_id": rid} for rid in new_run_ids]))
+
+    removed_run_ids = [rid for rid in existing_run_ids if rid not in set(run_ids)]
+    if removed_run_ids:
+        try:
+            await db.execute(
+                delete(plan_runs).where(
+                    plan_runs.c.plan_id == plan_id,
+                    plan_runs.c.run_id.in_(removed_run_ids),
+                )
+            )
+        except Exception:
+            # On SIT, DB role may not have DELETE privilege; keep best-effort behavior.
+            pass
 
 
 async def _set_cases(db: AsyncSession, plan_id: int, case_ids: List[int]):
@@ -78,6 +91,18 @@ async def _set_cases(db: AsyncSession, plan_id: int, case_ids: List[int]):
     new_case_ids = [cid for cid in case_ids if cid not in existing_case_ids]
     if new_case_ids:
         await db.execute(insert(plan_cases).values([{"plan_id": plan_id, "case_id": cid} for cid in new_case_ids]))
+
+    removed_case_ids = [cid for cid in existing_case_ids if cid not in set(case_ids)]
+    if removed_case_ids:
+        try:
+            await db.execute(
+                delete(plan_cases).where(
+                    plan_cases.c.plan_id == plan_id,
+                    plan_cases.c.case_id.in_(removed_case_ids),
+                )
+            )
+        except Exception:
+            pass
 
 
 @router.get("/export")

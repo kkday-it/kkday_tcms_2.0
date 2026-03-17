@@ -67,8 +67,6 @@ async def list_cases_by_project(
         for label in exclude_labels_list:
             query = query.where((TestCase.labels.is_(None)) | (~TestCase.labels.ilike(f"%{label}%")))
     query = query.where(TestCase.status != "Archived")
-    
-    query = query.where(TestCase.status != "Archived")
     query = query.options(with_loader_criteria(TestStep, TestStep.status != "Archived"))
     
     result = await db.execute(query)

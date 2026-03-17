@@ -3,12 +3,37 @@ import asyncio
 import json
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy import text
-from app.core.config import settings
 import os
 
 # --- 配置 ---
-REMOTE_URL = "postgresql+asyncpg://ai_worker:Lilee1234@autotest-service.sit.kkday.com:5432/qa_automation"
-LOCAL_DB_PATH = "/Users/lance.chien/workspace/kkday-qa-ai/kk_tcms_1.5/backend/tcms_1_5.db"
+from urllib.parse import quote_plus
+
+from app.core.secrets import get_secret
+
+
+def _resolve_remote_url() -> str:
+    data = get_secret(key="qa_database", return_value=True)
+    if not data or not isinstance(data, dict):
+        raise ValueError("qa_database secret not found or invalid")
+    user = data.get("user", "")
+    pw = data.get("password", "") or data.get("pass", "")
+    host = data.get("host", "")
+    port = data.get("port", 5432)
+    db = data.get("database", "")
+    return f"postgresql+asyncpg://{user}:{quote_plus(str(pw))}@{host}:{port}/{db}"
+
+
+def _resolve_local_db_path() -> str:
+    # Allow override, default to backend/tcms_1_5.db (same folder as this script's parent)
+    override = os.environ.get("TCMS_LOCAL_DB_PATH")
+    if override:
+        return override
+    backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    return os.path.join(backend_dir, "tcms_1_5.db")
+
+
+REMOTE_URL: str | None = None
+LOCAL_DB_PATH: str | None = None
 
 # 要同步的表格清單
 TABLES_TO_SYNC = [
@@ -35,6 +60,12 @@ from datetime import datetime
 
 async def sync_tables():
     print(f"🚀 開始從 SIT 同步資料到本地 SQLite...")
+
+    global REMOTE_URL, LOCAL_DB_PATH
+    if REMOTE_URL is None:
+        REMOTE_URL = _resolve_remote_url()
+    if LOCAL_DB_PATH is None:
+        LOCAL_DB_PATH = _resolve_local_db_path()
     
     # --- 自動備份機制 ---
     if os.path.exists(LOCAL_DB_PATH):
@@ -102,7 +133,11 @@ async def sync_tables():
         await remote_engine.dispose()
 
 if __name__ == "__main__":
-    if not os.path.exists(LOCAL_DB_PATH):
-        print(f"錯誤: 找不到本地資料庫 {LOCAL_DB_PATH}")
-    else:
-        asyncio.run(sync_tables())
+    try:
+        LOCAL_DB_PATH = _resolve_local_db_path()
+        if not os.path.exists(LOCAL_DB_PATH):
+            print(f"錯誤: 找不到本地資料庫 {LOCAL_DB_PATH}")
+        else:
+            asyncio.run(sync_tables())
+    except Exception as e:
+        print(f"❌ 初始化失敗: {e}")

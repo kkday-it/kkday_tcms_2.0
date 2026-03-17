@@ -12,9 +12,27 @@ import sqlite3
 import psycopg2
 import json
 from datetime import datetime
+from urllib.parse import quote_plus
 
 SQLITE_PATH = "./tcms_1_5.db"
-PG_DSN = "host=autotest-service.sit.kkday.com port=5432 dbname=qa_automation user=admin password=X5x6TFBmCNdxrQxK"
+
+from app.core.secrets import get_secret
+
+
+def _resolve_pg_dsn() -> str:
+    data = get_secret(key="qa_database", return_value=True)
+    if not data or not isinstance(data, dict):
+        raise ValueError("qa_database secret not found or invalid")
+    host = data.get("host", "")
+    port = data.get("port", 5432)
+    db = data.get("database", "")
+    user = data.get("user", "")
+    pw = data.get("password", "") or data.get("pass", "")
+    # psycopg2 DSN format
+    return f"host={host} port={port} dbname={db} user={user} password={quote_plus(str(pw))}"
+
+
+PG_DSN: str | None = None
 
 # 搬移順序依 FK 相依性排列
 TABLES = [
@@ -37,6 +55,9 @@ TABLES = [
 
 
 def migrate():
+    global PG_DSN
+    if PG_DSN is None:
+        PG_DSN = _resolve_pg_dsn()
     sqlite_conn = sqlite3.connect(SQLITE_PATH)
     sqlite_conn.row_factory = sqlite3.Row
     pg_conn = psycopg2.connect(PG_DSN)
