@@ -263,47 +263,37 @@ export default function TestPlanDetails() {
     const fetchData = async () => {
         setIsLoading(true);
         try {
-            // All 4 independent; fetch in parallel
-            const [planRes, foldersRes, runsRes, casesRes, suitesRes] = await Promise.all([
+            const [planRes, runsRes] = await Promise.all([
                 api.get(`/plans/${planId}`),
-                api.get(`/plan-folders/project/1`),
-                api.get(`/runs/project/1`),
-                api.get(`/cases/project/1`),
-                api.get(`/suites/project/1`),
+                api.get(`/plans/${planId}/runs`),
             ]);
             const planData: TestPlan = planRes.data;
             setPlan(planData);
-
-            setFolders(foldersRes.data);
-            setAllRuns(runsRes.data);
-            setAllCases(casesRes.data);
-            setAllSuites(suitesRes.data.map((s: any) => ({ id: s.id, name: s.name })));
-
-            if (planData.run_ids?.length) {
-                const linkedRuns = (runsRes.data as any[])
-                    .filter(r => planData.run_ids!.includes(r.id))
-                    .map(r => ({
-                        ...r,
-                        passed: r.passed ?? 0,
-                        failed: r.failed ?? 0,
-                        untested: r.untested ?? r.unt ?? 0,
-                    }));
-                setRuns(linkedRuns);
-            } else {
-                setRuns([]);
-            }
-
-            if (planData.case_ids?.length) {
-                const linkedCases = (casesRes.data as any[])
-                    .filter(c => planData.case_ids!.includes(c.id));
-                setCases(linkedCases);
-            } else {
-                setCases([]);
-            }
+            setRuns(runsRes.data);
+            setCases((planData as any).cases_data ?? []);
         } catch (err) {
             console.error('Failed to load plan details', err);
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const fetchEditData = async () => {
+        if (allRuns.length > 0) return; // already loaded
+        try {
+            const projectId = plan?.project_id ?? 1;
+            const [foldersRes, runsRes, casesRes, suitesRes] = await Promise.all([
+                api.get(`/plan-folders/project/${projectId}`),
+                api.get(`/runs/project/${projectId}`),
+                api.get(`/cases/project/${projectId}`),
+                api.get(`/suites/project/${projectId}`),
+            ]);
+            setFolders(foldersRes.data);
+            setAllRuns(runsRes.data);
+            setAllCases(casesRes.data);
+            setAllSuites(suitesRes.data.map((s: any) => ({ id: s.id, name: s.name })));
+        } catch (err) {
+            console.error('Failed to load edit data', err);
         }
     };
 
@@ -441,7 +431,7 @@ export default function TestPlanDetails() {
                             {plan.status}
                         </span>
                         <button
-                            onClick={() => setIsEditModalOpen(true)}
+                            onClick={() => { setIsEditModalOpen(true); fetchEditData(); }}
                             className="p-1.5 rounded-md text-slate-400 hover:text-primary-600 hover:bg-primary-50 transition-colors"
                             title="編輯測試計畫"
                         >

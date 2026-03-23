@@ -5,7 +5,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from sqlalchemy import delete, insert
+from sqlalchemy import case, delete, func, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
@@ -14,6 +14,7 @@ from app.db.database import get_db
 from app.models.test_case import TestCase
 from app.models.test_plan import TestPlan, plan_cases, plan_runs
 from app.models.test_plan_history import TestPlanHistory
+from app.models.test_result import TestResult
 from app.models.test_run import TestRun
 from app.schemas.test_plan import TestPlanCreate, TestPlanResponse, TestPlanUpdate
 from app.schemas.test_plan_history import TestPlanHistoryResponse
@@ -51,6 +52,10 @@ def _plan_to_response(plan: TestPlan) -> dict:
         "folder_id": plan.folder_id,
         "run_ids": [r.id for r in (plan.linked_runs or [])],
         "case_ids": [c.id for c in (plan.linked_cases or [])],
+        "cases_data": [
+            {"id": c.id, "title": c.title, "priority": getattr(c, "priority", "Low") or "Low"}
+            for c in (plan.linked_cases or [])
+        ],
         "prd_url": getattr(plan, "prd_url", None),
         "sa_docs": getattr(plan, "sa_docs", None) or [],
         "sd_docs": getattr(plan, "sd_docs", None) or [],
@@ -240,6 +245,37 @@ async def create_test_plan(plan_in: TestPlanCreate, db: AsyncSession = Depends(g
 @router.get("/{plan_id}", response_model=TestPlanResponse)
 async def get_test_plan(plan_id: int, db: AsyncSession = Depends(get_db)):
     return _plan_to_response(await _load_plan(db, plan_id))
+
+
+@router.get("/{plan_id}/runs")
+async def get_plan_runs(plan_id: int, db: AsyncSession = Depends(get_db)):
+    """回傳 plan 連結的 runs，附帶 passed/failed/untested 統計。"""
+    subq = select(plan_runs.c.run_id).where(plan_runs.c.plan_id == plan_id).scalar_subquery()
+    query = (
+        select(
+            TestRun,
+            func.sum(case((TestResult.status == "Passed", 1), else_=0)).label("passed"),
+            func.sum(case((TestResult.status == "Failed", 1), else_=0)).label("failed"),
+            func.sum(case((TestResult.status == "Blocked", 1), else_=0)).label("blocked"),
+            func.count(TestResult.id).label("total"),
+        )
+        .outerjoin(TestResult, TestRun.id == TestResult.run_id)
+        .where(TestRun.id.in_(subq))
+        .group_by(TestRun.id)
+    )
+    rows = (await db.execute(query)).all()
+    result = []
+    for run_obj, passed, failed, blocked, total in rows:
+        passed, failed, blocked, total = (v or 0 for v in (passed, failed, blocked, total))
+        result.append({
+            "id": run_obj.id,
+            "title": run_obj.title,
+            "status": run_obj.status,
+            "passed": passed,
+            "failed": failed,
+            "untested": total - passed - failed - blocked,
+        })
+    return result
 
 
 @router.put("/{plan_id}", response_model=TestPlanResponse)
