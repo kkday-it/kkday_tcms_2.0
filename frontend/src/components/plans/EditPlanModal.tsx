@@ -568,37 +568,77 @@ export default function EditPlanModal({ plan, folders, runs, cases, caseFolders,
                                     )}
 
                                     {activeTab === 'cases' && (
-                                        <>
-                                            {caseFolders.length > 0 && (
-                                                <div className="mb-3">
+                                        <div className="flex gap-3 h-80">
+                                            {/* ── Left: Available Cases ── */}
+                                            <div className="flex-1 flex flex-col min-w-0 border border-slate-200 rounded-xl overflow-hidden">
+                                                <div className="px-3 py-2.5 border-b border-slate-100 bg-slate-50 shrink-0 space-y-2">
                                                     <select value={caseFolderFilter} onChange={e => setCaseFolderFilter(e.target.value)}
-                                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary-500">
-                                                        <option value="">All Folders</option>
+                                                        className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-primary-500">
+                                                        <option value="">All Suites</option>
                                                         {caseFolders.map(f => (
                                                             <option key={f.id} value={String(f.id)}>{f.name}</option>
                                                         ))}
                                                     </select>
+                                                    <div className="relative">
+                                                        <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                                                        <input type="text" placeholder="Search cases…" value={caseSearch}
+                                                            onChange={e => setCaseSearch(e.target.value)}
+                                                            className="w-full pl-8 pr-3 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                                                    </div>
+                                                    <p className="text-[11px] text-slate-400 px-0.5">
+                                                        {filteredCases.filter(c => !selectedCaseIds.includes(c.id)).length} 筆可選
+                                                    </p>
                                                 </div>
-                                            )}
-                                            <div className="relative mb-3">
-                                                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                                                <input type="text" placeholder="Search cases…" value={caseSearch}
-                                                    onChange={e => setCaseSearch(e.target.value)}
-                                                    className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all" />
+                                                <div className="flex-1 overflow-y-auto divide-y divide-slate-100 bg-white">
+                                                    {filteredCases.filter(c => !selectedCaseIds.includes(c.id)).length === 0 ? (
+                                                        <p className="text-xs text-slate-400 p-4 text-center">No cases found.</p>
+                                                    ) : (
+                                                        filteredCases.filter(c => !selectedCaseIds.includes(c.id)).map(tc => (
+                                                            <button key={tc.id} type="button" onClick={() => toggleCase(tc.id)}
+                                                                className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-primary-50 text-left transition-colors group">
+                                                                <Plus className="w-3.5 h-3.5 text-slate-300 group-hover:text-primary-500 shrink-0 transition-colors" />
+                                                                <span className="text-[11px] font-mono text-slate-400 shrink-0 w-10">TC-{tc.id}</span>
+                                                                <span className="text-xs text-slate-700 truncate">{tc.title}</span>
+                                                            </button>
+                                                        ))
+                                                    )}
+                                                </div>
                                             </div>
-                                            <div className="max-h-44 overflow-y-auto rounded-lg border border-slate-200 divide-y divide-slate-100 bg-white">
-                                                {filteredCases.length === 0 && <p className="text-sm text-slate-400 p-4 text-center">No cases found.</p>}
-                                                {filteredCases.map(tc => (
-                                                    <label key={tc.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 cursor-pointer transition-colors">
-                                                        <input type="checkbox" checked={selectedCaseIds.includes(tc.id)}
-                                                            onChange={() => toggleCase(tc.id)}
-                                                            className="w-4 h-4 rounded border-slate-300 text-primary-600 focus:ring-primary-600" />
-                                                        <span className="text-xs font-mono text-slate-400 w-12 shrink-0">TC-{tc.id}</span>
-                                                        <span className="text-sm text-slate-700 truncate">{tc.title}</span>
-                                                    </label>
-                                                ))}
+
+                                            {/* ── Right: Selected Cases ── */}
+                                            <div className="flex-1 flex flex-col min-w-0 border border-slate-200 rounded-xl overflow-hidden">
+                                                <div className="px-3 py-2.5 border-b border-slate-100 bg-slate-50 shrink-0 flex items-center justify-between">
+                                                    <span className="text-xs font-semibold text-slate-600">
+                                                        已選擇 <span className="text-primary-600">{selectedCaseIds.length}</span> 個案例
+                                                    </span>
+                                                    {selectedCaseIds.length > 0 && (
+                                                        <button type="button" onClick={() => setSelectedCaseIds([])}
+                                                            className="text-xs text-rose-500 hover:text-rose-700 transition-colors">
+                                                            清除全部
+                                                        </button>
+                                                    )}
+                                                </div>
+                                                <div className="flex-1 overflow-y-auto divide-y divide-slate-100 bg-white">
+                                                    {selectedCaseIds.length === 0 ? (
+                                                        <div className="flex flex-col items-center justify-center h-full text-slate-300 gap-1.5 py-8">
+                                                            <Plus className="w-8 h-8" />
+                                                            <p className="text-xs">從左側點擊案例加入</p>
+                                                        </div>
+                                                    ) : (
+                                                        cases.filter(c => selectedCaseIds.includes(c.id)).map(tc => (
+                                                            <div key={tc.id} className="flex items-center gap-2 px-3 py-2.5 group hover:bg-slate-50 transition-colors">
+                                                                <span className="text-[11px] font-mono text-slate-400 shrink-0 w-10">TC-{tc.id}</span>
+                                                                <span className="text-xs text-slate-700 truncate flex-1">{tc.title}</span>
+                                                                <button type="button" onClick={() => toggleCase(tc.id)}
+                                                                    className="shrink-0 p-0.5 text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all">
+                                                                    <X className="w-3.5 h-3.5" />
+                                                                </button>
+                                                            </div>
+                                                        ))
+                                                    )}
+                                                </div>
                                             </div>
-                                        </>
+                                        </div>
                                     )}
                                 </div>
                             </>

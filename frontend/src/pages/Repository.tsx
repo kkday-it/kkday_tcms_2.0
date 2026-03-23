@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { Plus, Search, Filter, Loader2, Upload, Download, RefreshCw, Trash2, FolderOpen, ChevronDown, X, CheckCircle2, AlertCircle, FileCode2 } from 'lucide-react';
-import { DndContext, DragEndEvent, closestCenter, useDroppable, useSensor, useSensors, PointerSensor } from '@dnd-kit/core';
+import { Plus, Search, Filter, Loader2, Upload, Download, RefreshCw, Trash2, FolderOpen, ChevronDown, X, CheckCircle2, AlertCircle, FileCode2, GripVertical } from 'lucide-react';
+import { DndContext, DragEndEvent, pointerWithin, closestCenter, useDroppable, useDraggable, useSensor, useSensors, PointerSensor } from '@dnd-kit/core';
+import { CSS } from '@dnd-kit/utilities';
 import TestCaseEditor from '../components/cases/TestCaseEditor';
 import TestCasePreviewPane from '../components/cases/TestCasePreviewPane';
 import EditSuiteModal from '../components/suites/EditSuiteModal';
@@ -17,6 +18,103 @@ function RootDroppableArea({ children }: { children: React.ReactNode }) {
             <div className="text-xs text-center p-2 text-slate-400 border border-dashed border-slate-200 rounded mb-2 bg-slate-50/50">Drop here for Top Level</div>
             {children}
         </div>
+    );
+}
+
+interface DraggableCaseRowProps {
+    tc: {
+        id: number; title: string; status: string; priority: string;
+        automation_status: string; external_id?: string;
+        tags?: string; labels?: string; jira_keys?: string;
+        default_owner_id?: number; type?: string; layer?: string;
+    };
+    isSelected: boolean;
+    onToggle: () => void;
+    onPreview: () => void;
+    onDelete: (e: React.MouseEvent) => void;
+}
+
+function DraggableCaseRow({ tc, isSelected, onToggle, onPreview, onDelete }: DraggableCaseRowProps) {
+    const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+        id: `case-${tc.id}`,
+        data: { type: 'case', caseId: tc.id },
+    });
+
+    const style = transform ? {
+        transform: CSS.Translate.toString(transform),
+        opacity: isDragging ? 0.5 : 1,
+        zIndex: isDragging ? 100 : 'auto',
+        position: 'relative' as const,
+    } : undefined;
+
+    const p = tc.priority || 'Medium';
+    const priorityColors = ({
+        'Highest': 'text-rose-600 bg-rose-50 border-rose-100',
+        'High': 'text-orange-600 bg-orange-50 border-orange-100',
+        'Medium': 'text-blue-600 bg-blue-50 border-blue-100',
+        'Low': 'text-slate-500 bg-slate-50 border-slate-100',
+    } as Record<string, string>)[p] || 'text-slate-500 bg-slate-50 border-slate-100';
+
+    return (
+        <tr
+            ref={setNodeRef}
+            style={style}
+            onClick={onPreview}
+            className={`hover:bg-slate-50/80 cursor-pointer group transition-colors ${isSelected ? 'bg-primary-50/40' : ''} ${isDragging ? 'shadow-lg' : ''}`}
+        >
+            {/* Checkbox — stopPropagation only, no toggleCase here (onChange handles it) */}
+            <td className="py-3.5 px-4 w-10" onClick={e => e.stopPropagation()}>
+                <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={onToggle}
+                    className="size-4 rounded border-slate-300 text-primary-600 focus:ring-primary-600"
+                />
+            </td>
+            {/* Title + drag handle */}
+            <td className="py-3.5 px-4 font-medium text-slate-900 group-hover:text-primary-600 transition-colors">
+                <div className="flex items-center gap-2">
+                    <div
+                        {...attributes} {...listeners}
+                        onClick={e => e.stopPropagation()}
+                        className="cursor-grab active:cursor-grabbing text-slate-200 hover:text-slate-400 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="拖曳移至其他資料夾"
+                    >
+                        <GripVertical className="w-4 h-4" />
+                    </div>
+                    <div className="flex flex-col gap-1 min-w-0 max-w-[400px]">
+                        <span className="text-xs font-mono text-slate-400">
+                            TC-{tc.id}{tc.external_id && <span className="ml-1 px-1.5 py-0.5 bg-primary-50 text-primary-600 rounded whitespace-nowrap">{tc.external_id}</span>}
+                        </span>
+                        <span className="text-sm font-semibold text-slate-900 truncate" title={tc.title}>{tc.title}</span>
+                    </div>
+                </div>
+            </td>
+            <td className="py-3.5 px-4">
+                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${tc.status === 'Active' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-slate-50 text-slate-600 border border-slate-200'}`}>
+                    {tc.status}
+                </span>
+            </td>
+            <td className="py-3.5 px-4 font-medium">
+                <span className={`px-2 py-0.5 rounded text-[11px] font-bold border uppercase tracking-tight ${priorityColors}`}>
+                    {p}
+                </span>
+            </td>
+            <td className="py-3.5 px-4">
+                <span className={`text-xs px-2.5 py-1 rounded-full border ${tc.automation_status === 'Automated' ? 'border-primary-200 text-primary-700 bg-primary-50' : 'border-slate-200 text-slate-500 bg-white'}`}>
+                    {tc.automation_status}
+                </span>
+            </td>
+            <td className="py-3.5 px-8 text-right">
+                <button
+                    onClick={onDelete}
+                    className="text-slate-400 hover:text-rose-500 p-1.5 rounded-md hover:bg-rose-50 opacity-0 group-hover:opacity-100 transition-all"
+                    title="Delete Case"
+                >
+                    <Trash2 className="w-4 h-4" />
+                </button>
+            </td>
+        </tr>
     );
 }
 
@@ -599,6 +697,27 @@ export default function Repository() {
         const { active, over } = event;
         if (!over) return;
 
+        // ── Case drag: move case to target suite ──────────────────────────
+        if (String(active.id).startsWith('case-')) {
+            const caseId = parseInt(String(active.id).replace('case-', ''));
+            const targetSuiteId = over.id === 'root' ? null : Number(over.id);
+            if (!targetSuiteId) return; // cases must belong to a suite
+
+            const tc = cases.find(c => c.id === caseId);
+            if (!tc || (tc as any).suite_id === targetSuiteId) return;
+
+            try {
+                await api.put(`/cases/${caseId}`, { suite_id: targetSuiteId });
+                fetchCases();
+                fetchSuites();
+            } catch (e) {
+                console.error(e);
+                alert('移動案例失敗');
+            }
+            return;
+        }
+
+        // ── Suite drag ────────────────────────────────────────────────────
         const draggedSuiteId = active.id as number;
         const targetSuiteId = over.id;
 
@@ -662,7 +781,13 @@ export default function Repository() {
 
     const rootSuites = suites.filter(s => !s.parent_suite_id);
 
+    const dndCollision = (args: Parameters<typeof pointerWithin>[0]) =>
+        String(args.active.id).startsWith('case-')
+            ? pointerWithin(args)
+            : closestCenter(args);
+
     return (
+        <DndContext onDragEnd={handleDragEnd} collisionDetection={dndCollision} sensors={sensors}>
         <div className="flex-1 flex h-full overflow-hidden">
             {isXmindModalOpen && (
                 <XmindImportModal
@@ -715,8 +840,7 @@ export default function Repository() {
                     </button>
                 </div>
 
-                <DndContext onDragEnd={handleDragEnd} collisionDetection={closestCenter} sensors={sensors}>
-                    <RootDroppableArea>
+                <RootDroppableArea>
                         <div className="space-y-0.5">
                             {isAddingSuite && (
                                 <form onSubmit={handleCreateSuite} className="px-2 py-1.5 mb-2">
@@ -739,7 +863,6 @@ export default function Repository() {
                             )}
                         </div>
                     </RootDroppableArea>
-                </DndContext>
                 {/* Bulk Actions Footer */}
                 {selectedSuites.length > 0 && (
                     <div className="p-3 border-t border-slate-200 bg-slate-100/50 flex flex-col gap-2">
@@ -1124,61 +1247,14 @@ export default function Repository() {
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
                                         {filteredCases.map((tc) => (
-                                            <tr
+                                            <DraggableCaseRow
                                                 key={tc.id}
-                                                onClick={() => handlePreviewCase(tc.id)}
-                                                className={`hover:bg-slate-50/80 cursor-pointer group transition-colors ${selectedCases.has(tc.id) ? 'bg-primary-50/40' : ''}`}
-                                            >
-                                                <td className="py-3.5 px-4 w-10" onClick={e => { e.stopPropagation(); toggleCase(tc.id); }}>
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={selectedCases.has(tc.id)}
-                                                        onChange={() => toggleCase(tc.id)}
-                                                        className="size-4 rounded border-slate-300 text-primary-600 focus:ring-primary-600"
-                                                    />
-                                                </td>
-                                                <td className="py-3.5 px-4 font-medium text-slate-900 group-hover:text-primary-600 transition-colors">
-                                                    <div className="flex flex-col gap-1 w-full max-w-[400px]">
-                                                        <span className="text-xs font-mono text-slate-400">TC-{tc.id} {tc.external_id && <span className="ml-1 px-1.5 py-0.5 bg-primary-50 text-primary-600 rounded whitespace-nowrap">{tc.external_id}</span>}</span>
-                                                        <span className="text-sm font-semibold text-slate-900 truncate" title={tc.title}>{tc.title}</span>
-                                                    </div>
-                                                </td>
-                                                <td className="py-3.5 px-4">
-                                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${tc.status === 'Active' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-slate-50 text-slate-600 border border-slate-200'}`}>
-                                                        {tc.status}
-                                                    </span>
-                                                </td>
-                                                <td className="py-3.5 px-4 font-medium">
-                                                    {(() => {
-                                                        const p = tc.priority || 'Medium';
-                                                        const colors = {
-                                                            'Highest': 'text-rose-600 bg-rose-50 border-rose-100',
-                                                            'High': 'text-orange-600 bg-orange-50 border-orange-100',
-                                                            'Medium': 'text-blue-600 bg-blue-50 border-blue-100',
-                                                            'Low': 'text-slate-500 bg-slate-50 border-slate-100'
-                                                        }[p] || 'text-slate-500 bg-slate-50 border-slate-100';
-                                                        return (
-                                                            <span className={`px-2 py-0.5 rounded text-[11px] font-bold border uppercase tracking-tight ${colors}`}>
-                                                                {p}
-                                                            </span>
-                                                        );
-                                                    })()}
-                                                </td>
-                                                <td className="py-3.5 px-4">
-                                                    <span className={`text-xs px-2.5 py-1 rounded-full border ${tc.automation_status === 'Automated' ? 'border-primary-200 text-primary-700 bg-primary-50' : 'border-slate-200 text-slate-500 bg-white'}`}>
-                                                        {tc.automation_status}
-                                                    </span>
-                                                </td>
-                                                <td className="py-3.5 px-8 text-right">
-                                                    <button
-                                                        onClick={(e) => handleDeleteCase(e, tc.id)}
-                                                        className="text-slate-400 hover:text-rose-500 p-1.5 rounded-md hover:bg-rose-50 opacity-0 group-hover:opacity-100 transition-all"
-                                                        title="Delete Case"
-                                                    >
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </button>
-                                                </td>
-                                            </tr>
+                                                tc={tc}
+                                                isSelected={selectedCases.has(tc.id)}
+                                                onToggle={() => toggleCase(tc.id)}
+                                                onPreview={() => handlePreviewCase(tc.id)}
+                                                onDelete={(e) => handleDeleteCase(e, tc.id)}
+                                            />
                                         ))}
                                     </tbody>
                                 </table>
@@ -1188,5 +1264,6 @@ export default function Repository() {
                 )}
             </div>
         </div>
+        </DndContext>
     );
 }
