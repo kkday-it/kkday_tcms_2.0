@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ClipboardList, Plus, Loader2, Trash2, Pencil, Folder as FolderIcon, Download, ChevronDown } from 'lucide-react';
+import { ClipboardList, Plus, Loader2, Trash2, Pencil, Folder as FolderIcon, Download, ChevronDown, Copy } from 'lucide-react';
 import { DndContext, DragEndEvent, closestCenter, useDroppable, useSensor, useSensors, PointerSensor, useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import api from '../lib/api';
@@ -40,7 +40,7 @@ interface TestPlan {
 
 // ─── Draggable Plan Card ───────────────────────────────────────────────────────
 
-function DraggablePlanCard({ plan, onEdit, onDelete }: { plan: TestPlan; onEdit: () => void; onDelete: () => void }) {
+function DraggablePlanCard({ plan, onEdit, onDelete, onClone }: { plan: TestPlan; onEdit: () => void; onDelete: () => void; onClone: () => void }) {
     const navigate = useNavigate();
     const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
         id: `plan-${plan.id}`,
@@ -81,12 +81,16 @@ function DraggablePlanCard({ plan, onEdit, onDelete }: { plan: TestPlan; onEdit:
                 </div>
 
                 <div className="flex items-center gap-1 pointer-events-auto ml-4 shrink-0">
+                    <button onClick={(e) => { e.stopPropagation(); onClone(); }}
+                        className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors" title="複製計畫">
+                        <Copy className="w-4 h-4" />
+                    </button>
                     <button onClick={(e) => { e.stopPropagation(); onEdit(); }}
-                        className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit Plan">
+                        className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="編輯計畫">
                         <Pencil className="w-4 h-4" />
                     </button>
                     <button onClick={(e) => { e.stopPropagation(); onDelete(); }}
-                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete Plan">
+                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="刪除計畫">
                         <Trash2 className="w-4 h-4" />
                     </button>
                 </div>
@@ -248,11 +252,18 @@ export default function TestPlans() {
     // ── Plan Actions ───────────────────────────────────────────────────────────
 
     const handleDeletePlan = async (planId: number) => {
-        if (!confirm('Delete this test plan?')) return;
+        if (!confirm('確定要刪除此測試計畫？')) return;
         try {
             await api.delete(`/plans/${planId}`);
             fetchPlans();
-        } catch (err) { alert('Failed to delete plan'); }
+        } catch (err) { alert('刪除計畫失敗'); }
+    };
+
+    const handleClonePlan = async (planId: number) => {
+        try {
+            await api.post(`/plans/${planId}/clone`);
+            fetchPlans();
+        } catch (err) { alert('複製計畫失敗'); }
     };
 
     // ── Drag & Drop ────────────────────────────────────────────────────────────
@@ -414,6 +425,7 @@ export default function TestPlans() {
                                             plan={plan}
                                             onEdit={() => setEditingPlan(plan)}
                                             onDelete={() => handleDeletePlan(plan.id)}
+                                            onClone={() => handleClonePlan(plan.id)}
                                         />
                                     ))}
                                 </div>

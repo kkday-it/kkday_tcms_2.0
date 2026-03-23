@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Play, CheckCircle2, XCircle, SkipForward, Clock, Loader2, Trash2, Copy, Search, Plus, Folder as FolderIcon, Pencil, Ban, Download, ChevronDown } from 'lucide-react';
+import { Play, CheckCircle2, XCircle, SkipForward, Clock, Loader2, Trash2, Copy, Search, Plus, Folder as FolderIcon, Pencil, Ban, Download, ChevronDown, CalendarDays } from 'lucide-react';
 import { DndContext, DragEndEvent, closestCenter, useDroppable, useSensor, useSensors, PointerSensor, useDraggable } from '@dnd-kit/core';
 import api from '../lib/api';
 import CreateRunModal from '../components/runs/CreateRunModal';
@@ -46,100 +46,77 @@ function DraggableRunCard({ run, onClick, onEdit, onDuplicate, onDelete }: { run
         <div
             ref={setNodeRef}
             style={style}
-            className={`bg-white border ${isDragging ? 'border-primary-400 shadow-md transform scale-[1.02]' : 'border-slate-200 shadow-sm hover:shadow-md'} rounded-xl p-6 transition-all cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-6 relative`}
+            className={`bg-white border-b ${isDragging ? 'border-primary-400 shadow-md opacity-80' : 'border-slate-100 hover:bg-slate-50/60'} transition-all cursor-pointer flex items-center gap-4 px-4 py-3 relative group`}
             onClick={() => {
                 if (isDragging) return;
                 onClick();
             }}
         >
-            {/* Drag Handle Area (Invisible overlay to allow dragging from anywhere except buttons) */}
+            {/* Drag Handle Area */}
             <div
                 className="absolute inset-0 z-0 cursor-grab active:cursor-grabbing"
                 {...attributes}
                 {...listeners}
                 onClick={(e) => {
                     e.stopPropagation();
-                    if (!isDragging) {
-                        onClick();
-                    }
+                    if (!isDragging) onClick();
                 }}
             ></div>
 
-            <div className="flex-1 relative z-10 pointer-events-none">
-                <div className="flex items-center gap-3 mb-2">
-                    <h3 className="text-lg font-bold text-slate-900">{run.title}</h3>
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-medium border bg-primary-50 text-primary-700 border-primary-200">
+            {/* Title + badges */}
+            <div className="flex-1 min-w-0 relative z-10 pointer-events-none">
+                <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-semibold text-slate-900 truncate">{run.title}</span>
+                    <span className="px-2 py-0.5 rounded text-xs font-medium bg-primary-50 text-primary-700 border border-primary-200 shrink-0">
                         {run.run_type || 'Feature Test'}
                     </span>
-                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium border ${run.status === 'Active' ? 'bg-primary-50 text-primary-700 border-primary-200' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
+                    <span className={`px-2 py-0.5 rounded text-xs font-medium border shrink-0 ${run.status === 'Active' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
                         {run.status}
                     </span>
                 </div>
-
-                <div className="flex items-center gap-4 text-sm text-slate-500">
-                    <span className="flex items-center gap-1.5"><Clock className="w-4 h-4" /> {new Date(run.created_at).toLocaleDateString()}</span>
-                    <span>{total} cases</span>
+                <div className="flex items-center gap-3 mt-0.5 text-xs text-slate-400">
+                    <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {new Date(run.created_at).toLocaleDateString()}</span>
+                    <span>{total} 個案例</span>
                     {run.assignees && run.assignees.length > 0 && (
-                        <div className="flex items-center flex-wrap gap-1.5">
-                            {run.assignees.slice(0, 4).map(a => (
-                                <span
-                                    key={a.id}
-                                    className="flex items-center gap-1 px-2 py-0.5 bg-slate-100 border border-slate-200 rounded-full text-xs text-slate-700 font-medium"
-                                >
-                                    <span className="w-4 h-4 rounded-full bg-primary-200 text-primary-800 flex items-center justify-center text-[9px] font-bold shrink-0">
-                                        {(a.full_name || a.username).charAt(0).toUpperCase()}
-                                    </span>
-                                    {a.username}
+                        <div className="flex items-center gap-1 flex-wrap">
+                            {run.assignees.slice(0, 3).map(a => (
+                                <span key={a.id} className="px-1.5 py-0.5 rounded bg-primary-100 text-primary-800 text-[11px] font-medium leading-none">
+                                    {a.full_name || a.username}
                                 </span>
                             ))}
-                            {run.assignees.length > 4 && (
-                                <span className="text-xs text-slate-400 font-medium">+{run.assignees.length - 4}</span>
-                            )}
+                            {run.assignees.length > 3 && <span className="text-slate-400">+{run.assignees.length - 3}</span>}
                         </div>
                     )}
                 </div>
             </div>
 
-            {/* Progress Indicators and Actions */}
-            <div className="w-full md:w-auto flex flex-col md:flex-row items-start md:items-center gap-6 relative z-10">
-                <div className="w-full md:w-64 pointer-events-none">
-                    <div className="flex items-center justify-between text-xs font-semibold mb-1.5">
-                        <span className="text-green-600 flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> {passed}</span>
-                        <span className="text-red-500 flex items-center gap-1"><XCircle className="w-3.5 h-3.5" /> {failed}</span>
-                        <span className="text-amber-500 flex items-center gap-1"><Ban className="w-3.5 h-3.5" /> {blocked}</span>
-                        <span className="text-slate-400 flex items-center gap-1"><SkipForward className="w-3.5 h-3.5" /> {unt}</span>
-                    </div>
-                    <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden flex shadow-inner border border-slate-200/30">
-                        <div style={{ width: `${passPct}%` }} className="bg-emerald-500 h-full transition-all duration-500 ease-out"></div>
-                        <div style={{ width: `${failPct}%` }} className="bg-rose-500 h-full transition-all duration-500 ease-out border-l border-white/10"></div>
-                        <div style={{ width: `${blockedPct}%` }} className="bg-amber-400 h-full transition-all duration-500 ease-out border-l border-white/10"></div>
-                        <div style={{ width: `${(100 - passPct - failPct - blockedPct)}%` }} className="bg-slate-200 h-full transition-all duration-500 ease-out border-l border-white/10"></div>
-                    </div>
+            {/* Progress bar */}
+            <div className="w-40 shrink-0 relative z-10 pointer-events-none">
+                <div className="flex items-center justify-between text-xs font-medium mb-1">
+                    <span className="text-emerald-600 flex items-center gap-0.5"><CheckCircle2 className="w-3 h-3" /> {passed}</span>
+                    <span className="text-rose-500 flex items-center gap-0.5"><XCircle className="w-3 h-3" /> {failed}</span>
+                    <span className="text-amber-500 flex items-center gap-0.5"><Ban className="w-3 h-3" /> {blocked}</span>
+                    <span className="text-slate-400 flex items-center gap-0.5"><SkipForward className="w-3 h-3" /> {unt}</span>
                 </div>
+                <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden flex">
+                    <div style={{ width: `${passPct}%` }} className="bg-emerald-500 h-full transition-all"></div>
+                    <div style={{ width: `${failPct}%` }} className="bg-rose-500 h-full transition-all"></div>
+                    <div style={{ width: `${blockedPct}%` }} className="bg-amber-400 h-full transition-all"></div>
+                    <div style={{ width: `${(100 - passPct - failPct - blockedPct)}%` }} className="bg-slate-200 h-full transition-all"></div>
+                </div>
+            </div>
 
-                <div className="flex items-center gap-2">
-                    <button
-                        onClick={onEdit}
-                        className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors group relative"
-                        title="Edit Run"
-                    >
-                        <Pencil className="w-4 h-4" />
-                    </button>
-                    <button
-                        onClick={onDuplicate}
-                        className="p-2 text-slate-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors group relative"
-                        title="Duplicate Run"
-                    >
-                        <Copy className="w-4 h-4" />
-                    </button>
-                    <button
-                        onClick={onDelete}
-                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors group relative"
-                        title="Delete Run"
-                    >
-                        <Trash2 className="w-4 h-4" />
-                    </button>
-                </div>
+            {/* Actions */}
+            <div className="flex items-center gap-1 relative z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button onClick={onEdit} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors" title="編輯">
+                    <Pencil className="w-3.5 h-3.5" />
+                </button>
+                <button onClick={onDuplicate} className="p-1.5 text-slate-400 hover:text-primary-600 hover:bg-primary-50 rounded transition-colors" title="複製">
+                    <Copy className="w-3.5 h-3.5" />
+                </button>
+                <button onClick={onDelete} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors" title="刪除">
+                    <Trash2 className="w-3.5 h-3.5" />
+                </button>
             </div>
         </div>
     );
@@ -186,6 +163,11 @@ export default function TestRuns() {
     const [isCreatingRun, setIsCreatingRun] = useState(false);
     const [editingRun, setEditingRun] = useState<TestRun | null>(null);
     const [duplicateData, setDuplicateData] = useState<{ title: string, caseIds: number[] } | null>(null);
+
+    // Batch copy folder state
+    const [copyFolderDateModal, setCopyFolderDateModal] = useState<{ folderId: number; hasTemplate: boolean } | null>(null);
+    const [copyFolderDate, setCopyFolderDate] = useState('');
+    const [isCopyingFolder, setIsCopyingFolder] = useState(false);
 
     const [isAddingFolder, setIsAddingFolder] = useState(false);
     const [newFolderName, setNewFolderName] = useState('');
@@ -420,6 +402,51 @@ export default function TestRuns() {
         }
     };
 
+    const handleCopyFolder = async (folderId: number) => {
+        const folderIds = getDescendantFolderIds(folderId, folders);
+        const folderRuns = runs.filter(r => r.folder_id !== null && r.folder_id !== undefined && folderIds.has(r.folder_id as number));
+        if (folderRuns.length === 0) {
+            alert('此資料夾內沒有測試執行可複製');
+            return;
+        }
+        const hasTemplate = folderRuns.some(r => r.title.includes('$template'));
+        setCopyFolderDate(new Date().toISOString().split('T')[0]);
+        setCopyFolderDateModal({ folderId, hasTemplate });
+    };
+
+    const handleConfirmCopyFolder = async () => {
+        if (!copyFolderDateModal) return;
+        const { folderId } = copyFolderDateModal;
+        const folderIds = getDescendantFolderIds(folderId, folders);
+        const folderRuns = runs.filter(r => r.folder_id !== null && r.folder_id !== undefined && folderIds.has(r.folder_id as number));
+
+        setIsCopyingFolder(true);
+        try {
+            for (const run of folderRuns) {
+                const resultsResponse = await api.get(`/results/run/${run.id}`);
+                const caseIds = resultsResponse.data.map((r: any) => r.case_id);
+                const newTitle = run.title.replace(/\$template/g, copyFolderDate);
+                await api.post('/runs/', {
+                    title: newTitle,
+                    run_type: run.run_type || 'Feature Test',
+                    description: '',
+                    project_id: run.project_id,
+                    folder_id: run.folder_id,
+                    assignee_ids: (run.assignees || []).map((a: any) => a.id),
+                    status: 'Active',
+                    case_ids: caseIds
+                });
+            }
+            setCopyFolderDateModal(null);
+            fetchRuns();
+        } catch (error) {
+            console.error("Failed to batch copy folder runs:", error);
+            alert("批次複製失敗");
+        } finally {
+            setIsCopyingFolder(false);
+        }
+    };
+
     // Tree Rendering
     const renderFolderTree = (parentId: number | null, level = 0) => {
         const children = folders.filter(f => f.parent_id === parentId);
@@ -439,6 +466,7 @@ export default function TestRuns() {
                         onAddSubFolder={(id) => { setIsAddingFolder(true); setNewFolderParentId(id); setNewFolderName(''); }}
                         onEdit={handleEditFolder}
                         onDelete={handleDeleteFolder}
+                        onCopyFolder={handleCopyFolder}
                         runCount={folderRunCount}
                         childrenNodes={renderFolderTree(folder.id, level + 1)}
                     />
@@ -502,7 +530,7 @@ export default function TestRuns() {
 
                         <div className="p-4 border-b border-slate-200 flex-shrink-0">
                             <div className="flex items-center justify-between mb-4">
-                                <h2 className="text-sm font-bold tracking-wider text-slate-500 uppercase">Folders</h2>
+                                <h2 className="text-sm font-bold tracking-wider text-slate-500 uppercase">資料夾</h2>
                                 <button
                                     onClick={() => setIsAddingFolder(true)}
                                     className="p-1 hover:bg-slate-200 text-slate-400 hover:text-slate-600 rounded transition-colors"
@@ -515,7 +543,7 @@ export default function TestRuns() {
                                 <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                                 <input
                                     type="text"
-                                    placeholder="Search folders..."
+                                    placeholder="搜尋資料夾..."
                                     className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500 transition-all placeholder:text-slate-400"
                                 />
                             </div>
@@ -528,7 +556,7 @@ export default function TestRuns() {
                                     onClick={() => setActiveFolderId(null)}
                                 >
                                     <FolderIcon className={`w-4 h-4 ${activeFolderId === null ? 'text-primary-500' : 'text-slate-400'}`} />
-                                    <span className={activeFolderId === null ? 'text-primary-700 font-medium' : 'text-slate-700'}>All Runs</span>
+                                    <span className={activeFolderId === null ? 'text-primary-700 font-medium' : 'text-slate-700'}>全部執行</span>
                                 </div>
                                 <span className="text-xs text-slate-400 bg-white px-1.5 py-0.5 rounded border border-slate-200 relative z-10">
                                     {displayedRuns.length}
@@ -546,7 +574,7 @@ export default function TestRuns() {
                         <div className="flex-1 p-8 overflow-y-auto">
                             <div className="flex items-center justify-between mb-8">
                                 <h1 className="text-2xl font-bold text-slate-900">
-                                    {activeFolderId ? folders.find(f => f.id === activeFolderId)?.name || 'Folder Runs' : 'All Test Runs'}
+                                    {activeFolderId ? folders.find(f => f.id === activeFolderId)?.name || '資料夾執行' : '全部測試執行'}
                                 </h1>
                                 <div className="flex items-center gap-2">
                                     {/* Export Dropdown */}
@@ -555,7 +583,7 @@ export default function TestRuns() {
                                             onClick={() => setIsExportOpen(prev => !prev)}
                                             className="btn-secondary flex items-center gap-1.5"
                                         >
-                                            <Download className="w-4 h-4" /> Export <ChevronDown className="w-3 h-3" />
+                                            <Download className="w-4 h-4" /> 匯出 <ChevronDown className="w-3 h-3" />
                                         </button>
                                         {isExportOpen && (
                                             <div className="absolute right-0 mt-1 w-36 bg-white border border-slate-200 rounded-lg shadow-lg z-20 py-1">
@@ -568,7 +596,7 @@ export default function TestRuns() {
                                         onClick={() => { setDuplicateData(null); setIsCreatingRun(true); }}
                                         className="btn-primary flex items-center gap-2"
                                     >
-                                        <Play className="w-4 h-4" fill="currentColor" /> Start New Run
+                                        <Play className="w-4 h-4" fill="currentColor" /> 開始新執行
                                     </button>
                                 </div>
                             </div>
@@ -590,13 +618,13 @@ export default function TestRuns() {
                             {displayedRuns.length === 0 && !isLoading ? (
                                 <div className="flex flex-col items-center justify-center p-12 bg-white rounded-xl border border-slate-200 border-dashed text-slate-500">
                                     <Play className="w-12 h-12 text-slate-300 mb-4" />
-                                    <p className="mb-2 text-lg font-medium text-slate-900">No active test runs</p>
-                                    <p className="mb-6 text-sm">Start a test run to execute cases and track results.</p>
+                                    <p className="mb-2 text-lg font-medium text-slate-900">尚無測試執行</p>
+                                    <p className="mb-6 text-sm">開始新的測試執行以追蹤案例結果。</p>
                                     <button
                                         onClick={() => { setDuplicateData(null); setIsCreatingRun(true); }}
                                         className="btn-primary flex items-center gap-2"
                                     >
-                                        <Play className="w-4 h-4" fill="currentColor" /> Start New Run
+                                        <Play className="w-4 h-4" fill="currentColor" /> 開始新執行
                                     </button>
                                 </div>
                             ) : isLoading ? (
@@ -604,7 +632,13 @@ export default function TestRuns() {
                                     <Loader2 className="w-8 h-8 animate-spin text-primary-500" />
                                 </div>
                             ) : (
-                                <div className="grid grid-cols-1 gap-4">
+                                <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+                                    {/* List header */}
+                                    <div className="flex items-center gap-4 px-4 py-2 border-b border-slate-100 bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                                        <span className="flex-1">執行名稱</span>
+                                        <span className="w-40 shrink-0">進度</span>
+                                        <span className="w-20 shrink-0 opacity-0">操作</span>
+                                    </div>
                                     {displayedRuns.map(run => (
                                         <DraggableRunCard
                                             key={`run-${run.id}`}
@@ -638,6 +672,53 @@ export default function TestRuns() {
                 onClose={() => setEditingRun(null)}
                 onUpdated={fetchRuns}
             />
+
+            {/* Copy Folder Date Modal */}
+            {copyFolderDateModal && (
+                <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-xl shadow-xl w-full max-w-sm">
+                        <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-3">
+                            <CalendarDays className="w-5 h-5 text-primary-600" />
+                            <h2 className="text-lg font-bold text-slate-900">批次複製執行</h2>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            {copyFolderDateModal.hasTemplate ? (
+                                <p className="text-sm text-slate-600">
+                                    此資料夾內有含 <code className="px-1 py-0.5 bg-slate-100 rounded text-xs font-mono">$template</code> 的執行名稱，請選擇日期以替換：
+                                </p>
+                            ) : (
+                                <p className="text-sm text-slate-600">
+                                    選擇複製後執行的日期標記（選填）：
+                                </p>
+                            )}
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1.5">日期</label>
+                                <input
+                                    type="date"
+                                    value={copyFolderDate}
+                                    onChange={(e) => setCopyFolderDate(e.target.value)}
+                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                                />
+                            </div>
+                        </div>
+                        <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-end gap-3">
+                            <button
+                                onClick={() => setCopyFolderDateModal(null)}
+                                className="px-4 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+                            >
+                                取消
+                            </button>
+                            <button
+                                onClick={handleConfirmCopyFolder}
+                                disabled={isCopyingFolder}
+                                className="btn-primary flex items-center gap-2"
+                            >
+                                {isCopyingFolder ? <><Loader2 className="w-4 h-4 animate-spin" /> 複製中...</> : '確認複製'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </>
     );
 }

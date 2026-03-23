@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import { Folder, ChevronRight, ChevronDown, Plus, Edit2, Trash2 } from 'lucide-react';
+import { Folder, ChevronRight, ChevronDown, Plus, Edit2, Trash2, Copy } from 'lucide-react';
 
 interface TestRunFolder {
     id: number;
@@ -17,6 +17,7 @@ interface RunFolderNodeProps {
     onAddSubFolder?: (folderId: number) => void;
     onEdit?: (folder: TestRunFolder) => void;
     onDelete?: (folderId: number) => void;
+    onCopyFolder?: (folderId: number) => void;
     childrenNodes?: React.ReactNode;
     runCount?: number;
 }
@@ -29,6 +30,7 @@ export default function RunFolderNode({
     onAddSubFolder,
     onEdit,
     onDelete,
+    onCopyFolder,
     childrenNodes,
     runCount,
 }: RunFolderNodeProps) {
@@ -88,7 +90,6 @@ export default function RunFolderNode({
                             <div className="w-3.5 h-3.5" />
                         )}
                     </div>
-                    {/* No checkbox for folders right now unless batch operations are needed implicitly */}
                     <Folder className={`w-4 h-4 flex-shrink-0 transition-colors ${isActive ? 'text-primary-500' : 'text-slate-400 group-hover:text-primary-500'}`} />
                     <span className="text-sm font-medium truncate">{folder.name}</span>
                     {runCount !== undefined && runCount > 0 && (
@@ -99,11 +100,22 @@ export default function RunFolderNode({
                 </div>
 
                 <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-inherit pl-1 pointer-events-auto shrink-0 pr-1">
+                    {onCopyFolder && (
+                        <button
+                            onClick={(e) => { e.stopPropagation(); onCopyFolder(folder.id); }}
+                            onPointerDown={(e) => e.stopPropagation()}
+                            className="p-1 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded transition-colors"
+                            title="批次複製資料夾內所有執行"
+                        >
+                            <Copy className="w-3.5 h-3.5" />
+                        </button>
+                    )}
                     {onAddSubFolder && (
                         <button
                             onClick={(e) => { e.stopPropagation(); onAddSubFolder(folder.id); setIsExpanded(true); }}
+                            onPointerDown={(e) => e.stopPropagation()}
                             className="p-1 text-slate-400 hover:text-primary-600 hover:bg-primary-50 rounded transition-colors"
-                            title="Add subfolder"
+                            title="新增子資料夾"
                         >
                             <Plus className="w-3.5 h-3.5" />
                         </button>
@@ -111,8 +123,9 @@ export default function RunFolderNode({
                     {onEdit && (
                         <button
                             onClick={(e) => { e.stopPropagation(); onEdit(folder); }}
+                            onPointerDown={(e) => e.stopPropagation()}
                             className="p-1 text-slate-400 hover:text-primary-600 hover:bg-primary-50 rounded transition-colors"
-                            title="Edit folder"
+                            title="編輯資料夾"
                         >
                             <Edit2 className="w-3.5 h-3.5" />
                         </button>
@@ -120,8 +133,9 @@ export default function RunFolderNode({
                     {onDelete && (
                         <button
                             onClick={(e) => { e.stopPropagation(); onDelete(folder.id); }}
+                            onPointerDown={(e) => e.stopPropagation()}
                             className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                            title="Delete folder"
+                            title="刪除資料夾"
                         >
                             <Trash2 className="w-3.5 h-3.5" />
                         </button>

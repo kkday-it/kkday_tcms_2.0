@@ -281,6 +281,51 @@ async def delete_test_plan(plan_id: int, db: AsyncSession = Depends(get_db)):
     await db.commit()
     return {"message": "Test Plan archived"}
 
+@router.post("/{plan_id}/clone", response_model=TestPlanResponse)
+async def clone_test_plan(plan_id: int, db: AsyncSession = Depends(get_db)):
+    """
+    複製一個 Test Plan，包含關聯的 runs 與 cases。
+    新計畫標題為「{原標題} (複製)」，狀態重置為 Draft，資料夾維持相同。
+    """
+    original = await _load_plan(db, plan_id)
+
+    new_plan = TestPlan(
+        project_id=original.project_id,
+        title=f"{original.title} (複製)",
+        description=original.description,
+        status="Draft",
+        folder_id=original.folder_id,
+        prd_url=getattr(original, "prd_url", None),
+        sa_docs=getattr(original, "sa_docs", None),
+        sd_docs=getattr(original, "sd_docs", None),
+        ued_docs=getattr(original, "ued_docs", None),
+        qa_docs=getattr(original, "qa_docs", None),
+        mindmap_url=getattr(original, "mindmap_url", None),
+        timeline=getattr(original, "timeline", None),
+        jira_unfix_filter_id=getattr(original, "jira_unfix_filter_id", None),
+        jira_total_filter_id=getattr(original, "jira_total_filter_id", None),
+        jira_display_fields=getattr(original, "jira_display_fields", None),
+    )
+    db.add(new_plan)
+    await db.flush()
+
+    run_ids = [r.id for r in (original.linked_runs or [])]
+    case_ids = [c.id for c in (original.linked_cases or [])]
+    await _set_runs(db, new_plan.id, run_ids)
+    await _set_cases(db, new_plan.id, case_ids)
+
+    history = TestPlanHistory(
+        plan_id=new_plan.id,
+        user_id=1,
+        action="Created",
+        changed_fields=json.dumps({"title": new_plan.title, "cloned_from": plan_id}, ensure_ascii=False),
+    )
+    db.add(history)
+
+    await db.commit()
+    return _plan_to_response(await _load_plan(db, new_plan.id))
+
+
 @router.post("/{plan_id}/restore")
 async def restore_test_plan(plan_id: int, db: AsyncSession = Depends(get_db)):
     db_plan = await db.get(TestPlan, plan_id)

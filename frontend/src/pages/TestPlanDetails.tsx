@@ -10,6 +10,158 @@ interface DocEntry {
     url: string;
 }
 
+// ─── Gantt Chart ──────────────────────────────────────────────────────────────
+
+interface TimelineRow {
+    platform: string;
+    rd_start?: string; rd_end?: string;
+    ued_start?: string; ued_end?: string;
+    qa_start?: string; qa_end?: string;
+}
+
+const GANTT_PHASES = [
+    { key: 'rd',  label: 'RD 開發', barClass: 'bg-blue-400',    textColor: 'text-blue-500',    tickClass: 'bg-blue-300'    },
+    { key: 'ued', label: 'UED 審核', barClass: 'bg-indigo-400',  textColor: 'text-indigo-500',  tickClass: 'bg-indigo-300'  },
+    { key: 'qa',  label: 'QA 進測',  barClass: 'bg-emerald-500', textColor: 'text-emerald-600', tickClass: 'bg-emerald-400' },
+] as const;
+
+function GanttTimeline({ rows }: { rows: TimelineRow[] }) {
+    const DAY_MS = 86_400_000;
+    // 用本地時間解析，避免 'YYYY-MM-DD' 被當作 UTC 導致與今日紅線偏移 8 小時
+    const toMs  = (d: string) => { const [y, m, day] = d.split('-').map(Number); return new Date(y, m - 1, day).getTime(); };
+    const fmt   = (d: string) => { const [, m, day] = d.split('-').map(Number); return `${m}/${day}`; };
+
+    const allMs = rows.flatMap(row =>
+        GANTT_PHASES.flatMap(p => [
+            row[`${p.key}_start` as keyof TimelineRow],
+            row[`${p.key}_end`   as keyof TimelineRow],
+        ]).filter((d): d is string => Boolean(d)).map(toMs)
+    );
+
+    if (allMs.length === 0) return <p className="text-sm text-slate-400 text-center py-6">尚無時程資料</p>;
+
+    const minMs   = Math.min(...allMs) - DAY_MS * 3;
+    const maxMs   = Math.max(...allMs) + DAY_MS * 3;
+    const totalMs = maxMs - minMs;
+    const pct     = (ms: number) => ((ms - minMs) / totalMs) * 100;
+
+    // Ruler ticks — 從第一筆資料日期開始，每隔 step 天一個刻度
+    const rangeDays = totalMs / DAY_MS;
+    const step = rangeDays <= 21 ? 3 : rangeDays <= 60 ? 7 : rangeDays <= 120 ? 14 : 30;
+    const ticks: Date[] = [];
+    const firstDataDate = new Date(Math.min(...allMs));
+    for (const d = new Date(firstDataDate); d.getTime() <= maxMs; d.setDate(d.getDate() + step)) ticks.push(new Date(d));
+
+    const todayMs   = new Date().setHours(0, 0, 0, 0);
+    const showToday = todayMs > minMs && todayMs < maxMs;
+
+    return (
+        <div className="space-y-4">
+            {/* Legend */}
+            <div className="flex items-center gap-5 flex-wrap">
+                {GANTT_PHASES.map(p => (
+                    <div key={p.key} className="flex items-center gap-1.5">
+                        <div className={`w-8 h-3 rounded-full ${p.barClass} opacity-80`} />
+                        <span className="text-xs font-medium text-slate-500">{p.label}</span>
+                    </div>
+                ))}
+                {showToday && (
+                    <div className="flex items-center gap-1.5 ml-auto">
+                        <div className="w-0.5 h-4 bg-rose-400" />
+                        <span className="text-xs text-rose-400 font-medium">今日</span>
+                    </div>
+                )}
+            </div>
+
+            <div className="overflow-x-auto">
+                <div style={{ minWidth: '500px' }}>
+                    {/* Date ruler */}
+                    <div className="flex items-end gap-3 mb-1">
+                        <div className="w-20 shrink-0" />
+                        <div className="flex-1 relative h-5">
+                            {ticks.map((tick, i) => (
+                                <span key={i} style={{ left: `${pct(tick.getTime())}%` }}
+                                    className="absolute text-[10px] text-slate-400 -translate-x-1/2 whitespace-nowrap select-none">
+                                    {`${tick.getMonth() + 1}/${tick.getDate()}`}
+                                </span>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Platform rows */}
+                    <div className="space-y-1">
+                        {rows.map((row, ri) => (
+                            <div key={ri} className="flex items-start gap-3">
+                                <div className="w-20 shrink-0 flex justify-end pt-5">
+                                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wide px-2 py-1 bg-slate-100 rounded-md">
+                                        {row.platform}
+                                    </span>
+                                </div>
+                                <div className="flex-1">
+                                    {/* Date markers layer */}
+                                    <div className="relative h-5">
+                                        {GANTT_PHASES.flatMap(p => {
+                                            const s = row[`${p.key}_start` as keyof TimelineRow] as string | undefined;
+                                            const e = row[`${p.key}_end`   as keyof TimelineRow] as string | undefined;
+                                            if (!s || !e) return [];
+                                            return [
+                                                <div key={`${p.key}-s`} style={{ left: `${pct(toMs(s))}%` }}
+                                                    className="absolute bottom-0 -translate-x-1/2 flex flex-col items-center pointer-events-none">
+                                                    <span className={`text-[10px] font-bold whitespace-nowrap select-none ${p.textColor}`}>{fmt(s)}</span>
+                                                    <div className={`w-px h-1.5 ${p.tickClass}`} />
+                                                </div>,
+                                                <div key={`${p.key}-e`} style={{ left: `${pct(toMs(e) + DAY_MS)}%` }}
+                                                    className="absolute bottom-0 -translate-x-1/2 flex flex-col items-center pointer-events-none">
+                                                    <span className={`text-[10px] font-bold whitespace-nowrap select-none ${p.textColor}`}>{fmt(e)}</span>
+                                                    <div className={`w-px h-1.5 ${p.tickClass}`} />
+                                                </div>,
+                                            ];
+                                        })}
+                                    </div>
+                                    {/* Track */}
+                                    <div className="relative h-9 bg-slate-50 rounded-lg border border-slate-100 overflow-hidden">
+                                        {/* Grid lines */}
+                                        {ticks.map((tick, i) => (
+                                            <div key={i} style={{ left: `${pct(tick.getTime())}%` }}
+                                                className="absolute inset-y-0 border-l border-dashed border-slate-200 z-0" />
+                                        ))}
+                                        {/* Today marker */}
+                                        {showToday && (
+                                            <div style={{ left: `${pct(todayMs)}%` }}
+                                                className="absolute inset-y-0 border-l-2 border-rose-300 z-20 pointer-events-none" />
+                                        )}
+                                        {/* Phase bars */}
+                                        {GANTT_PHASES.map(p => {
+                                            const s = row[`${p.key}_start` as keyof TimelineRow] as string | undefined;
+                                            const e = row[`${p.key}_end`   as keyof TimelineRow] as string | undefined;
+                                            if (!s || !e) return null;
+                                            const l = pct(toMs(s));
+                                            const w = pct(toMs(e) + DAY_MS) - l;
+                                            if (w <= 0) return null;
+                                            return (
+                                                <div key={p.key}
+                                                    style={{ left: `${l}%`, width: `${w}%` }}
+                                                    title={`${p.label}: ${fmt(s)} → ${fmt(e)}`}
+                                                    className={`absolute top-1.5 bottom-1.5 ${p.barClass} rounded-md opacity-80 hover:opacity-100 transition-opacity z-10 flex items-center justify-center overflow-hidden cursor-default`}>
+                                                    {w > 9 && (
+                                                        <span className="text-[10px] font-semibold text-white/90 truncate px-1.5 select-none">
+                                                            {fmt(s)}–{fmt(e)}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 interface TestPlan {
     id: number;
     title: string;
@@ -282,7 +434,7 @@ export default function TestPlanDetails() {
                     </div>
                     <div className="flex-1 min-w-0">
                         <h1 className="text-3xl font-extrabold text-slate-900 flex-1 truncate tracking-tight">{plan.title}</h1>
-                        <p className="text-base text-slate-500 mt-1">{plan.description || 'No description provided.'}</p>
+                        <p className="text-base text-slate-500 mt-1">{plan.description || '尚無描述。'}</p>
                     </div>
                     <div className="flex items-center gap-3">
                         <span className={`shrink-0 px-3 py-1 rounded-full text-xs font-semibold border ${STATUS_PILL[plan.status] ?? STATUS_PILL.Draft}`}>
@@ -291,7 +443,7 @@ export default function TestPlanDetails() {
                         <button
                             onClick={() => setIsEditModalOpen(true)}
                             className="p-1.5 rounded-md text-slate-400 hover:text-primary-600 hover:bg-primary-50 transition-colors"
-                            title="Edit test plan"
+                            title="編輯測試計畫"
                         >
                             <Edit2 className="w-5 h-5" />
                         </button>
@@ -303,15 +455,15 @@ export default function TestPlanDetails() {
 
                 {/* ── Documents & Timeline ────────────────────────────────────── */}
                 {(plan.prd_url || (plan.sa_docs && plan.sa_docs.length) || (plan.sd_docs && plan.sd_docs.length) || (plan.ued_docs && plan.ued_docs.length) || (plan.qa_docs && plan.qa_docs.length) || plan.mindmap_url || plan.timeline) && (
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div className="flex flex-col gap-6">
                         {/* Documents */}
-                        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 h-full flex flex-col">
+                        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 flex flex-col">
                             <h3 className="text-base font-bold text-slate-700 uppercase tracking-wider mb-6 flex items-center gap-2">
                                 <FileText className="w-5 h-5 text-slate-400" /> 文件連結
                             </h3>
-                            <div className="space-y-4 flex-1">
+                            <div className="flex flex-wrap gap-4">
                                 {plan.prd_url && (
-                                    <div className="flex flex-col gap-1 rounded-lg bg-slate-50 p-3 border border-slate-100">
+                                    <div className="flex flex-col gap-1 rounded-lg bg-slate-50 p-3 border border-slate-100 min-w-[180px] flex-1">
                                         <span className="text-sm font-semibold text-slate-500">PRD</span>
                                         <a href={resolveUrl(plan.prd_url)} target="_blank" rel="noreferrer" className="text-base font-medium text-primary-600 hover:text-primary-700 hover:underline truncate">
                                             {plan.prd_url}
@@ -319,7 +471,7 @@ export default function TestPlanDetails() {
                                     </div>
                                 )}
                                 {((plan.sa_docs && plan.sa_docs.length > 0) || (plan.sd_docs && plan.sd_docs.length > 0)) && (
-                                    <div className="flex flex-col gap-1 rounded-lg bg-slate-50 p-3 border border-slate-100">
+                                    <div className="flex flex-col gap-1 rounded-lg bg-slate-50 p-3 border border-slate-100 min-w-[180px] flex-1">
                                         <span className="text-sm font-semibold text-slate-500">SA / SD</span>
                                         <div className="space-y-1.5 mt-1">
                                             {[...(plan.sa_docs || []), ...(plan.sd_docs || [])].map((d, i) => (
@@ -334,7 +486,7 @@ export default function TestPlanDetails() {
                                     </div>
                                 )}
                                 {plan.ued_docs && plan.ued_docs.length > 0 && (
-                                    <div className="flex flex-col gap-1 rounded-lg bg-slate-50 p-3 border border-slate-100">
+                                    <div className="flex flex-col gap-1 rounded-lg bg-slate-50 p-3 border border-slate-100 min-w-[180px] flex-1">
                                         <span className="text-sm font-semibold text-slate-500">UED</span>
                                         <div className="space-y-1.5 mt-1">
                                             {plan.ued_docs.map((d, i) => (
@@ -349,7 +501,7 @@ export default function TestPlanDetails() {
                                     </div>
                                 )}
                                 {plan.qa_docs && plan.qa_docs.length > 0 && (
-                                    <div className="flex flex-col gap-1 rounded-lg bg-slate-50 p-3 border border-slate-100">
+                                    <div className="flex flex-col gap-1 rounded-lg bg-slate-50 p-3 border border-slate-100 min-w-[180px] flex-1">
                                         <span className="text-sm font-semibold text-slate-500">QA</span>
                                         <div className="space-y-1.5 mt-1">
                                             {plan.qa_docs.map((d, i) => (
@@ -364,7 +516,7 @@ export default function TestPlanDetails() {
                                     </div>
                                 )}
                                 {plan.mindmap_url && (
-                                    <div className="flex flex-col gap-1 rounded-lg bg-slate-50 p-3 border border-slate-100">
+                                    <div className="flex flex-col gap-1 rounded-lg bg-slate-50 p-3 border border-slate-100 min-w-[180px] flex-1">
                                         <span className="text-sm font-semibold text-slate-500">Case Mindmap</span>
                                         <a href={resolveUrl(plan.mindmap_url)} target="_blank" rel="noreferrer" className="text-base font-medium text-amber-600 hover:text-amber-700 hover:underline truncate">
                                             {plan.mindmap_url}
@@ -376,55 +528,45 @@ export default function TestPlanDetails() {
 
                         {/* Timeline */}
                         {plan.timeline && (
-                            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 h-full flex flex-col">
-                                <h3 className="text-base font-bold text-slate-700 uppercase tracking-wider mb-6 flex items-center gap-2">
+                            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 flex flex-col">
+                                <h3 className="text-base font-bold text-slate-700 uppercase tracking-wider mb-4 flex items-center gap-2">
                                     <Clock className="w-5 h-5 text-slate-400" /> 專案時程 (Timeline)
                                 </h3>
-                                <div className="relative pl-6 space-y-6 flex-1 before:absolute before:inset-y-0 before:left-[11px] before:w-[2px] before:bg-slate-100">
-                                    {plan.timeline.rd && (plan.timeline.rd.start || plan.timeline.rd.end) && (
-                                        <div className="relative">
-                                            <div className="absolute -left-[30px] top-1 w-[14px] h-[14px] rounded-full ring-4 ring-white bg-blue-500 z-10" />
-                                            <div>
-                                                <h4 className="text-sm font-bold text-slate-700 mb-1.5 uppercase tracking-wide">RD 開發</h4>
-                                                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-blue-50 text-blue-700 text-base font-medium border border-blue-100">
-                                                    {plan.timeline.rd.start || '未定'} → {plan.timeline.rd.end || '未定'}
-                                                </div>
+                                {(plan.timeline as any).rows ? (
+                                    /* ── 新格式：Gantt ── */
+                                    <GanttTimeline rows={(plan.timeline as any).rows as TimelineRow[]} />
+                                ) : (
+                                    /* ── 舊格式 fallback ── */
+                                    <div className="flex flex-wrap gap-4">
+                                        {plan.timeline.rd && (plan.timeline.rd.start || plan.timeline.rd.end) && (
+                                            <div className="flex flex-col gap-1.5 rounded-lg bg-blue-50 p-4 border border-blue-100 min-w-[180px] flex-1">
+                                                <h4 className="text-sm font-bold text-blue-700 uppercase tracking-wide">RD 開發</h4>
+                                                <div className="text-base font-medium text-blue-700">{plan.timeline.rd.start || '未定'} → {plan.timeline.rd.end || '未定'}</div>
                                             </div>
-                                        </div>
-                                    )}
-                                    {plan.timeline.ued && (plan.timeline.ued.start || plan.timeline.ued.end) && (
-                                        <div className="relative">
-                                            <div className="absolute -left-[30px] top-1 w-[14px] h-[14px] rounded-full ring-4 ring-white bg-indigo-500 z-10" />
-                                            <div>
-                                                <h4 className="text-sm font-bold text-slate-700 mb-1.5 uppercase tracking-wide">UED 審核</h4>
-                                                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-indigo-50 text-indigo-700 text-base font-medium border border-indigo-100">
-                                                    {plan.timeline.ued.start || '未定'} → {plan.timeline.ued.end || '未定'}
-                                                </div>
+                                        )}
+                                        {plan.timeline.ued && (plan.timeline.ued.start || plan.timeline.ued.end) && (
+                                            <div className="flex flex-col gap-1.5 rounded-lg bg-indigo-50 p-4 border border-indigo-100 min-w-[180px] flex-1">
+                                                <h4 className="text-sm font-bold text-indigo-700 uppercase tracking-wide">UED 審核</h4>
+                                                <div className="text-base font-medium text-indigo-700">{plan.timeline.ued.start || '未定'} → {plan.timeline.ued.end || '未定'}</div>
                                             </div>
-                                        </div>
-                                    )}
-                                    {plan.timeline.qa && plan.timeline.qa.length > 0 && (
-                                        <div className="relative">
-                                            <div className="absolute -left-[30px] top-1 w-[14px] h-[14px] rounded-full ring-4 ring-white bg-emerald-500 z-10" />
-                                            <div className="pb-1">
-                                                <h4 className="text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">QA 交付</h4>
-                                                <div className="flex flex-col gap-2">
+                                        )}
+                                        {plan.timeline.qa && plan.timeline.qa.length > 0 && (
+                                            <div className="flex flex-col gap-2 rounded-lg bg-emerald-50/60 p-4 border border-emerald-100 min-w-[180px] flex-1">
+                                                <h4 className="text-sm font-bold text-emerald-700 uppercase tracking-wide">QA 交付</h4>
+                                                <div className="flex flex-wrap gap-2">
                                                     {plan.timeline.qa.map((q, i) => (
-                                                        <div key={i} className="flex flex-col gap-1.5 p-3 rounded-lg border border-emerald-100 bg-emerald-50/50">
-                                                            <div className="flex items-center justify-between">
-                                                                <span className="text-xs font-bold text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded uppercase tracking-wider">{q.platform}</span>
-                                                            </div>
-                                                            <div className="flex items-center gap-2 text-base font-medium text-emerald-700">
-                                                                <Clock className="w-4 h-4 opacity-60" />
-                                                                {q.start || '未定'} → {q.end || '未定'}
+                                                        <div key={i} className="flex flex-col gap-1 p-2.5 rounded-lg border border-emerald-100 bg-white min-w-[140px]">
+                                                            <span className="text-xs font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded uppercase tracking-wider w-fit">{q.platform}</span>
+                                                            <div className="flex items-center gap-1.5 text-sm font-medium text-emerald-700">
+                                                                <Clock className="w-3.5 h-3.5 opacity-60" />{q.start || '未定'} → {q.end || '未定'}
                                                             </div>
                                                         </div>
                                                     ))}
                                                 </div>
                                             </div>
-                                        </div>
-                                    )}
-                                </div>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>
@@ -433,10 +575,10 @@ export default function TestPlanDetails() {
                 {/* ── Metrics ─────────────────────────────────────────────────── */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     {[
-                        { label: 'Pass Rate', value: `${passRate}%`, icon: <CheckCircle2 className="w-5 h-5 text-emerald-500" /> },
-                        { label: 'Completion Rate', value: `${completionRate}%`, icon: <Clock className="w-5 h-5 text-blue-500" /> },
-                        { label: 'Test Runs', value: totalRuns, icon: <PlayCircle className="w-5 h-5 text-primary-500" /> },
-                        { label: 'Test Cases', value: cases.length, icon: <FileText className="w-5 h-5 text-slate-400" /> },
+                        { label: '通過率', value: `${passRate}%`, icon: <CheckCircle2 className="w-5 h-5 text-emerald-500" /> },
+                        { label: '完成率', value: `${completionRate}%`, icon: <Clock className="w-5 h-5 text-blue-500" /> },
+                        { label: '測試執行數', value: totalRuns, icon: <PlayCircle className="w-5 h-5 text-primary-500" /> },
+                        { label: '測試案例數', value: cases.length, icon: <FileText className="w-5 h-5 text-slate-400" /> },
                     ].map(m => (
                         <div key={m.label} className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
                             <div>{m.icon}</div>
@@ -453,7 +595,7 @@ export default function TestPlanDetails() {
 
                     {/* Pie chart */}
                     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-                        <h3 className="text-base font-bold text-slate-700 uppercase tracking-wider mb-4">Result Distribution</h3>
+                        <h3 className="text-base font-bold text-slate-700 uppercase tracking-wider mb-4">結果分佈</h3>
                         {totalCaseExecs > 0 ? (
                             <>
                                 <div className="h-56">
@@ -468,15 +610,15 @@ export default function TestPlanDetails() {
                                     </ResponsiveContainer>
                                 </div>
                                 <div className="mt-4 flex items-center justify-center gap-8 text-base">
-                                    <span className="text-emerald-600 font-bold">Passed: {totalPassed}</span>
-                                    <span className="text-rose-500 font-bold">Failed: {totalFailed}</span>
-                                    <span className="text-slate-500 font-bold">Total: {totalCaseExecs}</span>
+                                    <span className="text-emerald-600 font-bold">通過：{totalPassed}</span>
+                                    <span className="text-rose-500 font-bold">失敗：{totalFailed}</span>
+                                    <span className="text-slate-500 font-bold">總計：{totalCaseExecs}</span>
                                 </div>
                             </>
                         ) : (
                             <div className="h-56 flex flex-col items-center justify-center text-slate-400">
                                 <XCircle className="w-10 h-10 mb-2 text-slate-200" />
-                                <p className="text-sm">No result data yet</p>
+                                <p className="text-sm">尚無結果資料</p>
                             </div>
                         )}
                     </div>
@@ -488,13 +630,13 @@ export default function TestPlanDetails() {
                             <button onClick={() => setActiveTab('runs')}
                                 className={`flex items-center gap-2 px-6 py-4 text-base font-semibold border-b-2 transition-colors ${activeTab === 'runs' ? 'border-primary-500 text-primary-700 bg-white' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
                                 <PlayCircle className="w-5 h-5" />
-                                Test Runs
+                                測試執行
                                 <span className="text-sm bg-slate-100 text-slate-600 rounded-full px-2.5 py-0.5">{totalRuns}</span>
                             </button>
                             <button onClick={() => setActiveTab('cases')}
                                 className={`flex items-center gap-2 px-6 py-4 text-base font-semibold border-b-2 transition-colors ${activeTab === 'cases' ? 'border-primary-500 text-primary-700 bg-white' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
                                 <FileText className="w-5 h-5" />
-                                Test Cases
+                                測試案例
                                 <span className="text-sm bg-slate-100 text-slate-600 rounded-full px-2.5 py-0.5">{cases.length}</span>
                             </button>
                         </div>
@@ -505,14 +647,14 @@ export default function TestPlanDetails() {
                                 <table className="w-full text-left border-collapse">
                                     <thead>
                                         <tr className="border-b border-slate-200 bg-white">
-                                            <th className="px-6 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Run Title</th>
-                                            <th className="px-6 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Status</th>
-                                            <th className="px-6 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Progress</th>
+                                            <th className="px-6 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">執行名稱</th>
+                                            <th className="px-6 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">狀態</th>
+                                            <th className="px-6 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">進度</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100 bg-white">
                                         {runs.length === 0 ? (
-                                            <tr><td colSpan={3} className="px-6 py-10 text-center text-sm text-slate-400">No test runs linked.</td></tr>
+                                            <tr><td colSpan={3} className="px-6 py-10 text-center text-sm text-slate-400">尚無連結的測試執行。</td></tr>
                                         ) : runs.map(run => {
                                             const total = run.passed + run.failed + run.untested;
                                             const pct = total > 0 ? Math.round((run.passed / total) * 100) : 0;
@@ -550,13 +692,13 @@ export default function TestPlanDetails() {
                                 <table className="w-full text-left border-collapse">
                                     <thead>
                                         <tr className="border-b border-slate-200 bg-white">
-                                            <th className="px-6 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Case Title</th>
-                                            <th className="px-6 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Priority</th>
+                                            <th className="px-6 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">案例名稱</th>
+                                            <th className="px-6 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">優先級</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100 bg-white">
                                         {cases.length === 0 ? (
-                                            <tr><td colSpan={2} className="px-6 py-10 text-center text-sm text-slate-400">No test cases linked.</td></tr>
+                                            <tr><td colSpan={2} className="px-6 py-10 text-center text-sm text-slate-400">尚無連結的測試案例。</td></tr>
                                         ) : cases.map(tc => (
                                             <tr key={tc.id} className="hover:bg-slate-50 transition-colors">
                                                 <td className="px-6 py-4 text-base font-medium text-slate-900">{tc.title}</td>
@@ -578,13 +720,13 @@ export default function TestPlanDetails() {
                 {
                     (plan.jira_unfix_filter_id || plan.jira_total_filter_id) && (
                         <div className="space-y-6">
-                            <h3 className="text-base font-bold text-slate-700 uppercase tracking-wider">Jira Issues</h3>
+                            <h3 className="text-base font-bold text-slate-700 uppercase tracking-wider">Jira 問題</h3>
                             <div className="flex flex-col gap-6 mt-6">
                                 {plan.jira_unfix_filter_id && (
                                     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-full">
                                         <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-white">
                                             <span className="text-base font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
-                                                <Bug className="w-5 h-5 text-rose-400" /> Unfix Bugs
+                                                <Bug className="w-5 h-5 text-rose-400" /> 未修復 Bug
                                             </span>
                                             {jiraUnfix?.view_url && (
                                                 <a href={jiraUnfix.view_url} target="_blank" rel="noreferrer" className="text-sm text-primary-600 hover:underline flex items-center gap-1">
@@ -611,10 +753,10 @@ export default function TestPlanDetails() {
                                                             <thead>
                                                                 <tr className="border-b border-slate-200 bg-white">
                                                                     <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Key</th>
-                                                                    <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Summary</th>
-                                                                    <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Status</th>
-                                                                    <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Assignee</th>
-                                                                    <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Priority</th>
+                                                                    <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">摘要</th>
+                                                                    <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">狀態</th>
+                                                                    <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">負責人</th>
+                                                                    <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">優先級</th>
                                                                 </tr>
                                                             </thead>
                                                             <tbody>
@@ -656,7 +798,7 @@ export default function TestPlanDetails() {
                                     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-full">
                                         <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-white">
                                             <span className="text-base font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
-                                                <ListChecks className="w-5 h-5 text-blue-400" /> Total Issues
+                                                <ListChecks className="w-5 h-5 text-blue-400" /> 全部 Issue
                                             </span>
                                             {jiraTotal?.view_url && (
                                                 <a href={jiraTotal.view_url} target="_blank" rel="noreferrer" className="text-sm text-primary-600 hover:underline flex items-center gap-1">
@@ -683,10 +825,10 @@ export default function TestPlanDetails() {
                                                             <thead>
                                                                 <tr className="border-b border-slate-200 bg-white">
                                                                     <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Key</th>
-                                                                    <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Summary</th>
-                                                                    <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Status</th>
-                                                                    <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Assignee</th>
-                                                                    <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Priority</th>
+                                                                    <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">摘要</th>
+                                                                    <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">狀態</th>
+                                                                    <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">負責人</th>
+                                                                    <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">優先級</th>
                                                                 </tr>
                                                             </thead>
                                                             <tbody>

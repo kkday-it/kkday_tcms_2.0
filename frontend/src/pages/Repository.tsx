@@ -457,6 +457,7 @@ export default function Repository() {
     const [isImporting, setIsImporting] = useState(false);
     const [isXmindModalOpen, setIsXmindModalOpen] = useState(false);
     const [isExportOpen, setIsExportOpen] = useState(false);
+    const [isImportOpen, setIsImportOpen] = useState(false);
     const [isSyncingDify, setIsSyncingDify] = useState(false);
 
     const handleExport = async (format: 'csv' | 'json' | 'ai_json') => {
@@ -835,20 +836,48 @@ export default function Repository() {
                                 <p className="text-sm text-slate-500 mt-1">{filteredCases.length} test cases in this suite</p>
                             </div>
                             <div className="flex items-center gap-3">
+                                {/* Import 下拉選單 */}
+                                <div className="relative">
+                                    <input type="file" accept=".xml" ref={fileInputRef} style={{ display: 'none' }} onChange={handleImportZephyr} />
+                                    <button
+                                        onClick={() => setIsImportOpen(prev => !prev)}
+                                        className="bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm"
+                                    >
+                                        <Upload className="w-4 h-4" /> 匯入 <ChevronDown className="w-3 h-3" />
+                                    </button>
+                                    {isImportOpen && (
+                                        <div className="absolute right-0 mt-1 w-44 bg-white border border-slate-200 rounded-lg shadow-lg z-50 py-1">
+                                            <button
+                                                onClick={() => { setIsImportOpen(false); fileInputRef.current?.click(); }}
+                                                disabled={isImporting}
+                                                className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2 disabled:opacity-50"
+                                            >
+                                                {isImporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                                                Zephyr XML
+                                            </button>
+                                            <button
+                                                onClick={() => { setIsImportOpen(false); setIsXmindModalOpen(true); }}
+                                                className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                                            >
+                                                <FileCode2 className="w-4 h-4" /> XMind
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
                                 {/* Export 下拉選單 */}
                                 <div className="relative">
                                     <button
                                         onClick={() => setIsExportOpen(prev => !prev)}
                                         className="bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm"
                                     >
-                                        <Download className="w-4 h-4" /> Export <ChevronDown className="w-3 h-3" />
+                                        <Download className="w-4 h-4" /> 匯出 <ChevronDown className="w-3 h-3" />
                                     </button>
                                     {isExportOpen && (
                                         <div className="absolute right-0 mt-1 w-44 bg-white border border-slate-200 rounded-lg shadow-lg z-50 py-1">
-                                            <button onClick={() => handleExport('csv')} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">Export CSV</button>
-                                            <button onClick={() => handleExport('json')} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">Export JSON</button>
+                                            <button onClick={() => handleExport('csv')} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">匯出 CSV</button>
+                                            <button onClick={() => handleExport('json')} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">匯出 JSON</button>
                                             <hr className="my-1 border-slate-100" />
-                                            <button onClick={() => handleExport('ai_json')} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"><span>🤖</span> Export for AI</button>
+                                            <button onClick={() => handleExport('ai_json')} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"><span>🤖</span> 匯出給 AI</button>
                                         </div>
                                     )}
                                 </div>

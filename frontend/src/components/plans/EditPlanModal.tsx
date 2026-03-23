@@ -76,11 +76,16 @@ export default function EditPlanModal({ plan, folders, runs, cases, caseFolders,
     const [uedDocs, setUedDocs] = useState<DocEntry[]>([]);
     const [qaDocs, setQaDocs] = useState<DocEntry[]>([]);
     const [mindmapUrl, setMindmapUrl] = useState('');
-    const [timeline, setTimeline] = useState<{
-        rd?: { start: string; end: string };
-        ued?: { start: string; end: string };
-        qa: { platform: string; start: string; end: string }[];
-    }>({ qa: [] });
+
+    interface TimelineRow {
+        platform: string;
+        rd_start: string; rd_end: string;
+        ued_start: string; ued_end: string;
+        qa_start: string; qa_end: string;
+    }
+    const PLATFORM_PRESETS = ['Android', 'iOS', 'PC', 'M'];
+    const emptyRow = (platform = ''): TimelineRow => ({ platform, rd_start: '', rd_end: '', ued_start: '', ued_end: '', qa_start: '', qa_end: '' });
+    const [timelineRows, setTimelineRows] = useState<TimelineRow[]>([]);
     const [jiraUnfixFilterId, setJiraUnfixFilterId] = useState<string>('');
     const [jiraTotalFilterId, setJiraTotalFilterId] = useState<string>('');
     const [jiraDisplayFields, setJiraDisplayFields] = useState<string[]>(['key', 'summary', 'status', 'assignee', 'priority']);
@@ -111,12 +116,20 @@ export default function EditPlanModal({ plan, folders, runs, cases, caseFolders,
             setUedDocs(plan.ued_docs || []);
             setQaDocs(plan.qa_docs || []);
             setMindmapUrl(plan.mindmap_url || '');
-            const t = plan.timeline || {};
-            setTimeline({
-                rd: t.rd ? { start: t.rd.start || '', end: t.rd.end || '' } : undefined,
-                ued: t.ued ? { start: t.ued.start || '', end: t.ued.end || '' } : undefined,
-                qa: t.qa || [],
-            });
+            const t = plan.timeline || {} as any;
+            if (t.rows) {
+                setTimelineRows(t.rows);
+            } else if (t.qa?.length) {
+                // 舊格式轉換：把全域 RD/UED 套到每個 QA platform 上
+                setTimelineRows((t.qa as any[]).map((q: any) => ({
+                    platform: q.platform,
+                    rd_start: t.rd?.start || '', rd_end: t.rd?.end || '',
+                    ued_start: t.ued?.start || '', ued_end: t.ued?.end || '',
+                    qa_start: q.start || '', qa_end: q.end || '',
+                })));
+            } else {
+                setTimelineRows([]);
+            }
             setJiraUnfixFilterId(plan.jira_unfix_filter_id != null ? String(plan.jira_unfix_filter_id) : '');
             setJiraTotalFilterId(plan.jira_total_filter_id != null ? String(plan.jira_total_filter_id) : '');
             setJiraDisplayFields(plan.jira_display_fields?.length ? plan.jira_display_fields : ['key', 'summary', 'status', 'assignee', 'priority']);
@@ -130,7 +143,7 @@ export default function EditPlanModal({ plan, folders, runs, cases, caseFolders,
             setFolderId(''); setSelectedRunIds([]); setSelectedCaseIds([]);
             setPrdUrl(''); setSaDocs([]); setSdDocs([]);
             setUedDocs([]); setQaDocs([]); setMindmapUrl('');
-            setTimeline({ qa: [] });
+            setTimelineRows([]);
             setJiraUnfixFilterId(''); setJiraTotalFilterId('');
             setJiraDisplayFields(['key', 'summary', 'status', 'assignee', 'priority']);
             setChartFilterId(''); setChartFilterInput(''); setChartField('status');
@@ -166,17 +179,10 @@ export default function EditPlanModal({ plan, folders, runs, cases, caseFolders,
         else if (target === 'qa') setQaDocs(qaDocs.filter((_, i) => i !== idx));
     };
 
-    const addQaEntry = () => {
-        setTimeline({ ...timeline, qa: [...(timeline.qa || []), { platform: 'APP', start: '', end: '' }] });
-    };
-    const updateQaEntry = (idx: number, field: 'platform' | 'start' | 'end', value: string) => {
-        const qa = [...(timeline.qa || [])];
-        qa[idx] = { ...qa[idx], [field]: value };
-        setTimeline({ ...timeline, qa });
-    };
-    const removeQaEntry = (idx: number) => {
-        setTimeline({ ...timeline, qa: (timeline.qa || []).filter((_, i) => i !== idx) });
-    };
+    const addTimelineRow = (platform = '') => setTimelineRows(r => [...r, emptyRow(platform)]);
+    const updateTimelineRow = (idx: number, field: keyof ReturnType<typeof emptyRow>, value: string) =>
+        setTimelineRows(r => r.map((row, i) => i === idx ? { ...row, [field]: value } : row));
+    const removeTimelineRow = (idx: number) => setTimelineRows(r => r.filter((_, i) => i !== idx));
 
     const toggleJiraField = (f: string) => {
         setJiraDisplayFields(prev =>
@@ -199,14 +205,7 @@ export default function EditPlanModal({ plan, folders, runs, cases, caseFolders,
         if (!title.trim()) return;
         setIsSaving(true);
         try {
-            const tPayload =
-                timeline.rd || timeline.ued || (timeline.qa && timeline.qa.length)
-                    ? {
-                        rd: timeline.rd?.start || timeline.rd?.end ? timeline.rd : undefined,
-                        ued: timeline.ued?.start || timeline.ued?.end ? timeline.ued : undefined,
-                        qa: timeline.qa?.filter(x => x.start || x.end).length ? timeline.qa : undefined,
-                    }
-                    : null;
+            const tPayload = timelineRows.length > 0 ? { rows: timelineRows } : null;
             const payload = {
                 title: title.trim(),
                 description: description.trim() || null,
@@ -244,7 +243,7 @@ export default function EditPlanModal({ plan, folders, runs, cases, caseFolders,
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-            <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden">
                 {/* Header */}
                 <div className="px-6 py-4 border-b border-slate-100 bg-white flex items-center justify-between shrink-0">
                     <h2 className="text-xl font-bold text-slate-900">{isNew ? 'New Test Plan' : 'Edit Test Plan'}</h2>
@@ -400,53 +399,75 @@ export default function EditPlanModal({ plan, folders, runs, cases, caseFolders,
 
                         {metaTab === 'timeline' && (
                             <>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-sm font-medium text-slate-700 mb-1">RD 開發</label>
-                                        <div className="flex gap-2 items-center">
-                                            <input type="date" value={timeline.rd?.start || ''} onChange={e => setTimeline({ ...timeline, rd: { ...timeline.rd, start: e.target.value, end: timeline.rd?.end || '' } })}
-                                                className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm" />
-                                            <span className="text-slate-400">～</span>
-                                            <input type="date" value={timeline.rd?.end || ''} onChange={e => setTimeline({ ...timeline, rd: { ...timeline.rd, start: timeline.rd?.start || '', end: e.target.value } })}
-                                                className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm" />
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-slate-700 mb-1">UED 設計審核</label>
-                                        <div className="flex gap-2 items-center">
-                                            <input type="date" value={timeline.ued?.start || ''} onChange={e => setTimeline({ ...timeline, ued: { ...timeline.ued, start: e.target.value, end: timeline.ued?.end || '' } })}
-                                                className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm" />
-                                            <span className="text-slate-400">～</span>
-                                            <input type="date" value={timeline.ued?.end || ''} onChange={e => setTimeline({ ...timeline, ued: { ...timeline.ued, start: timeline.ued?.start || '', end: e.target.value } })}
-                                                className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm" />
-                                        </div>
-                                    </div>
-                                </div>
-                                <div>
-                                    <div className="flex items-center justify-between mb-1">
-                                        <label className="block text-sm font-medium text-slate-700">QA 交付（APP / PC / M）</label>
-                                        <button type="button" onClick={addQaEntry}
-                                            className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-1">
-                                            <Plus className="w-3 h-3" /> 新增
+                                <div className="flex items-center justify-between mb-2">
+                                    <p className="text-xs text-slate-500">每個平台各自設定 RD、UED、QA 時程，空白欄位不顯示。</p>
+                                    <div className="flex items-center gap-1.5">
+                                        {PLATFORM_PRESETS.map(p => (
+                                            <button key={p} type="button"
+                                                onClick={() => addTimelineRow(p)}
+                                                disabled={timelineRows.some(r => r.platform === p)}
+                                                className="px-2.5 py-1 text-xs font-medium border border-slate-200 rounded-lg hover:bg-primary-50 hover:border-primary-300 hover:text-primary-700 transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
+                                                + {p}
+                                            </button>
+                                        ))}
+                                        <button type="button" onClick={() => addTimelineRow()}
+                                            className="px-2.5 py-1 text-xs font-medium border border-dashed border-slate-300 rounded-lg hover:bg-slate-50 text-slate-500 flex items-center gap-1">
+                                            <Plus className="w-3 h-3" /> 自訂
                                         </button>
                                     </div>
-                                    <div className="space-y-2">
-                                        {(timeline.qa || []).map((q, i) => (
-                                            <div key={i} className="flex gap-2 items-center">
-                                                <select value={q.platform} onChange={e => updateQaEntry(i, 'platform', e.target.value)}
-                                                    className="w-24 px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white">
-                                                    {['APP', 'PC', 'M'].map(p => <option key={p} value={p}>{p}</option>)}
-                                                </select>
-                                                <input type="date" value={q.start} onChange={e => updateQaEntry(i, 'start', e.target.value)}
-                                                    className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm" />
-                                                <span className="text-slate-400">～</span>
-                                                <input type="date" value={q.end} onChange={e => updateQaEntry(i, 'end', e.target.value)}
-                                                    className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm" />
-                                                <button type="button" onClick={() => removeQaEntry(i)} className="p-2 text-slate-400 hover:text-red-600"><X className="w-4 h-4" /></button>
-                                            </div>
-                                        ))}
-                                    </div>
                                 </div>
+
+                                {timelineRows.length === 0 ? (
+                                    <div className="border-2 border-dashed border-slate-200 rounded-xl py-10 text-center text-slate-400 text-sm">
+                                        點擊上方按鈕新增平台時程
+                                    </div>
+                                ) : (
+                                    <div className="overflow-x-auto rounded-xl border border-slate-200">
+                                        <table className="w-full text-sm border-collapse">
+                                            <thead>
+                                                <tr className="bg-slate-50 border-b border-slate-200">
+                                                    <th className="px-3 py-2.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-24">平台</th>
+                                                    <th className="px-3 py-2.5 text-left text-xs font-semibold text-blue-600 uppercase tracking-wider">RD 開發</th>
+                                                    <th className="px-3 py-2.5 text-left text-xs font-semibold text-indigo-600 uppercase tracking-wider">UED 審核</th>
+                                                    <th className="px-3 py-2.5 text-left text-xs font-semibold text-emerald-600 uppercase tracking-wider">QA 進測</th>
+                                                    <th className="w-8" />
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {timelineRows.map((row, i) => (
+                                                    <tr key={i} className="hover:bg-slate-50/50 transition-colors">
+                                                        <td className="px-3 py-2">
+                                                            <input value={row.platform} onChange={e => updateTimelineRow(i, 'platform', e.target.value)}
+                                                                className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary-500"
+                                                                placeholder="平台名稱" />
+                                                        </td>
+                                                        {(['rd', 'ued', 'qa'] as const).map(phase => (
+                                                            <td key={phase} className="px-3 py-2">
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <input type="date"
+                                                                        value={row[`${phase}_start`]}
+                                                                        onChange={e => updateTimelineRow(i, `${phase}_start`, e.target.value)}
+                                                                        className="flex-1 min-w-0 px-2 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                                                                    <span className="text-slate-300 shrink-0">→</span>
+                                                                    <input type="date"
+                                                                        value={row[`${phase}_end`]}
+                                                                        onChange={e => updateTimelineRow(i, `${phase}_end`, e.target.value)}
+                                                                        className="flex-1 min-w-0 px-2 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                                                                </div>
+                                                            </td>
+                                                        ))}
+                                                        <td className="px-2 py-2">
+                                                            <button type="button" onClick={() => removeTimelineRow(i)}
+                                                                className="p-1.5 text-slate-300 hover:text-red-500 rounded transition-colors">
+                                                                <X className="w-3.5 h-3.5" />
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
                             </>
                         )}
 

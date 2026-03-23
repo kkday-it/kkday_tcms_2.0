@@ -133,11 +133,11 @@ export default function Dashboard() {
                             <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
                                 <Target className="w-5 h-5 text-indigo-600" />
                             </div>
-                            <span className="text-slate-600 font-bold tracking-wide uppercase text-xs">Active Assignments</span>
+                            <span className="text-slate-600 font-bold tracking-wide uppercase text-xs">指派中的執行</span>
                         </div>
                         <div className="flex items-end gap-2">
                             <span className="text-4xl font-extrabold text-slate-900">{myData.assigned_runs.length}</span>
-                            <span className="text-sm text-slate-500 mb-1">Runs To Do</span>
+                            <span className="text-sm text-slate-500 mb-1">待執行</span>
                         </div>
                     </div>
 
@@ -150,11 +150,11 @@ export default function Dashboard() {
                             <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center">
                                 <Activity className="w-5 h-5 text-emerald-600" />
                             </div>
-                            <span className="text-slate-600 font-bold tracking-wide uppercase text-xs">My Output (7 days)</span>
+                            <span className="text-slate-600 font-bold tracking-wide uppercase text-xs">我的產出（7 天）</span>
                         </div>
                         <div className="flex items-end gap-2">
                             <span className="text-4xl font-extrabold text-slate-900">{metrics.recent_executions_7d}</span>
-                            <span className="text-sm text-slate-500 mb-1">Tests Executed</span>
+                            <span className="text-sm text-slate-500 mb-1">已執行測試</span>
                         </div>
                     </div>
 
@@ -167,13 +167,13 @@ export default function Dashboard() {
                             <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
                                 <Zap className="w-5 h-5 text-amber-600" />
                             </div>
-                            <span className="text-slate-600 font-bold tracking-wide uppercase text-xs">My Automation Coverage</span>
+                            <span className="text-slate-600 font-bold tracking-wide uppercase text-xs">我的自動化覆蓋率</span>
                         </div>
                         <div className="flex items-center gap-4">
                             <span className="text-4xl font-extrabold text-slate-900">{automationRate}%</span>
                             <div className="flex flex-col text-xs text-slate-500 font-medium">
-                                <span>{metrics.cases_automated} Automated</span>
-                                <span>{metrics.cases_owned} Total Owned</span>
+                                <span>{metrics.cases_automated} 已自動化</span>
+                                <span>{metrics.cases_owned} 總負責</span>
                             </div>
                         </div>
                     </div>
@@ -184,26 +184,26 @@ export default function Dashboard() {
                     <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
                         <div className="flex items-center gap-2">
                             <Clock className="w-5 h-5 text-slate-400" />
-                            <h2 className="text-lg font-bold text-slate-900">Up Next For You</h2>
+                            <h2 className="text-lg font-bold text-slate-900">待處理的測試執行</h2>
                         </div>
-                        <p className="text-sm text-slate-500 mt-1">Test runs assigned to you that are currently pending or in progress.</p>
+                        <p className="text-sm text-slate-500 mt-1">目前指派給您且尚在進行或等待中的測試執行。</p>
                     </div>
 
                     <div className="p-0 flex-1 overflow-x-auto">
                         {myData.assigned_runs.length === 0 ? (
                             <div className="flex flex-col items-center justify-center h-full min-h-[300px] text-slate-400">
                                 <CheckCircle2 className="w-16 h-16 text-emerald-100 mb-4" />
-                                <p className="text-lg font-medium text-slate-600">You're all caught up!</p>
-                                <p className="text-sm">There are no test runs assigned to you right now.</p>
+                                <p className="text-lg font-medium text-slate-600">全部完成了！</p>
+                                <p className="text-sm">目前沒有指派給您的測試執行。</p>
                             </div>
                         ) : (
                             <table className="w-full text-left border-collapse">
                                 <thead>
                                     <tr className="border-b border-slate-200 bg-slate-50/50">
-                                        <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Run Title</th>
-                                        <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
-                                        <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Progress</th>
-                                        <th className="px-6 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Action</th>
+                                        <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">執行名稱</th>
+                                        <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">狀態</th>
+                                        <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">進度</th>
+                                        <th className="px-6 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">操作</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 bg-white">
@@ -216,7 +216,7 @@ export default function Dashboard() {
                                             <tr key={run.id} className="hover:bg-slate-50 transition-colors group">
                                                 <td className="px-6 py-5">
                                                     <div className="text-sm font-bold text-slate-900">{run.title}</div>
-                                                    <div className="text-xs text-slate-500 mt-1">Assigned Run #{run.id}</div>
+                                                    <div className="text-xs text-slate-500 mt-1">指派執行 #{run.id}</div>
                                                 </td>
                                                 <td className="px-6 py-5">
                                                     <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${run.status === 'Testing' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-slate-100 text-slate-600 border-slate-200'
@@ -229,7 +229,7 @@ export default function Dashboard() {
                                                         <span className="text-emerald-600 flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> {run.passed}</span>
                                                         <span className="text-rose-600 flex items-center gap-1"><XCircle className="w-3.5 h-3.5" /> {run.failed}</span>
                                                         <span className="text-amber-500 flex items-center gap-1"><Ban className="w-3.5 h-3.5" /> {run.blocked}</span>
-                                                        <span className="text-slate-400">{run.total} Total ({Math.round(((run.passed + run.failed + run.blocked) / run.total) * 100)}%)</span>
+                                                        <span className="text-slate-400">{run.total} 總計 ({Math.round(((run.passed + run.failed + run.blocked) / run.total) * 100)}%)</span>
                                                     </div>
                                                     <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden flex shadow-inner border border-slate-200/30">
                                                         <div style={{ width: `${passPct}%` }} className="bg-emerald-500 h-full transition-all duration-500 ease-out"></div>
@@ -244,7 +244,7 @@ export default function Dashboard() {
                                                         className="inline-flex items-center justify-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-bold text-primary-600 shadow-sm ring-1 ring-inset ring-slate-300 hover:bg-slate-50 hover:text-primary-700 transition-all opacity-0 group-hover:opacity-100 focus:opacity-100"
                                                     >
                                                         <PlayCircle className="w-4 h-4" />
-                                                        Continue
+                                                        繼續執行
                                                     </button>
                                                 </td>
                                             </tr>
@@ -283,7 +283,7 @@ export default function Dashboard() {
                             <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
                                 <Layers className="w-5 h-5 text-indigo-500" />
                             </div>
-                            <span className="text-slate-600 font-bold tracking-wide uppercase text-xs">Total Test Cases</span>
+                            <span className="text-slate-600 font-bold tracking-wide uppercase text-xs">測試案例總數</span>
                         </div>
                         <span className="text-4xl font-extrabold text-slate-900">{summary.summary_cards.total_cases}</span>
                     </div>
@@ -296,7 +296,7 @@ export default function Dashboard() {
                             <div className="w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center">
                                 <PlayCircle className="w-5 h-5 text-primary-500" />
                             </div>
-                            <span className="text-slate-600 font-bold tracking-wide uppercase text-xs">Active Test Runs</span>
+                            <span className="text-slate-600 font-bold tracking-wide uppercase text-xs">進行中的測試執行</span>
                         </div>
                         <span className="text-4xl font-extrabold text-slate-900">{summary.summary_cards.active_runs}</span>
                     </div>
@@ -309,7 +309,7 @@ export default function Dashboard() {
                             <div className="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center">
                                 <Bug className="w-5 h-5 text-orange-500" />
                             </div>
-                            <span className="text-slate-600 font-bold tracking-wide uppercase text-xs">Defects Logged (Jira)</span>
+                            <span className="text-slate-600 font-bold tracking-wide uppercase text-xs">已記錄缺陷 (Jira)</span>
                         </div>
                         <span className="text-4xl font-extrabold text-slate-900">{summary.summary_cards.total_defects}</span>
                     </div>
@@ -319,7 +319,7 @@ export default function Dashboard() {
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
                     {/* Donut Chart: Runs by Type */}
                     <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col">
-                        <h3 className="text-base font-bold text-slate-900 mb-4">Test Runs by Type</h3>
+                        <h3 className="text-base font-bold text-slate-900 mb-4">各類型測試執行數</h3>
                         <div className="flex-1 w-full min-h-[300px]">
                             {summary.run_types_distribution.length > 0 ? (
                                 <ResponsiveContainer width="100%" height="100%">
@@ -339,21 +339,21 @@ export default function Dashboard() {
                                             ))}
                                         </Pie>
                                         <RechartsTooltip
-                                            formatter={(value: any) => [value, 'Runs']}
+                                            formatter={(value: any) => [value, '執行數']}
                                             contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                                         />
                                         <Legend verticalAlign="bottom" height={36} iconType="circle" />
                                     </PieChart>
                                 </ResponsiveContainer>
                             ) : (
-                                <div className="h-full flex items-center justify-center text-slate-400 text-sm">No run data available</div>
+                                <div className="h-full flex items-center justify-center text-slate-400 text-sm">尚無執行資料</div>
                             )}
                         </div>
                     </div>
 
                     {/* Grouped Bar Chart: Pass/Fail Rate by Run Type */}
                     <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col">
-                        <h3 className="text-base font-bold text-slate-900 mb-4">Pass / Fail by Run Type</h3>
+                        <h3 className="text-base font-bold text-slate-900 mb-4">各類型通過 / 失敗比率</h3>
                         <div className="flex-1 w-full min-h-[300px]">
                             {summary.run_type_pass_fail.length > 0 ? (
                                 <ResponsiveContainer width="100%" height="100%">
@@ -369,19 +369,19 @@ export default function Dashboard() {
                                             contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                                         />
                                         <Legend verticalAlign="top" height={36} iconType="circle" wrapperStyle={{ paddingBottom: '20px' }} />
-                                        <Bar dataKey="passed" name="Passed" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={40}>
+                                        <Bar dataKey="passed" name="通過" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={40}>
                                             <LabelList dataKey="passed" position="top" fill="#10b981" fontSize={11} formatter={(v: any) => Number(v) > 0 ? v : ''} />
                                         </Bar>
-                                        <Bar dataKey="failed" name="Failed" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={40}>
+                                        <Bar dataKey="failed" name="失敗" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={40}>
                                             <LabelList dataKey="failed" position="top" fill="#ef4444" fontSize={11} formatter={(v: any) => Number(v) > 0 ? v : ''} />
                                         </Bar>
-                                        <Bar dataKey="blocked" name="Blocked" fill="#f59e0b" radius={[4, 4, 0, 0]} maxBarSize={40}>
+                                        <Bar dataKey="blocked" name="封鎖" fill="#f59e0b" radius={[4, 4, 0, 0]} maxBarSize={40}>
                                             <LabelList dataKey="blocked" position="top" fill="#f59e0b" fontSize={11} formatter={(v: any) => Number(v) > 0 ? v : ''} />
                                         </Bar>
                                     </BarChart>
                                 </ResponsiveContainer>
                             ) : (
-                                <div className="h-full flex items-center justify-center text-slate-400 text-sm">No pass/fail data available</div>
+                                <div className="h-full flex items-center justify-center text-slate-400 text-sm">尚無通過/失敗資料</div>
                             )}
                         </div>
                     </div>
@@ -393,20 +393,20 @@ export default function Dashboard() {
                     <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden flex flex-col">
                         <div className="p-5 border-b border-slate-100 flex items-center gap-2 bg-slate-50/50">
                             <Clock className="w-5 h-5 text-primary-500" />
-                            <h3 className="text-base font-bold text-slate-900">Recent Test Runs</h3>
+                            <h3 className="text-base font-bold text-slate-900">最近的測試執行</h3>
                         </div>
                         <div className="p-0 flex-1 overflow-x-auto">
                             <table className="w-full text-left border-collapse">
                                 <thead>
                                     <tr className="border-b border-slate-200">
-                                        <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Run</th>
-                                        <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Type</th>
-                                        <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Progress</th>
+                                        <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">執行名稱</th>
+                                        <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">類型</th>
+                                        <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">進度</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
                                     {summary.recent_runs.length === 0 ? (
-                                        <tr><td colSpan={3} className="px-5 py-8 text-center text-sm text-slate-400">No recent runs</td></tr>
+                                        <tr><td colSpan={3} className="px-5 py-8 text-center text-sm text-slate-400">尚無測試執行記錄</td></tr>
                                     ) : (
                                         summary.recent_runs.map(run => {
                                             const passPct = run.total > 0 ? (run.passed / run.total) * 100 : 0;
@@ -421,7 +421,7 @@ export default function Dashboard() {
                                                     </td>
                                                     <td className="px-5 py-4">
                                                         <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-indigo-50 text-indigo-700 border border-indigo-100 whitespace-nowrap">
-                                                            {run.run_type || 'Feature Test'}
+                                                            {run.run_type || '功能測試'}
                                                         </span>
                                                     </td>
                                                     <td className="px-5 py-4 w-40">
@@ -450,19 +450,19 @@ export default function Dashboard() {
                     <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden flex flex-col">
                         <div className="p-5 border-b border-slate-100 flex items-center gap-2 bg-slate-50/50">
                             <AlertTriangle className="w-5 h-5 text-rose-500" />
-                            <h3 className="text-base font-bold text-slate-900">Top Failing Cases</h3>
+                            <h3 className="text-base font-bold text-slate-900">失敗率最高的案例</h3>
                         </div>
                         <div className="p-0 flex-1 overflow-x-auto">
                             <table className="w-full text-left border-collapse">
                                 <thead>
                                     <tr className="border-b border-slate-200">
-                                        <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Test Case Title</th>
-                                        <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">Failures</th>
+                                        <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">測試案例名稱</th>
+                                        <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">失敗次數</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
                                     {summary.top_failing_cases.length === 0 ? (
-                                        <tr><td colSpan={2} className="px-5 py-8 text-center text-sm text-slate-400">No failing cases recorded yet</td></tr>
+                                        <tr><td colSpan={2} className="px-5 py-8 text-center text-sm text-slate-400">尚未記錄任何失敗案例</td></tr>
                                     ) : (
                                         summary.top_failing_cases.map((tc, i) => (
                                             <tr key={i} className="hover:bg-slate-50 transition-colors">
@@ -490,8 +490,8 @@ export default function Dashboard() {
         <div className="flex-1 p-8 overflow-y-auto bg-slate-50 w-full h-full">
             <div className="mb-8 flex flex-col gap-6 border-b border-slate-200 pb-6">
                 <div>
-                    <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">Dashboard</h1>
-                    <p className="text-slate-500 mt-2 text-sm">Welcome back! Here is an overview of your testing velocity and project health.</p>
+                    <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">儀表板</h1>
+                    <p className="text-slate-500 mt-2 text-sm">歡迎回來！以下是您的測試進度與專案健康概覽。</p>
                 </div>
 
                 {/* Tabs - Moved to left and made more prominent */}
@@ -503,7 +503,7 @@ export default function Dashboard() {
                             : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/50'
                             }`}
                     >
-                        My Space
+                        我的工作區
                     </button>
                     <button
                         onClick={() => setActiveTab('overview')}
@@ -512,7 +512,7 @@ export default function Dashboard() {
                             : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/50'
                             }`}
                     >
-                        Project Overview
+                        專案總覽
                     </button>
                 </div>
             </div>

@@ -1,10 +1,12 @@
+import { useState } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import { Presentation, Layers, Activity, Settings as SettingsIcon, User, ClipboardList, LogOut } from 'lucide-react';
+import { Presentation, Layers, Activity, Settings as SettingsIcon, User, ClipboardList, LogOut, ChevronLeft, ChevronRight } from 'lucide-react';
 import DatabaseHealthAlert from './DatabaseHealthAlert';
 
 export default function MainLayout() {
     const location = useLocation();
     const navigate = useNavigate();
+    const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
 
     // Get the current user from local storage
     const currentUserJson = localStorage.getItem('tcms_user');
@@ -18,69 +20,101 @@ export default function MainLayout() {
     };
 
     const navigation = [
-        { name: 'Dashboard', href: '/', icon: Activity },
-        { name: 'Repository', href: '/repository', icon: Layers },
-        { name: 'Test Plans', href: '/plans', icon: ClipboardList },
-        { name: 'Test Runs', href: '/runs', icon: Presentation },
+        { name: '儀表板', href: '/', icon: Activity },
+        { name: '案例庫', href: '/repository', icon: Layers },
+        { name: '測試計畫', href: '/plans', icon: ClipboardList },
+        { name: '測試執行', href: '/runs', icon: Presentation },
     ];
 
     return (
         <div className="flex h-screen bg-white">
             {/* Global Sidebar */}
-            <div className="w-20 flex-shrink-0 flex flex-col items-center py-4 bg-slate-900 border-r border-slate-800">
-                <div className="w-10 h-10 bg-primary-600 text-white rounded-lg flex items-center justify-center font-bold text-xl mb-8">
-                    T
+            <div
+                className={`${isSidebarExpanded ? 'w-44' : 'w-14'} flex-shrink-0 flex flex-col py-4 bg-slate-900 border-r border-slate-800 transition-all duration-200 overflow-hidden`}
+            >
+                {/* Logo + Collapse Toggle */}
+                <div className="flex items-center justify-between px-3 mb-8">
+                    <div className="w-10 h-10 bg-primary-600 text-white rounded-lg flex items-center justify-center font-bold text-xl shrink-0">
+                        T
+                    </div>
+                    {isSidebarExpanded && (
+                        <button
+                            onClick={() => setIsSidebarExpanded(false)}
+                            className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-md transition-colors"
+                            title="收合選單"
+                        >
+                            <ChevronLeft className="w-4 h-4" />
+                        </button>
+                    )}
                 </div>
 
-                <nav className="flex-1 space-y-2">
+                {/* Expand button when collapsed */}
+                {!isSidebarExpanded && (
+                    <div className="flex justify-center mb-4">
+                        <button
+                            onClick={() => setIsSidebarExpanded(true)}
+                            className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-md transition-colors"
+                            title="展開選單"
+                        >
+                            <ChevronRight className="w-4 h-4" />
+                        </button>
+                    </div>
+                )}
+
+                <nav className="flex-1 space-y-1 px-2">
                     {navigation.map((item) => {
                         const isActive = location.pathname === item.href || (item.href !== '/' && location.pathname.startsWith(item.href));
-                        const label = item.name === 'Repository' ? 'Repo' : item.name === 'Test Plans' ? 'Plans' : item.name === 'Test Runs' ? 'Runs' : item.name;
                         return (
                             <Link
                                 key={item.name}
                                 to={item.href}
-                                className={`flex flex-col items-center gap-1 px-1 py-2 rounded-lg transition-colors ${isActive ? 'bg-primary-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'
-                                    }`}
+                                className={`flex items-center gap-3 px-2 py-2 rounded-lg transition-colors ${isActive ? 'bg-primary-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
                                 title={item.name}
                             >
-                                <item.icon className="w-5 h-5" />
-                                <span className="text-[10px] font-medium leading-none">{label}</span>
+                                <item.icon className="w-5 h-5 shrink-0" />
+                                {isSidebarExpanded && (
+                                    <span className="text-sm font-medium truncate">{item.name}</span>
+                                )}
                             </Link>
                         );
                     })}
                 </nav>
 
-                <div className="mt-auto flex flex-col items-center gap-2">
+                <div className="mt-auto space-y-1 px-2">
                     {/* Settings - Admin Only */}
                     {isAdmin && (
                         <Link
                             to="/settings"
-                            className={`p-2 rounded-lg flex items-center justify-center transition-colors ${location.pathname.startsWith('/settings')
+                            className={`flex items-center gap-3 px-2 py-2 rounded-lg transition-colors ${location.pathname.startsWith('/settings')
                                 ? 'bg-primary-600 text-white'
                                 : 'text-slate-400 hover:text-white hover:bg-slate-800'
                                 }`}
-                            title="Settings (Admin)"
+                            title="設定（管理員）"
                         >
-                            <SettingsIcon className="w-5 h-5" />
+                            <SettingsIcon className="w-5 h-5 shrink-0" />
+                            {isSidebarExpanded && <span className="text-sm font-medium">設定</span>}
                         </Link>
                     )}
 
-                    {/* Current User Avatar */}
+                    {/* Current User */}
                     <button
-                        className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-                        title={currentUser?.username || 'Account'}
+                        className="flex items-center gap-3 px-2 py-2 rounded-lg w-full text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                        title={currentUser?.username || '帳號'}
                     >
-                        <User className="w-5 h-5" />
+                        <User className="w-5 h-5 shrink-0" />
+                        {isSidebarExpanded && (
+                            <span className="text-sm font-medium truncate">{currentUser?.username || '帳號'}</span>
+                        )}
                     </button>
 
                     {/* Logout */}
                     <button
                         onClick={handleLogout}
-                        className="p-2 mb-2 rounded-lg text-slate-400 hover:text-red-400 hover:bg-slate-800 transition-colors"
-                        title="Log out"
+                        className="flex items-center gap-3 px-2 py-2 mb-2 rounded-lg w-full text-slate-400 hover:text-red-400 hover:bg-slate-800 transition-colors"
+                        title="登出"
                     >
-                        <LogOut className="w-5 h-5" />
+                        <LogOut className="w-5 h-5 shrink-0" />
+                        {isSidebarExpanded && <span className="text-sm font-medium">登出</span>}
                     </button>
                 </div>
             </div>

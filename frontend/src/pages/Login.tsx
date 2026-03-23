@@ -29,9 +29,9 @@ export default function Login() {
     useEffect(() => {
         const oauthError = searchParams.get('error');
         if (oauthError === 'google_auth_failed') {
-            setError('Google login failed. Please try again or use your email/password.');
+            setError('Google 登入失敗，請再試一次或使用帳號密碼登入。');
         } else if (oauthError === 'account_disabled') {
-            setError('Your account is disabled. Please contact an administrator.');
+            setError('您的帳號已停用，請聯繫管理員。');
         }
     }, [searchParams]);
 
@@ -63,7 +63,7 @@ export default function Login() {
             }
         } catch (err: any) {
             console.error('[TCMS Login] Error:', err?.message, err?.response?.status, err?.response?.data);
-            setError(err.response?.data?.detail || 'Login failed. Please check your credentials.');
+            setError(err.response?.data?.detail || '登入失敗，請確認您的帳號和密碼。');
         } finally {
             setIsLoading(false);
         }
@@ -86,10 +86,10 @@ export default function Login() {
                     </div>
                 </div>
                 <h2 className="mt-6 text-center text-3xl font-extrabold text-slate-900">
-                    Sign in to TCMS
+                    登入 TCMS
                 </h2>
                 <p className="mt-2 text-center text-sm text-slate-600">
-                    Use your tester account to continue
+                    使用您的測試人員帳號繼續
                 </p>
             </div>
 
@@ -104,7 +104,7 @@ export default function Login() {
                         className="w-full flex items-center justify-center gap-3 py-2.5 px-4 border border-slate-300 rounded-lg shadow-sm text-sm font-semibold text-slate-700 bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                         <GoogleIcon />
-                        {isGoogleLoading ? 'Redirecting…' : 'Sign in with Google'}
+                        {isGoogleLoading ? '跳轉中…' : '使用 Google 登入'}
                     </button>
 
                     {/* Divider */}
@@ -113,7 +113,7 @@ export default function Login() {
                             <div className="w-full border-t border-slate-200" />
                         </div>
                         <div className="relative flex justify-center text-sm">
-                            <span className="px-2 bg-white text-slate-400 font-medium">or</span>
+                            <span className="px-2 bg-white text-slate-400 font-medium">或</span>
                         </div>
                     </div>
 
@@ -128,7 +128,7 @@ export default function Login() {
                             </div>
                         )}
                         <div>
-                            <label className="block text-sm font-medium text-slate-700">Email address</label>
+                            <label className="block text-sm font-medium text-slate-700">電子郵件</label>
                             <div className="mt-1">
                                 <input
                                     type="email"
@@ -141,7 +141,7 @@ export default function Login() {
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium text-slate-700">Password</label>
+                            <label className="block text-sm font-medium text-slate-700">密碼</label>
                             <div className="mt-1">
                                 <input
                                     type="password"
@@ -157,7 +157,7 @@ export default function Login() {
                         <div className="flex items-center justify-between">
                             <div className="text-sm">
                                 <button type="button" onClick={() => navigate('/reset-password')} className="font-semibold text-primary-600 hover:text-primary-500">
-                                    Forgot your password?
+                                    忘記密碼？
                                 </button>
                             </div>
                         </div>
@@ -168,7 +168,7 @@ export default function Login() {
                                 disabled={isLoading || isGoogleLoading}
                                 className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-semibold text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                             >
-                                {isLoading ? 'Signing in...' : 'Sign in'}
+                                {isLoading ? '登入中…' : '登入'}
                             </button>
                         </div>
                     </form>
