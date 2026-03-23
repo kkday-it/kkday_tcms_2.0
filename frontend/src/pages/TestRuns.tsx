@@ -422,21 +422,23 @@ export default function TestRuns() {
 
         setIsCopyingFolder(true);
         try {
-            for (const run of folderRuns) {
-                const resultsResponse = await api.get(`/results/run/${run.id}`);
-                const caseIds = resultsResponse.data.map((r: any) => r.case_id);
-                const newTitle = run.title.replace(/\$template/g, copyFolderDate);
-                await api.post('/runs/', {
-                    title: newTitle,
+            // Fetch all run results in parallel (avoid N+1)
+            const resultsAll = await Promise.all(
+                folderRuns.map(run => api.get(`/results/run/${run.id}`))
+            );
+            // Create all new runs in parallel
+            await Promise.all(
+                folderRuns.map((run, i) => api.post('/runs/', {
+                    title: run.title.replace(/\$template/g, copyFolderDate),
                     run_type: run.run_type || 'Feature Test',
                     description: '',
                     project_id: run.project_id,
                     folder_id: run.folder_id,
                     assignee_ids: (run.assignees || []).map((a: any) => a.id),
                     status: 'Active',
-                    case_ids: caseIds
-                });
-            }
+                    case_ids: resultsAll[i].data.map((r: any) => r.case_id),
+                }))
+            );
             setCopyFolderDateModal(null);
             fetchRuns();
         } catch (error) {
