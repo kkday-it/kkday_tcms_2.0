@@ -185,28 +185,24 @@ export default function TestPlans() {
         }
     };
 
-    const fetchRuns = async () => {
+    const editDataLoaded = useRef(false);
+
+    const fetchEditData = async () => {
+        if (editDataLoaded.current) return;
         try {
-            const res = await api.get(`/runs/project/${projectId}`);
-            setRuns(res.data);
+            const [runsRes, casesRes, suitesRes] = await Promise.all([
+                api.get(`/runs/project/${projectId}`),
+                api.get(`/cases/project/${projectId}`),
+                api.get(`/suites/project/${projectId}`),
+            ]);
+            setRuns(runsRes.data);
+            setCases(casesRes.data);
+            setCaseFolders(suitesRes.data.map((s: any) => ({ id: s.id, name: s.name })));
+            editDataLoaded.current = true;
         } catch (e) { /* silent */ }
     };
 
-    const fetchCases = async () => {
-        try {
-            const res = await api.get(`/cases/project/${projectId}`);
-            setCases(res.data);
-        } catch (e) { /* silent */ }
-    };
-
-    const fetchSuites = async () => {
-        try {
-            const res = await api.get(`/suites/project/${projectId}`);
-            setCaseFolders(res.data.map((s: any) => ({ id: s.id, name: s.name })));
-        } catch (e) { /* silent */ }
-    };
-
-    useEffect(() => { fetchFolders(); fetchRuns(); fetchCases(); fetchSuites(); }, []);
+    useEffect(() => { fetchFolders(); }, []);
     useEffect(() => { fetchPlans(); }, [activeFolderId]);
 
     // ── Export ─────────────────────────────────────────────────────────────────
@@ -399,7 +395,7 @@ export default function TestPlans() {
                                             </div>
                                         )}
                                     </div>
-                                    <button onClick={() => setEditingPlan(null)}
+                                    <button onClick={() => { fetchEditData(); setEditingPlan(null); }}
                                         className="btn-primary flex items-center gap-2">
                                         <Plus className="w-4 h-4" /> New Plan
                                     </button>
@@ -413,7 +409,7 @@ export default function TestPlans() {
                                     <ClipboardList className="w-12 h-12 text-slate-300 mb-4" />
                                     <p className="text-lg font-medium text-slate-700 mb-1">No test plans here</p>
                                     <p className="text-sm mb-6">Create a plan to group test runs and cases.</p>
-                                    <button onClick={() => setEditingPlan(null)} className="btn-primary flex items-center gap-2">
+                                    <button onClick={() => { fetchEditData(); setEditingPlan(null); }} className="btn-primary flex items-center gap-2">
                                         <Plus className="w-4 h-4" /> New Plan
                                     </button>
                                 </div>
@@ -423,7 +419,7 @@ export default function TestPlans() {
                                         <DraggablePlanCard
                                             key={`plan-${plan.id}`}
                                             plan={plan}
-                                            onEdit={() => setEditingPlan(plan)}
+                                            onEdit={() => { fetchEditData(); setEditingPlan(plan); }}
                                             onDelete={() => handleDeletePlan(plan.id)}
                                             onClone={() => handleClonePlan(plan.id)}
                                         />

@@ -281,6 +281,16 @@ export default function TestRuns() {
         return runs.filter(r => r.folder_id !== null && r.folder_id !== undefined && folderIds.has(r.folder_id as number));
     }, [runs, activeFolderId, folders, getDescendantFolderIds]);
 
+    /** Pre-compute run count per folder (including descendants) to avoid O(N²) in render */
+    const folderRunCountMap = useMemo(() => {
+        const map = new Map<number, number>();
+        for (const folder of folders) {
+            const ids = getDescendantFolderIds(folder.id, folders);
+            map.set(folder.id, runs.filter(r => r.folder_id != null && ids.has(r.folder_id as number)).length);
+        }
+        return map;
+    }, [folders, runs, getDescendantFolderIds]);
+
     // Export
     const [isExportOpen, setIsExportOpen] = useState(false);
     const handleExportRuns = async (format: 'csv' | 'json') => {
@@ -456,8 +466,7 @@ export default function TestRuns() {
         return (
             <div className="space-y-0.5">
                 {children.map(folder => {
-                    const folderIds = getDescendantFolderIds(folder.id, folders);
-                    const folderRunCount = runs.filter(r => r.folder_id !== null && r.folder_id !== undefined && folderIds.has(r.folder_id as number)).length;
+                    const folderRunCount = folderRunCountMap.get(folder.id) ?? 0;
                     return (
                     <RunFolderNode
                         key={folder.id}

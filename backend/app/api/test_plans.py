@@ -198,25 +198,81 @@ async def export_plans(
         raise HTTPException(status_code=400, detail=f"不支援的格式：{format}。請使用 csv | json")
 
 
+async def _build_list_response(db: AsyncSession, plans: list[TestPlan]) -> list[dict]:
+    """Build plan list response using junction-table ID queries (no full ORM object load)."""
+    if not plans:
+        return []
+    plan_ids = [p.id for p in plans]
+
+    run_rows = (
+        await db.execute(select(plan_runs.c.plan_id, plan_runs.c.run_id).where(plan_runs.c.plan_id.in_(plan_ids)))
+    ).all()
+    case_rows = (
+        await db.execute(
+            select(plan_cases.c.plan_id, plan_cases.c.case_id, TestCase.title, TestCase.priority)
+            .join(TestCase, plan_cases.c.case_id == TestCase.id)
+            .where(plan_cases.c.plan_id.in_(plan_ids))
+        )
+    ).all()
+
+    run_map: dict[int, list[int]] = {}
+    for plan_id, run_id in run_rows:
+        run_map.setdefault(plan_id, []).append(run_id)
+
+    case_map: dict[int, list] = {}
+    cases_data_map: dict[int, list] = {}
+    for plan_id, case_id, title, priority in case_rows:
+        case_map.setdefault(plan_id, []).append(case_id)
+        cases_data_map.setdefault(plan_id, []).append(
+            {"id": case_id, "title": title, "priority": priority or "Low"}
+        )
+
+    result = []
+    for plan in plans:
+        result.append({
+            "id": plan.id,
+            "project_id": plan.project_id,
+            "title": plan.title,
+            "description": plan.description,
+            "status": plan.status,
+            "folder_id": plan.folder_id,
+            "run_ids": run_map.get(plan.id, []),
+            "case_ids": case_map.get(plan.id, []),
+            "cases_data": cases_data_map.get(plan.id, []),
+            "prd_url": getattr(plan, "prd_url", None),
+            "sa_docs": getattr(plan, "sa_docs", None) or [],
+            "sd_docs": getattr(plan, "sd_docs", None) or [],
+            "ued_docs": getattr(plan, "ued_docs", None) or [],
+            "qa_docs": getattr(plan, "qa_docs", None) or [],
+            "mindmap_url": getattr(plan, "mindmap_url", None),
+            "timeline": getattr(plan, "timeline", None),
+            "jira_unfix_filter_id": getattr(plan, "jira_unfix_filter_id", None),
+            "jira_total_filter_id": getattr(plan, "jira_total_filter_id", None),
+            "jira_display_fields": getattr(plan, "jira_display_fields", None)
+            or ["key", "summary", "status", "assignee", "priority"],
+            "created_at": plan.created_at,
+            "updated_at": plan.updated_at,
+        })
+    return result
+
+
 @router.get("/project/{project_id}", response_model=List[TestPlanResponse])
 async def get_test_plans_by_project(project_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(TestPlan)
-        .options(selectinload(TestPlan.linked_runs), selectinload(TestPlan.linked_cases))
         .where(TestPlan.project_id == project_id)
         .where(TestPlan.status != "Archived")
     )
-    return [_plan_to_response(p) for p in result.scalars().all()]
+    return await _build_list_response(db, list(result.scalars().all()))
 
 
 @router.get("/", response_model=List[TestPlanResponse])
 async def get_test_plans(project_id: int = None, db: AsyncSession = Depends(get_db)):
-    query = select(TestPlan).options(selectinload(TestPlan.linked_runs), selectinload(TestPlan.linked_cases))
+    query = select(TestPlan).where(TestPlan.status != "Archived")
     if project_id:
         query = query.where(TestPlan.project_id == project_id)
-    query = query.where(TestPlan.status != "Archived")
     result = await db.execute(query)
-    return [_plan_to_response(p) for p in result.scalars().all()]
+    return await _build_list_response(db, list(result.scalars().all()))
 
 
 @router.post("/", response_model=TestPlanResponse)

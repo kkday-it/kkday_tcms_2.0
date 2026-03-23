@@ -1,13 +1,12 @@
 from fastapi import APIRouter, Depends
+from sqlalchemy import case, desc, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import func
 
 from app.db.database import get_db
 from app.models.test_case import TestCase
-from app.models.test_run import TestRun
 from app.models.test_result import TestResult
-from sqlalchemy import desc, case
+from app.models.test_run import TestRun, test_run_assignees
 
 router = APIRouter()
 
@@ -40,21 +39,27 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
 
 @router.get("/summary")
 async def get_dashboard_summary(db: AsyncSession = Depends(get_db)):
-    # 1. Total Cases & Active Runs
-    total_cases = (await db.execute(select(func.count(TestCase.id)))).scalar() or 0
-    active_runs = (await db.execute(select(func.count(TestRun.id)).where(TestRun.status == 'Active'))).scalar() or 0
+    # 1. Summary cards — single round-trip via scalar subqueries
+    summary_row = (await db.execute(
+        select(
+            select(func.count(TestCase.id)).scalar_subquery().label("total_cases"),
+            select(func.count(TestRun.id)).where(TestRun.status == "Active").scalar_subquery().label("active_runs"),
+            select(func.count(func.distinct(TestResult.jira_bug_id)))
+            .where(TestResult.jira_bug_id.isnot(None))
+            .scalar_subquery()
+            .label("total_defects"),
+        )
+    )).first()
+    total_cases = summary_row.total_cases or 0
+    active_runs = summary_row.active_runs or 0
+    total_defects = summary_row.total_defects or 0
 
-    # 2. Total Defects (Count of unique jira_bug_id in results)
-    defects_query = select(func.count(func.distinct(TestResult.jira_bug_id))).where(TestResult.jira_bug_id != None)
-    total_defects = (await db.execute(defects_query)).scalar() or 0
-
-    # 3. Runs by Type Distribution
+    # 2. Runs by Type Distribution
     runs_by_type_query = select(TestRun.run_type, func.count(TestRun.id)).group_by(TestRun.run_type)
     runs_by_type_res = await db.execute(runs_by_type_query)
     run_types_distribution = [{"name": row[0] or "Unspecified", "value": row[1]} for row in runs_by_type_res.all()]
 
-    # 4. Pass/Fail by Run Type
-    # Since we use SQLite, we can use conditional aggregation or just fetch all and group in Python for simplicity/compatibility.
+    # 3. Pass/Fail by Run Type
     pf_query = select(
         TestRun.run_type, 
         TestResult.status, 
@@ -75,7 +80,7 @@ async def get_dashboard_summary(db: AsyncSession = Depends(get_db)):
     
     run_type_pass_fail = list(pf_data.values())
 
-    # 5. Recent Test Runs (batch stats in one query, avoid N+1)
+    # 4. Recent Test Runs (batch stats in one query, avoid N+1)
     recent_runs_query = select(TestRun).order_by(desc(TestRun.created_at)).limit(5)
     recent_runs_res = await db.execute(recent_runs_query)
     runs = recent_runs_res.scalars().all()
@@ -108,7 +113,7 @@ async def get_dashboard_summary(db: AsyncSession = Depends(get_db)):
         for run in runs
     ]
 
-    # 6. Top Failing Test Cases
+    # 5. Top Failing Test Cases
     # Count how many times a case has failed
     top_failing_query = (
         select(TestCase.title, func.count(TestResult.id).label("fail_count"))
@@ -137,11 +142,21 @@ from datetime import datetime, timedelta, timezone
 
 @router.get("/me")
 async def get_my_dashboard(user_id: int, db: AsyncSession = Depends(get_db)):
-    # 1. Assigned Active Test Runs (batch stats in one query, avoid N+1)
-    assigned_runs_query = select(TestRun).where(
-        (TestRun.assignee_id == user_id) & 
-        (TestRun.status.in_(["Pending", "Testing"]))
-    ).order_by(desc(TestRun.created_at)).limit(10)
+    # 1. Assigned Active Test Runs — check both M2M assignees and legacy assignee_id
+    assigned_runs_query = (
+        select(TestRun)
+        .outerjoin(test_run_assignees, TestRun.id == test_run_assignees.c.run_id)
+        .where(
+            or_(
+                test_run_assignees.c.user_id == user_id,
+                TestRun.assignee_id == user_id,
+            )
+        )
+        .where(TestRun.status.in_(["Pending", "Testing"]))
+        .distinct()
+        .order_by(desc(TestRun.created_at))
+        .limit(10)
+    )
     assigned_runs_res = await db.execute(assigned_runs_query)
     runs = assigned_runs_res.scalars().all()
     run_ids = [r.id for r in runs]

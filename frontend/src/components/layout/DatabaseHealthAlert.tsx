@@ -20,8 +20,8 @@ export default function DatabaseHealthAlert() {
 
     useEffect(() => {
         checkHealth();
-        // Poll every 30 seconds
-        const interval = setInterval(checkHealth, 30000);
+        // Poll every 5 minutes (schema changes are infrequent)
+        const interval = setInterval(checkHealth, 300000);
         return () => clearInterval(interval);
     }, []);
 
