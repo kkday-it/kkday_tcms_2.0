@@ -3,7 +3,7 @@ import io
 import json
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy import delete, insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,6 +19,14 @@ from app.schemas.test_plan import TestPlanCreate, TestPlanResponse, TestPlanUpda
 from app.schemas.test_plan_history import TestPlanHistoryResponse
 
 router = APIRouter()
+
+
+def get_actor_id(x_user_id: Optional[str] = Header(default=None)) -> int:
+    """從請求 header X-User-Id 取得當前使用者 ID，未帶時 fallback 為 1。"""
+    try:
+        return int(x_user_id) if x_user_id else 1
+    except (ValueError, TypeError):
+        return 1
 
 
 async def _load_plan(db: AsyncSession, plan_id: int) -> TestPlan:
@@ -207,7 +215,7 @@ async def get_test_plans(project_id: int = None, db: AsyncSession = Depends(get_
 
 
 @router.post("/", response_model=TestPlanResponse)
-async def create_test_plan(plan_in: TestPlanCreate, db: AsyncSession = Depends(get_db)):
+async def create_test_plan(plan_in: TestPlanCreate, db: AsyncSession = Depends(get_db), actor_id: int = Depends(get_actor_id)):
     data = plan_in.model_dump(exclude={"run_ids", "case_ids"})
     db_plan = TestPlan(**data)
     db.add(db_plan)
@@ -219,7 +227,7 @@ async def create_test_plan(plan_in: TestPlanCreate, db: AsyncSession = Depends(g
     # Create history
     history = TestPlanHistory(
         plan_id=db_plan.id,
-        user_id=1,
+        user_id=actor_id,
         action="Created",
         changed_fields=json.dumps({"title": db_plan.title})
     )
@@ -235,7 +243,7 @@ async def get_test_plan(plan_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.put("/{plan_id}", response_model=TestPlanResponse)
-async def update_test_plan(plan_id: int, plan_update: TestPlanUpdate, db: AsyncSession = Depends(get_db)):
+async def update_test_plan(plan_id: int, plan_update: TestPlanUpdate, db: AsyncSession = Depends(get_db), actor_id: int = Depends(get_actor_id)):
     db_plan = await db.get(TestPlan, plan_id)
     if not db_plan:
         raise HTTPException(status_code=404, detail="Test Plan not found")
@@ -252,7 +260,7 @@ async def update_test_plan(plan_id: int, plan_update: TestPlanUpdate, db: AsyncS
     # History record (Simplified for now)
     history = TestPlanHistory(
         plan_id=db_plan.id,
-        user_id=1,
+        user_id=actor_id,
         action="Updated",
         changed_fields=json.dumps({"update": "Plan fields or linked items modified"}, ensure_ascii=False)
     )
@@ -263,7 +271,7 @@ async def update_test_plan(plan_id: int, plan_update: TestPlanUpdate, db: AsyncS
 
 
 @router.delete("/{plan_id}")
-async def delete_test_plan(plan_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_test_plan(plan_id: int, db: AsyncSession = Depends(get_db), actor_id: int = Depends(get_actor_id)):
     db_plan = await db.get(TestPlan, plan_id)
     if not db_plan:
         raise HTTPException(status_code=404, detail="Test Plan not found")
@@ -272,7 +280,7 @@ async def delete_test_plan(plan_id: int, db: AsyncSession = Depends(get_db)):
     # History record
     history = TestPlanHistory(
         plan_id=db_plan.id,
-        user_id=1,
+        user_id=actor_id,
         action="Archived",
         changed_fields=json.dumps({"status": "Active -> Archived"}, ensure_ascii=False)
     )
@@ -282,7 +290,7 @@ async def delete_test_plan(plan_id: int, db: AsyncSession = Depends(get_db)):
     return {"message": "Test Plan archived"}
 
 @router.post("/{plan_id}/clone", response_model=TestPlanResponse)
-async def clone_test_plan(plan_id: int, db: AsyncSession = Depends(get_db)):
+async def clone_test_plan(plan_id: int, db: AsyncSession = Depends(get_db), actor_id: int = Depends(get_actor_id)):
     """
     複製一個 Test Plan，包含關聯的 runs 與 cases。
     新計畫標題為「{原標題} (複製)」，狀態重置為 Draft，資料夾維持相同。
@@ -316,7 +324,7 @@ async def clone_test_plan(plan_id: int, db: AsyncSession = Depends(get_db)):
 
     history = TestPlanHistory(
         plan_id=new_plan.id,
-        user_id=1,
+        user_id=actor_id,
         action="Created",
         changed_fields=json.dumps({"title": new_plan.title, "cloned_from": plan_id}, ensure_ascii=False),
     )
@@ -327,7 +335,7 @@ async def clone_test_plan(plan_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/{plan_id}/restore")
-async def restore_test_plan(plan_id: int, db: AsyncSession = Depends(get_db)):
+async def restore_test_plan(plan_id: int, db: AsyncSession = Depends(get_db), actor_id: int = Depends(get_actor_id)):
     db_plan = await db.get(TestPlan, plan_id)
     if not db_plan:
         raise HTTPException(status_code=404, detail="Test Plan not found")
@@ -340,7 +348,7 @@ async def restore_test_plan(plan_id: int, db: AsyncSession = Depends(get_db)):
     # History record
     history = TestPlanHistory(
         plan_id=db_plan.id,
-        user_id=1,
+        user_id=actor_id,
         action="Restored",
         changed_fields=json.dumps({"status": "Archived -> Draft"}, ensure_ascii=False)
     )

@@ -8,4 +8,17 @@ const api = axios.create({
     timeout: 30_000,
 });
 
+api.interceptors.request.use((config) => {
+    try {
+        const userJson = localStorage.getItem('tcms_user');
+        if (userJson) {
+            const user = JSON.parse(userJson);
+            if (user?.id) config.headers['X-User-Id'] = String(user.id);
+        }
+    } catch {
+        // ignore
+    }
+    return config;
+});
+
 export default api;
