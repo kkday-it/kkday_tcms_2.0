@@ -187,3 +187,165 @@ class TestPlanFoldersAPI:
         folder = (await client.post("/api/v1/plan-folders/", json={"name": "Delete Folder", "project_id": project_id})).json()
         res = await client.delete(f"/api/v1/plan-folders/{folder['id']}")
         assert res.status_code == 200
+
+
+# ── Clone ─────────────────────────────────────────────────────────────────────
+
+@allure.epic("TCMS API")
+@allure.feature("測試計畫管理")
+@allure.story("Plan Clone")
+class TestPlanClone:
+    async def test_clone_creates_new_plan(self, client: AsyncClient, project_id: int):
+        plan = await _create_plan(client, project_id, "Original Plan")
+        res = await client.post(f"/api/v1/plans/{plan['id']}/clone")
+        assert res.status_code == 200
+        cloned = res.json()
+        assert cloned["id"] != plan["id"]
+
+    async def test_clone_title_has_suffix(self, client: AsyncClient, project_id: int):
+        plan = await _create_plan(client, project_id, "Sprint Plan")
+        cloned = (await client.post(f"/api/v1/plans/{plan['id']}/clone")).json()
+        assert cloned["title"] == "Sprint Plan (複製)"
+
+    async def test_clone_status_reset_to_draft(self, client: AsyncClient, project_id: int):
+        plan = await _create_plan(client, project_id)
+        await client.put(f"/api/v1/plans/{plan['id']}", json={"status": "Active"})
+        cloned = (await client.post(f"/api/v1/plans/{plan['id']}/clone")).json()
+        assert cloned["status"] == "Draft"
+
+    async def test_clone_copies_linked_runs(self, client: AsyncClient, project_id: int):
+        run = await _create_run(client, project_id, "Run A")
+        plan = (await client.post("/api/v1/plans/", json={
+            "title": "Plan with Run", "project_id": project_id, "status": "Draft", "run_ids": [run["id"]],
+        })).json()
+        cloned = (await client.post(f"/api/v1/plans/{plan['id']}/clone")).json()
+        assert run["id"] in cloned["run_ids"]
+
+    async def test_clone_copies_linked_cases(self, client: AsyncClient, project_id: int, suite_id: int):
+        case = await _create_case(client, suite_id)
+        plan = (await client.post("/api/v1/plans/", json={
+            "title": "Plan with Case", "project_id": project_id, "status": "Draft", "case_ids": [case["id"]],
+        })).json()
+        cloned = (await client.post(f"/api/v1/plans/{plan['id']}/clone")).json()
+        assert case["id"] in cloned["case_ids"]
+
+    async def test_clone_not_found(self, client: AsyncClient):
+        res = await client.post("/api/v1/plans/999999/clone")
+        assert res.status_code == 404
+
+    async def test_clone_records_history_with_actor(self, client: AsyncClient, project_id: int):
+        plan = await _create_plan(client, project_id)
+        cloned = (await client.post(f"/api/v1/plans/{plan['id']}/clone", headers={"X-User-Id": "42"})).json()
+        history_res = await client.get(f"/api/v1/plans/{cloned['id']}/history")
+        assert any(h["user_id"] == 42 for h in history_res.json())
+
+
+# ── Plan Runs Summary ─────────────────────────────────────────────────────────
+
+@allure.epic("TCMS API")
+@allure.feature("測試計畫管理")
+@allure.story("Plan Runs Summary")
+class TestPlanRunsSummary:
+    async def test_get_plan_runs_empty(self, client: AsyncClient, project_id: int):
+        plan = await _create_plan(client, project_id)
+        res = await client.get(f"/api/v1/plans/{plan['id']}/runs")
+        assert res.status_code == 200
+        assert res.json() == []
+
+    async def test_get_plan_runs_returns_linked_runs(self, client: AsyncClient, project_id: int):
+        run = await _create_run(client, project_id, "Linked Run")
+        plan = (await client.post("/api/v1/plans/", json={
+            "title": "Plan", "project_id": project_id, "status": "Draft", "run_ids": [run["id"]],
+        })).json()
+        res = await client.get(f"/api/v1/plans/{plan['id']}/runs")
+        assert res.status_code == 200
+        data = res.json()
+        assert len(data) == 1
+        assert data[0]["id"] == run["id"]
+        assert data[0]["title"] == "Linked Run"
+
+    async def test_get_plan_runs_has_stats_fields(self, client: AsyncClient, project_id: int):
+        run = await _create_run(client, project_id)
+        plan = (await client.post("/api/v1/plans/", json={
+            "title": "Plan", "project_id": project_id, "status": "Draft", "run_ids": [run["id"]],
+        })).json()
+        res = await client.get(f"/api/v1/plans/{plan['id']}/runs")
+        item = res.json()[0]
+        assert "passed" in item
+        assert "failed" in item
+        assert "untested" in item
+        assert "status" in item
+
+    async def test_get_plan_runs_excludes_unlinked(self, client: AsyncClient, project_id: int):
+        run_linked = await _create_run(client, project_id, "Linked")
+        await _create_run(client, project_id, "Unlinked")
+        plan = (await client.post("/api/v1/plans/", json={
+            "title": "Plan", "project_id": project_id, "status": "Draft", "run_ids": [run_linked["id"]],
+        })).json()
+        res = await client.get(f"/api/v1/plans/{plan['id']}/runs")
+        ids = [r["id"] for r in res.json()]
+        assert run_linked["id"] in ids
+        assert len(ids) == 1
+
+
+# ── cases_data in plan response ───────────────────────────────────────────────
+
+@allure.epic("TCMS API")
+@allure.feature("測試計畫管理")
+@allure.story("Plan cases_data")
+class TestPlanCasesData:
+    async def test_plan_response_includes_cases_data(self, client: AsyncClient, project_id: int, suite_id: int):
+        case = await _create_case(client, suite_id)
+        plan = (await client.post("/api/v1/plans/", json={
+            "title": "Plan", "project_id": project_id, "status": "Draft", "case_ids": [case["id"]],
+        })).json()
+        res = await client.get(f"/api/v1/plans/{plan['id']}")
+        assert "cases_data" in res.json()
+
+    async def test_cases_data_contains_required_fields(self, client: AsyncClient, project_id: int, suite_id: int):
+        case = await _create_case(client, suite_id)
+        plan = (await client.post("/api/v1/plans/", json={
+            "title": "Plan", "project_id": project_id, "status": "Draft", "case_ids": [case["id"]],
+        })).json()
+        res = await client.get(f"/api/v1/plans/{plan['id']}")
+        cases_data = res.json()["cases_data"]
+        assert len(cases_data) == 1
+        assert cases_data[0]["id"] == case["id"]
+        assert "title" in cases_data[0]
+        assert "priority" in cases_data[0]
+
+    async def test_cases_data_empty_when_no_cases(self, client: AsyncClient, project_id: int):
+        plan = await _create_plan(client, project_id)
+        res = await client.get(f"/api/v1/plans/{plan['id']}")
+        assert res.json()["cases_data"] == []
+
+
+# ── X-User-Id → actor_id ──────────────────────────────────────────────────────
+
+@allure.epic("TCMS API")
+@allure.feature("測試計畫管理")
+@allure.story("Actor ID from header")
+class TestActorId:
+    async def test_create_plan_default_actor(self, client: AsyncClient, project_id: int):
+        """未帶 X-User-Id header 時，history user_id fallback 為 1"""
+        plan = await _create_plan(client, project_id)
+        res = await client.get(f"/api/v1/plans/{plan['id']}/history")
+        assert res.status_code == 200
+        assert res.json()[0]["user_id"] == 1
+
+    async def test_create_plan_custom_actor(self, client: AsyncClient, project_id: int):
+        """帶 X-User-Id: 99，history user_id 應為 99"""
+        res = await client.post("/api/v1/plans/", json={
+            "title": "Actor Test", "project_id": project_id, "status": "Draft",
+        }, headers={"X-User-Id": "99"})
+        plan = res.json()
+        history_res = await client.get(f"/api/v1/plans/{plan['id']}/history")
+        assert history_res.json()[0]["user_id"] == 99
+
+    async def test_update_plan_records_actor(self, client: AsyncClient, project_id: int):
+        plan = await _create_plan(client, project_id)
+        await client.put(f"/api/v1/plans/{plan['id']}", json={"title": "Updated"},
+                         headers={"X-User-Id": "7"})
+        history_res = await client.get(f"/api/v1/plans/{plan['id']}/history")
+        user_ids = [h["user_id"] for h in history_res.json()]
+        assert 7 in user_ids
