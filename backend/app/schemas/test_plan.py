@@ -72,6 +72,7 @@ class TestPlanResponse(TestPlanBase):
     folder_id: Optional[int] = None
     run_ids: List[int] = []
     case_ids: List[int] = []
+    cases_data: Optional[List[dict]] = []
     prd_url: Optional[str] = None
     sa_docs: Optional[List[dict]] = None
     sd_docs: Optional[List[dict]] = None
