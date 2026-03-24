@@ -18,7 +18,7 @@ from app.models.test_run import TestRun
 from app.models.test_run_history import TestRunHistory
 from app.models.test_suite import TestSuite
 from app.models.user import User
-from app.schemas.test_run import TestRunCreate, TestRunResponse, TestRunUpdate
+from app.schemas.test_run import BulkCopyRunsRequest, TestRunCreate, TestRunResponse, TestRunUpdate
 from app.schemas.test_run_history import TestRunHistoryResponse
 
 router = APIRouter()
@@ -383,6 +383,75 @@ async def restore_test_run(run_id: int, db: AsyncSession = Depends(get_db)):
     
     await db.commit()
     return {"message": "TestRun restored successfully"}
+
+
+@router.post("/bulk-copy", response_model=List[TestRunResponse])
+async def bulk_copy_runs(body: BulkCopyRunsRequest, db: AsyncSession = Depends(get_db)):
+    """Copy multiple runs at once, replacing '$template' in titles with the given date string.
+
+    Performs everything in a single DB transaction to avoid per-run round-trips.
+    """
+    if not body.run_ids:
+        return []
+
+    # Fetch all source runs with assignees in one query
+    runs_result = await db.execute(
+        select(TestRun)
+        .options(selectinload(TestRun.assignees))
+        .where(TestRun.id.in_(body.run_ids))
+    )
+    source_runs = {r.id: r for r in runs_result.scalars().all()}
+
+    if not source_runs:
+        raise HTTPException(status_code=404, detail="None of the specified runs were found")
+
+    # Fetch all results for all source runs in one query
+    results_result = await db.execute(
+        select(TestResult).where(TestResult.run_id.in_(body.run_ids))
+    )
+    all_results = results_result.scalars().all()
+    results_by_run: dict[int, list[TestResult]] = {}
+    for r in all_results:
+        results_by_run.setdefault(r.run_id, []).append(r)
+
+    new_runs: list[TestRun] = []
+    for run_id in body.run_ids:
+        source = source_runs.get(run_id)
+        if source is None:
+            continue
+
+        run_data = {c.name: getattr(source, c.name) for c in source.__table__.columns}
+        run_data.pop("id", None)
+        run_data.pop("created_at", None)
+        run_data.pop("updated_at", None)
+        run_data.pop("completed_at", None)
+        run_data["title"] = run_data.get("title", "").replace("$template", body.date_string)
+        run_data["status"] = "Active"
+
+        new_run = TestRun(**run_data)
+        assignee_ids = [a.id for a in source.assignees]
+        if assignee_ids:
+            users_result = await db.execute(select(User).where(User.id.in_(assignee_ids)))
+            new_run.assignees = list(users_result.scalars().all())
+
+        db.add(new_run)
+        await db.flush()
+
+        source_results = results_by_run.get(run_id, [])
+        if source_results:
+            db.add_all([
+                TestResult(run_id=new_run.id, case_id=r.case_id, status="Untested")
+                for r in source_results
+            ])
+        new_runs.append((new_run, len(source_results)))
+
+    await db.commit()
+
+    responses = []
+    for new_run, total in new_runs:
+        refreshed = await _get_run_with_assignees(new_run.id, db)
+        responses.append(_build_response(refreshed, 0, 0, 0, total, total))
+    return responses
 
 
 @router.post("/{run_id}/duplicate", response_model=TestRunResponse)
