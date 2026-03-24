@@ -1,6 +1,6 @@
 from typing import List, Optional
-from pydantic import BaseModel
 from datetime import datetime
+from pydantic import BaseModel, Field, field_validator
 
 class AssigneeInfo(BaseModel):
     id: int
@@ -36,8 +36,16 @@ class TestRunUpdate(TestRunBase):
 class BulkCopyRunsRequest(BaseModel):
     """Request body for bulk-copying a folder's runs."""
 
-    run_ids: List[int]
-    date_string: str
+    run_ids: List[int] = Field(..., max_length=1000)
+    date_string: str = Field(..., max_length=100)
+
+    @field_validator("date_string")
+    @classmethod
+    def no_control_chars(cls, v: str) -> str:
+        """Reject control characters to prevent malformed titles."""
+        if any(c < " " for c in v):
+            raise ValueError("date_string must not contain control characters")
+        return v
 
 
 class TestRunResponse(TestRunBase):

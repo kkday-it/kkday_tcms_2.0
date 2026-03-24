@@ -196,12 +196,25 @@ class TestBulkCopyRuns:
         assert res.json() == []
 
     async def test_bulk_copy_nonexistent_ids_returns_404(self, client: AsyncClient):
-        """全部 run_id 都不存在時應回傳 404"""
+        """全部 run_id 都不存在時應回傳 404，含明確錯誤訊息"""
         res = await client.post("/api/v1/runs/bulk-copy", json={
             "run_ids": [999998, 999999],
             "date_string": "2026-04",
         })
         assert res.status_code == 404
+        assert "runs were found" in res.json()["detail"].lower()
+
+    async def test_bulk_copy_partial_ids_returns_404_with_message(
+        self, client: AsyncClient, project_id: int
+    ):
+        """部分 run_id 不存在時應回傳 404，訊息中含缺少的 ID"""
+        run = await _create_run(client, project_id, "Run $template")
+        res = await client.post("/api/v1/runs/bulk-copy", json={
+            "run_ids": [run["id"], 999999],
+            "date_string": "2026-04",
+        })
+        assert res.status_code == 404
+        assert "999999" in res.json()["detail"]
 
     async def test_bulk_copy_cross_project_returns_400(
         self, client: AsyncClient, project_id: int

@@ -418,6 +418,14 @@ async def bulk_copy_runs(body: BulkCopyRunsRequest, db: AsyncSession = Depends(g
     if not source_runs:
         raise HTTPException(status_code=404, detail="None of the specified runs were found")
 
+    # Detect partially missing IDs — fail fast with an explicit message
+    missing_ids = sorted(set(body.run_ids) - source_runs.keys())
+    if missing_ids:
+        raise HTTPException(
+            status_code=404,
+            detail=f"The following run IDs were not found: {missing_ids}",
+        )
+
     # Validate all runs belong to the same project to prevent cross-project copies
     project_ids = {r.project_id for r in source_runs.values()}
     if len(project_ids) > 1:
@@ -471,9 +479,18 @@ async def bulk_copy_runs(body: BulkCopyRunsRequest, db: AsyncSession = Depends(g
 
     await db.commit()
 
+    # Reload all new runs in a single query instead of N individual queries
+    new_ids = [new_run.id for new_run, _ in new_runs_with_meta]
+    reloaded_result = await db.execute(
+        select(TestRun)
+        .options(selectinload(TestRun.assignees))
+        .where(TestRun.id.in_(new_ids))
+    )
+    reloaded_map = {r.id: r for r in reloaded_result.scalars().all()}
+
     responses = []
     for new_run, source_results in new_runs_with_meta:
-        refreshed = await _get_run_with_assignees(new_run.id, db)
+        refreshed = reloaded_map[new_run.id]
         responses.append(_build_response(refreshed, 0, 0, 0, len(source_results), len(source_results)))
     return responses
 
