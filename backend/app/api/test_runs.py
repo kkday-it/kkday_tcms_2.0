@@ -23,6 +23,19 @@ from app.schemas.test_run_history import TestRunHistoryResponse
 
 router = APIRouter()
 
+# Explicit whitelist of fields to carry over when bulk-copying a run.
+# Excludes id, created_at, completed_at (reset on copy) and any future
+# sensitive columns added to the model.
+_COPY_FIELDS = (
+    "project_id",
+    "folder_id",
+    "test_plan_id",
+    "title",
+    "run_type",
+    "description",
+    "assignee_id",  # legacy single-assignee kept for DB compat
+)
+
 
 async def _get_run_with_assignees(run_id: int, db: AsyncSession) -> TestRun:
     """Fetch a single TestRun with its assignees eagerly loaded."""
@@ -405,6 +418,14 @@ async def bulk_copy_runs(body: BulkCopyRunsRequest, db: AsyncSession = Depends(g
     if not source_runs:
         raise HTTPException(status_code=404, detail="None of the specified runs were found")
 
+    # Validate all runs belong to the same project to prevent cross-project copies
+    project_ids = {r.project_id for r in source_runs.values()}
+    if len(project_ids) > 1:
+        raise HTTPException(
+            status_code=400,
+            detail="All runs must belong to the same project",
+        )
+
     # Fetch all results for all source runs in one query
     results_result = await db.execute(
         select(TestResult).where(TestResult.run_id.in_(body.run_ids))
@@ -414,43 +435,46 @@ async def bulk_copy_runs(body: BulkCopyRunsRequest, db: AsyncSession = Depends(g
     for r in all_results:
         results_by_run.setdefault(r.run_id, []).append(r)
 
-    new_runs: list[TestRun] = []
-    for run_id in body.run_ids:
-        source = source_runs.get(run_id)
-        if source is None:
-            continue
+    # Collect all assignee IDs across all runs and fetch users in one query
+    all_assignee_ids = {a.id for run in source_runs.values() for a in run.assignees}
+    user_map: dict[int, User] = {}
+    if all_assignee_ids:
+        users_result = await db.execute(select(User).where(User.id.in_(all_assignee_ids)))
+        user_map = {u.id: u for u in users_result.scalars().all()}
 
-        run_data = {c.name: getattr(source, c.name) for c in source.__table__.columns}
-        run_data.pop("id", None)
-        run_data.pop("created_at", None)
-        run_data.pop("updated_at", None)
-        run_data.pop("completed_at", None)
-        run_data["title"] = run_data.get("title", "").replace("$template", body.date_string)
+    # Build all new runs using an explicit field whitelist — no flush yet
+    ordered_sources = [source_runs[rid] for rid in body.run_ids if rid in source_runs]
+    new_runs_with_meta: list[tuple[TestRun, list[TestResult]]] = []
+    for source in ordered_sources:
+        run_data = {f: getattr(source, f) for f in _COPY_FIELDS}
+        run_data["title"] = run_data["title"].replace("$template", body.date_string)
         run_data["status"] = "Active"
 
         new_run = TestRun(**run_data)
-        assignee_ids = [a.id for a in source.assignees]
-        if assignee_ids:
-            users_result = await db.execute(select(User).where(User.id.in_(assignee_ids)))
-            new_run.assignees = list(users_result.scalars().all())
+        assignees = [user_map[a.id] for a in source.assignees if a.id in user_map]
+        if assignees:
+            new_run.assignees = assignees
 
         db.add(new_run)
-        await db.flush()
+        new_runs_with_meta.append((new_run, results_by_run.get(source.id, [])))
 
-        source_results = results_by_run.get(run_id, [])
+    # Single flush to obtain all new run IDs at once
+    await db.flush()
+
+    # Add all results now that IDs are available
+    for new_run, source_results in new_runs_with_meta:
         if source_results:
             db.add_all([
                 TestResult(run_id=new_run.id, case_id=r.case_id, status="Untested")
                 for r in source_results
             ])
-        new_runs.append((new_run, len(source_results)))
 
     await db.commit()
 
     responses = []
-    for new_run, total in new_runs:
+    for new_run, source_results in new_runs_with_meta:
         refreshed = await _get_run_with_assignees(new_run.id, db)
-        responses.append(_build_response(refreshed, 0, 0, 0, total, total))
+        responses.append(_build_response(refreshed, 0, 0, 0, len(source_results), len(source_results)))
     return responses
 
 

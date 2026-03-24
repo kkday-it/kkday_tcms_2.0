@@ -203,6 +203,23 @@ class TestBulkCopyRuns:
         })
         assert res.status_code == 404
 
+    async def test_bulk_copy_cross_project_returns_400(
+        self, client: AsyncClient, project_id: int
+    ):
+        """跨 project 的 run_ids 應回傳 400"""
+        # 建立第二個 project
+        proj2 = (await client.post("/api/v1/projects/", json={
+            "name": "Project 2", "description": ""
+        })).json()
+        run_a = await _create_run(client, project_id, "Run A $template")
+        run_b = await _create_run(client, proj2["id"], "Run B $template")
+
+        res = await client.post("/api/v1/runs/bulk-copy", json={
+            "run_ids": [run_a["id"], run_b["id"]],
+            "date_string": "2026-04",
+        })
+        assert res.status_code == 400
+
 
 # ── Test Results ──────────────────────────────────────────────────────────────
 
