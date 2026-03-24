@@ -186,14 +186,13 @@ class TestBulkCopyRuns:
         assert res.status_code == 200
         assert res.json()[0]["status"] == "Active"
 
-    async def test_bulk_copy_empty_list_returns_empty(self, client: AsyncClient):
-        """空 run_ids 應回傳空陣列"""
+    async def test_bulk_copy_empty_list_returns_422(self, client: AsyncClient):
+        """空 run_ids 應回傳 422（min_length=1）"""
         res = await client.post("/api/v1/runs/bulk-copy", json={
             "run_ids": [],
             "date_string": "2026-04",
         })
-        assert res.status_code == 200
-        assert res.json() == []
+        assert res.status_code == 422
 
     async def test_bulk_copy_nonexistent_ids_returns_404(self, client: AsyncClient):
         """全部 run_id 都不存在時應回傳 404，含明確錯誤訊息"""
@@ -202,7 +201,7 @@ class TestBulkCopyRuns:
             "date_string": "2026-04",
         })
         assert res.status_code == 404
-        assert "runs were found" in res.json()["detail"].lower()
+        assert "none of the specified" in res.json()["detail"].lower()
 
     async def test_bulk_copy_partial_ids_returns_404_with_message(
         self, client: AsyncClient, project_id: int
@@ -233,7 +232,26 @@ class TestBulkCopyRuns:
         })
         assert res.status_code == 400
 
+    async def test_bulk_copy_title_without_template_copied_verbatim(
+        self, client: AsyncClient, project_id: int
+    ):
+        """標題不含 $template 時，應原封不動複製"""
+        run = await _create_run(client, project_id, "Fixed Title")
+        res = await client.post("/api/v1/runs/bulk-copy", json={
+            "run_ids": [run["id"]],
+            "date_string": "2026-04",
+        })
+        assert res.status_code == 200
+        assert res.json()[0]["title"] == "Fixed Title"
+
     # ── Input validation (422) ────────────────────────────────────────────────
+
+    async def test_bulk_copy_empty_date_string_returns_422(self, client: AsyncClient):
+        """空 date_string 應回傳 422（min_length=1）"""
+        res = await client.post("/api/v1/runs/bulk-copy", json={
+            "run_ids": [1], "date_string": "",
+        })
+        assert res.status_code == 422
 
     async def test_bulk_copy_date_string_with_control_char_returns_422(self, client: AsyncClient):
         """date_string 含控制字元應回傳 422"""

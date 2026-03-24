@@ -37,8 +37,8 @@ class TestRunUpdate(TestRunBase):
 class BulkCopyRunsRequest(BaseModel):
     """Request body for bulk-copying a folder's runs."""
 
-    run_ids: List[int] = Field(..., max_length=1000)
-    date_string: str = Field(..., max_length=100)
+    run_ids: List[int] = Field(..., min_length=1, max_length=1000)
+    date_string: str = Field(..., min_length=1, max_length=100)
 
     @field_validator("run_ids")
     @classmethod

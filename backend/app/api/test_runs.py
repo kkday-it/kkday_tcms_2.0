@@ -220,7 +220,7 @@ async def list_runs_by_project(project_id: int, db: AsyncSession = Depends(get_d
         blocked = blocked or 0
         total = total or 0
         untested = total - passed - failed - blocked
-        response_list.append(_build_response(run_obj, passed, failed, blocked, untested, total))
+        response_list.append(_build_response(run_obj, passed=passed, failed=failed, blocked=blocked, untested=untested, total=total))
 
     return response_list
 
@@ -257,7 +257,7 @@ async def create_run(run_in: TestRunCreate, db: AsyncSession = Depends(get_db)):
 
     # Reload with assignees
     run = await _get_run_with_assignees(run.id, db)
-    return _build_response(run, 0, 0, 0, len(cases), len(cases))
+    return _build_response(run, untested=len(cases), total=len(cases))
 
 
 @router.get("/{run_id}", response_model=TestRunResponse)
@@ -280,8 +280,8 @@ async def get_run(run_id: int, db: AsyncSession = Depends(get_db)):
     blocked = blocked or 0
     total = total or 0
     untested = total - passed - failed - blocked
-    
-    return _build_response(run, passed, failed, blocked, untested, total)
+
+    return _build_response(run, passed=passed, failed=failed, blocked=blocked, untested=untested, total=total)
 
 
 @router.put("/{run_id}", response_model=TestRunResponse)
@@ -351,7 +351,7 @@ async def update_run(run_id: int, run_in: TestRunUpdate, db: AsyncSession = Depe
     blocked = blocked or 0
     total = total or 0
     untested = total - passed - failed - blocked
-    return _build_response(run, passed, failed, blocked, untested, total)
+    return _build_response(run, passed=passed, failed=failed, blocked=blocked, untested=untested, total=total)
 
 
 @router.delete("/{run_id}")
@@ -361,7 +361,7 @@ async def delete_run(run_id: int, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="TestRun not found")
 
     run.status = "Archived"
-    
+
     # History record
     history = TestRunHistory(
         run_id=run.id,
@@ -370,32 +370,9 @@ async def delete_run(run_id: int, db: AsyncSession = Depends(get_db)):
         changed_fields=json.dumps({"status": "Active -> Archived"}, ensure_ascii=False)
     )
     db.add(history)
-    
+
     await db.commit()
     return {"message": "TestRun archived successfully"}
-
-@router.post("/{run_id}/restore")
-async def restore_test_run(run_id: int, db: AsyncSession = Depends(get_db)):
-    run = await db.get(TestRun, run_id)
-    if not run:
-        raise HTTPException(status_code=404, detail="TestRun not found")
-    
-    if run.status != "Archived":
-        return {"message": "TestRun is not archived"}
-
-    run.status = "Pending"
-    
-    # History record
-    history = TestRunHistory(
-        run_id=run.id,
-        user_id=1,
-        action="Restored",
-        changed_fields=json.dumps({"status": "Archived -> Pending"}, ensure_ascii=False)
-    )
-    db.add(history)
-    
-    await db.commit()
-    return {"message": "TestRun restored successfully"}
 
 
 @router.post("/bulk-copy", response_model=List[TestRunResponse])
@@ -404,9 +381,6 @@ async def bulk_copy_runs(body: BulkCopyRunsRequest, db: AsyncSession = Depends(g
 
     Performs everything in a single DB transaction to avoid per-run round-trips.
     """
-    if not body.run_ids:
-        return []
-
     # Fetch all source runs with assignees in one query
     runs_result = await db.execute(
         select(TestRun)
@@ -491,8 +465,32 @@ async def bulk_copy_runs(body: BulkCopyRunsRequest, db: AsyncSession = Depends(g
     responses = []
     for new_run, source_results in new_runs_with_meta:
         refreshed = reloaded_map[new_run.id]
-        responses.append(_build_response(refreshed, 0, 0, 0, len(source_results), len(source_results)))
+        responses.append(_build_response(refreshed, untested=len(source_results), total=len(source_results)))
     return responses
+
+
+@router.post("/{run_id}/restore")
+async def restore_test_run(run_id: int, db: AsyncSession = Depends(get_db)):
+    run = await db.get(TestRun, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="TestRun not found")
+
+    if run.status != "Archived":
+        return {"message": "TestRun is not archived"}
+
+    run.status = "Pending"
+
+    # History record
+    history = TestRunHistory(
+        run_id=run.id,
+        user_id=1,
+        action="Restored",
+        changed_fields=json.dumps({"status": "Archived -> Pending"}, ensure_ascii=False)
+    )
+    db.add(history)
+
+    await db.commit()
+    return {"message": "TestRun restored successfully"}
 
 
 @router.post("/{run_id}/duplicate", response_model=TestRunResponse)
@@ -529,7 +527,7 @@ async def duplicate_run(run_id: int, db: AsyncSession = Depends(get_db)):
     await db.commit()
 
     new_run = await _get_run_with_assignees(new_run.id, db)
-    return _build_response(new_run, 0, 0, 0, len(original_results), len(original_results))
+    return _build_response(new_run, untested=len(original_results), total=len(original_results))
 
 
 @router.get("/{run_id}/history", response_model=List[TestRunHistoryResponse])
