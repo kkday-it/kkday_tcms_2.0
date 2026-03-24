@@ -501,12 +501,8 @@ async def duplicate_run(run_id: int, db: AsyncSession = Depends(get_db)):
     if not original_run:
         raise HTTPException(status_code=404, detail="Original TestRun not found")
 
-    run_data = {c.name: getattr(original_run, c.name) for c in original_run.__table__.columns}
-    run_data.pop("id", None)
-    run_data.pop("created_at", None)
-    run_data.pop("updated_at", None)
-    run_data.pop("completed_at", None)
-    run_data["title"] = f"{run_data.get('title', 'Duplicate')} (Copy)"
+    run_data = {f: getattr(original_run, f) for f in _COPY_FIELDS}
+    run_data["title"] = f"{run_data['title']} (Copy)"
     run_data["status"] = "Active"
 
     # Save assignee IDs before flush to avoid lazy-load in async context

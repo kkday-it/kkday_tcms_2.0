@@ -233,6 +233,43 @@ class TestBulkCopyRuns:
         })
         assert res.status_code == 400
 
+    # ── Input validation (422) ────────────────────────────────────────────────
+
+    async def test_bulk_copy_date_string_with_control_char_returns_422(self, client: AsyncClient):
+        """date_string 含控制字元應回傳 422"""
+        res = await client.post("/api/v1/runs/bulk-copy", json={
+            "run_ids": [1], "date_string": "bad\x01string",
+        })
+        assert res.status_code == 422
+
+    async def test_bulk_copy_date_string_del_char_returns_422(self, client: AsyncClient):
+        """date_string 含 DEL 字元（0x7F）應回傳 422"""
+        res = await client.post("/api/v1/runs/bulk-copy", json={
+            "run_ids": [1], "date_string": "bad\x7fstring",
+        })
+        assert res.status_code == 422
+
+    async def test_bulk_copy_date_string_too_long_returns_422(self, client: AsyncClient):
+        """date_string 超過 100 字元應回傳 422"""
+        res = await client.post("/api/v1/runs/bulk-copy", json={
+            "run_ids": [1], "date_string": "x" * 101,
+        })
+        assert res.status_code == 422
+
+    async def test_bulk_copy_too_many_run_ids_returns_422(self, client: AsyncClient):
+        """run_ids 超過 1000 筆應回傳 422"""
+        res = await client.post("/api/v1/runs/bulk-copy", json={
+            "run_ids": list(range(1001)), "date_string": "2026-04",
+        })
+        assert res.status_code == 422
+
+    async def test_bulk_copy_duplicate_run_ids_returns_422(self, client: AsyncClient):
+        """run_ids 含重複值應回傳 422"""
+        res = await client.post("/api/v1/runs/bulk-copy", json={
+            "run_ids": [1, 1, 2], "date_string": "2026-04",
+        })
+        assert res.status_code == 422
+
 
 # ── Test Results ──────────────────────────────────────────────────────────────
 
