@@ -23,6 +23,19 @@ from app.schemas.test_run_history import TestRunHistoryResponse
 
 router = APIRouter()
 
+# Explicit whitelist of fields to carry over when bulk-copying a run.
+# Excludes id, created_at, completed_at (reset on copy) and any future
+# sensitive columns added to the model.
+_COPY_FIELDS = (
+    "project_id",
+    "folder_id",
+    "test_plan_id",
+    "title",
+    "run_type",
+    "description",
+    "assignee_id",  # legacy single-assignee kept for DB compat
+)
+
 
 async def _get_run_with_assignees(run_id: int, db: AsyncSession) -> TestRun:
     """Fetch a single TestRun with its assignees eagerly loaded."""
@@ -207,7 +220,7 @@ async def list_runs_by_project(project_id: int, db: AsyncSession = Depends(get_d
         blocked = blocked or 0
         total = total or 0
         untested = total - passed - failed - blocked
-        response_list.append(_build_response(run_obj, passed, failed, blocked, untested, total))
+        response_list.append(_build_response(run_obj, passed=passed, failed=failed, blocked=blocked, untested=untested, total=total))
 
     return response_list
 
@@ -244,7 +257,7 @@ async def create_run(run_in: TestRunCreate, db: AsyncSession = Depends(get_db)):
 
     # Reload with assignees
     run = await _get_run_with_assignees(run.id, db)
-    return _build_response(run, 0, 0, 0, len(cases), len(cases))
+    return _build_response(run, untested=len(cases), total=len(cases))
 
 
 @router.get("/{run_id}", response_model=TestRunResponse)
@@ -267,8 +280,8 @@ async def get_run(run_id: int, db: AsyncSession = Depends(get_db)):
     blocked = blocked or 0
     total = total or 0
     untested = total - passed - failed - blocked
-    
-    return _build_response(run, passed, failed, blocked, untested, total)
+
+    return _build_response(run, passed=passed, failed=failed, blocked=blocked, untested=untested, total=total)
 
 
 @router.put("/{run_id}", response_model=TestRunResponse)
@@ -338,7 +351,7 @@ async def update_run(run_id: int, run_in: TestRunUpdate, db: AsyncSession = Depe
     blocked = blocked or 0
     total = total or 0
     untested = total - passed - failed - blocked
-    return _build_response(run, passed, failed, blocked, untested, total)
+    return _build_response(run, passed=passed, failed=failed, blocked=blocked, untested=untested, total=total)
 
 
 @router.delete("/{run_id}")
@@ -348,7 +361,7 @@ async def delete_run(run_id: int, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="TestRun not found")
 
     run.status = "Archived"
-    
+
     # History record
     history = TestRunHistory(
         run_id=run.id,
@@ -357,21 +370,116 @@ async def delete_run(run_id: int, db: AsyncSession = Depends(get_db)):
         changed_fields=json.dumps({"status": "Active -> Archived"}, ensure_ascii=False)
     )
     db.add(history)
-    
+
     await db.commit()
     return {"message": "TestRun archived successfully"}
+
+
+@router.post("/bulk-copy", response_model=List[TestRunResponse])
+async def bulk_copy_runs(body: BulkCopyRunsRequest, db: AsyncSession = Depends(get_db)):
+    """Copy multiple runs at once, replacing '$template' in titles with the given date string.
+
+    Performs everything in a single DB transaction to avoid per-run round-trips.
+    """
+    # Fetch all source runs with assignees in one query
+    runs_result = await db.execute(
+        select(TestRun)
+        .options(selectinload(TestRun.assignees))
+        .where(TestRun.id.in_(body.run_ids))
+    )
+    source_runs = {r.id: r for r in runs_result.scalars().all()}
+
+    if not source_runs:
+        raise HTTPException(status_code=404, detail="None of the specified runs were found")
+
+    # Detect partially missing IDs — fail fast with an explicit message
+    missing_ids = sorted(set(body.run_ids) - source_runs.keys())
+    if missing_ids:
+        raise HTTPException(
+            status_code=404,
+            detail=f"The following run IDs were not found: {missing_ids}",
+        )
+
+    # Validate all runs belong to the same project to prevent cross-project copies
+    project_ids = {r.project_id for r in source_runs.values()}
+    if len(project_ids) > 1:
+        raise HTTPException(
+            status_code=400,
+            detail="All runs must belong to the same project",
+        )
+
+    # Fetch all results for all source runs in one query
+    results_result = await db.execute(
+        select(TestResult).where(TestResult.run_id.in_(body.run_ids))
+    )
+    all_results = results_result.scalars().all()
+    results_by_run: dict[int, list[TestResult]] = {}
+    for r in all_results:
+        results_by_run.setdefault(r.run_id, []).append(r)
+
+    # Collect all assignee IDs across all runs and fetch users in one query
+    all_assignee_ids = {a.id for run in source_runs.values() for a in run.assignees}
+    user_map: dict[int, User] = {}
+    if all_assignee_ids:
+        users_result = await db.execute(select(User).where(User.id.in_(all_assignee_ids)))
+        user_map = {u.id: u for u in users_result.scalars().all()}
+
+    # Build all new runs using an explicit field whitelist — no flush yet
+    ordered_sources = [source_runs[rid] for rid in body.run_ids if rid in source_runs]
+    new_runs_with_meta: list[tuple[TestRun, list[TestResult]]] = []
+    for source in ordered_sources:
+        run_data = {f: getattr(source, f) for f in _COPY_FIELDS}
+        run_data["title"] = run_data["title"].replace("$template", body.date_string)
+        run_data["status"] = "Active"
+
+        new_run = TestRun(**run_data)
+        assignees = [user_map[a.id] for a in source.assignees if a.id in user_map]
+        if assignees:
+            new_run.assignees = assignees
+
+        db.add(new_run)
+        new_runs_with_meta.append((new_run, results_by_run.get(source.id, [])))
+
+    # Single flush to obtain all new run IDs at once
+    await db.flush()
+
+    # Add all results now that IDs are available
+    for new_run, source_results in new_runs_with_meta:
+        if source_results:
+            db.add_all([
+                TestResult(run_id=new_run.id, case_id=r.case_id, status="Untested")
+                for r in source_results
+            ])
+
+    await db.commit()
+
+    # Reload all new runs in a single query instead of N individual queries
+    new_ids = [new_run.id for new_run, _ in new_runs_with_meta]
+    reloaded_result = await db.execute(
+        select(TestRun)
+        .options(selectinload(TestRun.assignees))
+        .where(TestRun.id.in_(new_ids))
+    )
+    reloaded_map = {r.id: r for r in reloaded_result.scalars().all()}
+
+    responses = []
+    for new_run, source_results in new_runs_with_meta:
+        refreshed = reloaded_map[new_run.id]
+        responses.append(_build_response(refreshed, untested=len(source_results), total=len(source_results)))
+    return responses
+
 
 @router.post("/{run_id}/restore")
 async def restore_test_run(run_id: int, db: AsyncSession = Depends(get_db)):
     run = await db.get(TestRun, run_id)
     if not run:
         raise HTTPException(status_code=404, detail="TestRun not found")
-    
+
     if run.status != "Archived":
         return {"message": "TestRun is not archived"}
 
     run.status = "Pending"
-    
+
     # History record
     history = TestRunHistory(
         run_id=run.id,
@@ -380,7 +488,7 @@ async def restore_test_run(run_id: int, db: AsyncSession = Depends(get_db)):
         changed_fields=json.dumps({"status": "Archived -> Pending"}, ensure_ascii=False)
     )
     db.add(history)
-    
+
     await db.commit()
     return {"message": "TestRun restored successfully"}
 
@@ -460,12 +568,8 @@ async def duplicate_run(run_id: int, db: AsyncSession = Depends(get_db)):
     if not original_run:
         raise HTTPException(status_code=404, detail="Original TestRun not found")
 
-    run_data = {c.name: getattr(original_run, c.name) for c in original_run.__table__.columns}
-    run_data.pop("id", None)
-    run_data.pop("created_at", None)
-    run_data.pop("updated_at", None)
-    run_data.pop("completed_at", None)
-    run_data["title"] = f"{run_data.get('title', 'Duplicate')} (Copy)"
+    run_data = {f: getattr(original_run, f) for f in _COPY_FIELDS}
+    run_data["title"] = f"{run_data['title']} (Copy)"
     run_data["status"] = "Active"
 
     # Save assignee IDs before flush to avoid lazy-load in async context
@@ -492,7 +596,7 @@ async def duplicate_run(run_id: int, db: AsyncSession = Depends(get_db)):
     await db.commit()
 
     new_run = await _get_run_with_assignees(new_run.id, db)
-    return _build_response(new_run, 0, 0, 0, len(original_results), len(original_results))
+    return _build_response(new_run, untested=len(original_results), total=len(original_results))
 
 
 @router.get("/{run_id}/history", response_model=List[TestRunHistoryResponse])

@@ -164,6 +164,7 @@ function GanttTimeline({ rows }: { rows: TimelineRow[] }) {
 
 interface TestPlan {
     id: number;
+    project_id: number;
     title: string;
     description: string;
     status: string;
