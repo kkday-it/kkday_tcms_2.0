@@ -1,18 +1,20 @@
 # KK TCMS 1.5
 
-KKday 測試案例管理系統（Test Case Management System），提供 Test Case 的建立、管理、執行追蹤，以及 AI 向量資料庫整合功能。
+KKday 測試案例管理系統（Test Case Management System），提供 Test Case 建立與管理、Test Run 執行追蹤、Test Plan 規劃、Dashboard 統計，以及 AI 向量資料庫整合功能。
 
 ---
 
 ## 目錄
 
 - [技術架構](#技術架構)
+- [主要功能](#主要功能)
 - [本機啟動](#本機啟動)
 - [Docker 啟動](#docker-啟動)
 - [Dify 知識庫整合](#dify-知識庫整合)
 - [API 文件](#api-文件)
 - [Unit Test](#unit-test)
 - [CI 整合](#ci-整合)
+- [PostgreSQL 遷移](#postgresql-遷移)
 - [相關文件](#相關文件)
 
 ---
@@ -21,10 +23,11 @@ KKday 測試案例管理系統（Test Case Management System），提供 Test Ca
 
 | 層 | 技術 |
 |---|---|
-| Backend | Python 3.11 / FastAPI / SQLAlchemy (async) / SQLite |
-| Frontend | React 18 / TypeScript / Vite / TailwindCSS |
+| Backend | Python 3.11 / FastAPI (async) / SQLAlchemy 2.x / Alembic / SQLite (dev) / PostgreSQL (prod) |
+| Frontend | React 18 / TypeScript / Vite / Tailwind CSS v4 / Tiptap / dnd-kit / recharts |
 | 容器化 | Docker / Docker Compose |
 | AI 整合 | Dify Knowledge Base API / 向量資料庫 |
+| 認證 | Google OAuth / 帳密登入 |
 
 服務 Port（本機與 Docker 一致）：
 
@@ -32,6 +35,23 @@ KKday 測試案例管理系統（Test Case Management System），提供 Test Ca
 |---|---|
 | Backend API | `19425` |
 | Frontend | `8085` |
+
+---
+
+## 主要功能
+
+| 模組 | 說明 |
+|---|---|
+| **Repository** | Test Suite 樹狀管理、Test Case CRUD（含步驟、標籤、Priority）、history 紀錄 |
+| **Test Runs** | Run 建立 / 複製 / 封存 / 還原；Folder 分組；bulk-copy 跨 Sprint；Result 逐筆更新 |
+| **Test Plans** | Plan 建立 / Clone；關聯 Run；Cases 進度追蹤；Run Folder 連結 |
+| **Dashboard** | 專案統計、近期 Run 清單、Run Type 分佈、個人 assigned runs |
+| **Import** | XMind `.xmind` 一鍵匯入；Zephyr Scale XML 匯入 |
+| **Export** | Test Cases CSV / JSON / AI JSON；Test Runs CSV / JSON；Test Plans JSON |
+| **Backup / Restore** | 整個 Project 打包成 ZIP；還原時自動略過重複資料 |
+| **Users** | 帳號管理、角色、密碼重設；Google OAuth 登入 |
+| **Settings** | Dify 知識庫同步設定 |
+| **Logs** | Frontend log（`/fe-log`）、Backend log（`/be-log`）公開端點 |
 
 ---
 
@@ -107,7 +127,7 @@ DIFY_DATASET_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 |---|---|
 | Export CSV | 適合 Excel 開啟 |
 | Export JSON | 完整結構化資料，適合系統整合 |
-| 🤖 Export for AI | 含 `text` + `metadata` 欄位，適合向量 DB ingestion |
+| Export for AI | 含 `text` + `metadata` 欄位，適合向量 DB ingestion |
 
 ### 同步至 Dify
 
@@ -136,14 +156,35 @@ Backend 啟動後，可透過以下路徑查看完整 Swagger 文件：
 http://localhost:19425/api/v1/docs
 ```
 
-主要端點：
+主要端點概覽：
 
-| 方法 | 路徑 | 說明 |
-|---|---|---|
-| `GET` | `/api/v1/health` | 健康檢查 |
-| `GET` | `/api/v1/cases/export` | 匯出 Test Cases（`format=csv\|json\|ai_json`） |
-| `POST` | `/api/v1/cases/sync/dify` | 同步至 Dify Knowledge Base |
-| `GET` | `/api/v1/cases/sync/dify/status` | 查看 Dify 同步狀態 |
+| 分類 | 方法 | 路徑 | 說明 |
+|---|---|---|---|
+| Health | `GET` | `/api/v1/health` | 健康檢查 |
+| Cases | `GET/POST` | `/api/v1/cases/` | Test Case CRUD |
+| Cases | `GET` | `/api/v1/cases/export` | 匯出（`format=csv\|json\|ai_json`） |
+| Cases | `POST` | `/api/v1/cases/sync/dify` | 同步至 Dify |
+| Suites | `GET/POST` | `/api/v1/suites/` | Test Suite CRUD（支援巢狀） |
+| Runs | `GET/POST` | `/api/v1/runs/` | Test Run CRUD |
+| Runs | `POST` | `/api/v1/runs/bulk-copy` | 批次複製 Runs（含 `$template` 標題替換） |
+| Runs | `POST` | `/api/v1/runs/{id}/duplicate` | 複製單一 Run |
+| Runs | `POST` | `/api/v1/runs/{id}/restore` | 還原封存 Run |
+| Runs | `GET` | `/api/v1/runs/export` | 匯出 Run 結果（`format=csv\|json`） |
+| Results | `GET/PUT` | `/api/v1/results/` | Test Result 逐筆更新 |
+| Plans | `GET/POST` | `/api/v1/plans/` | Test Plan CRUD |
+| Plans | `POST` | `/api/v1/plans/{id}/clone` | Clone 整個 Plan |
+| Plans | `GET` | `/api/v1/plans/export` | 匯出 Plans（JSON） |
+| Run Folders | `GET/POST` | `/api/v1/run-folders/` | Run Folder CRUD |
+| Plan Folders | `GET/POST` | `/api/v1/plan-folders/` | Plan Folder CRUD |
+| Dashboard | `GET` | `/api/v1/dashboard/stats` | 專案統計數字 |
+| Dashboard | `GET` | `/api/v1/dashboard/summary` | 近期 Run、分佈圖、Top failing |
+| Dashboard | `GET` | `/api/v1/dashboard/me` | 個人 assigned runs 統計 |
+| Import | `POST` | `/api/v1/xmind/import` | XMind `.xmind` 匯入 |
+| Import | `POST` | `/api/v1/zephyr/import` | Zephyr Scale XML 匯入 |
+| Backup | `GET` | `/api/v1/backup` | 下載整個 Project ZIP 備份 |
+| Backup | `POST` | `/api/v1/backup/restore` | 還原 ZIP 備份 |
+| Users | `GET/POST` | `/api/v1/users/` | 使用者管理 |
+| Auth | `POST` | `/api/v1/auth/google` | Google OAuth 登入 |
 
 ---
 
@@ -154,9 +195,17 @@ http://localhost:19425/api/v1/docs
 ```
 backend/
 ├── tests/
-│   ├── conftest.py        # fixtures：測試 DB、HTTP client、project/suite 建立
-│   └── test_api_cases.py  # 23 個測試（health / projects / suites / cases / export / dify）
-└── pytest.ini             # asyncio_mode = auto
+│   ├── conftest.py              # fixtures：測試 DB、HTTP client、project/suite 建立
+│   ├── test_api_cases.py        # Health / Projects / Suites / Cases / Export / Dify
+│   ├── test_api_runs.py         # Runs CRUD / Duplicate / Bulk Copy / Results / Folders
+│   ├── test_api_plans.py        # Plans CRUD / Clone / Folders / Links / Cases / Runs
+│   ├── test_api_dashboard.py    # Stats / Summary / Me
+│   ├── test_api_export.py       # Cases / Runs / Plans 匯出格式
+│   ├── test_api_backup.py       # Backup ZIP 結構 / Restore 冪等性
+│   ├── test_api_users.py        # Users CRUD / Login / Password / Projects / Suites
+│   ├── test_api_xmind_import.py # XMind 解析 / Priority / Steps / 匯入 API
+│   └── test_safe_deletion.py    # Suite / Case cascade 安全刪除
+└── pytest.ini                   # asyncio_mode = auto
 ```
 
 ### 執行測試
@@ -169,18 +218,55 @@ source .venv/bin/activate
 
 # 執行所有測試
 pytest tests/ -v
+
+# 只跑特定模組
+pytest tests/test_api_runs.py -v
+
+# 只跑特定 class
+pytest tests/test_api_runs.py::TestBulkCopyRuns -v
 ```
 
-### 測試涵蓋範圍
+### 測試涵蓋範圍（227 tests）
 
-| 群組 | 測試數 | 說明 |
-|---|---|---|
-| `TestHealthCheck` | 1 | API 健康檢查 |
-| `TestProjectsAPI` | 2 | 建立、列表 |
-| `TestSuitesAPI` | 3 | 建立、巢狀 Suite、列表 |
-| `TestCasesAPI` | 8 | CRUD、history、labels |
-| `TestExportAPI` | 5 | CSV / JSON / AI JSON / suite filter / 錯誤格式 |
-| `TestDifySyncStatus` | 3 | 未設定狀態、缺少參數、未設定時觸發 sync |
+| 模組 | Class | 測試數 | 說明 |
+|---|---|---|---|
+| `test_api_cases.py` | `TestHealthCheck` | 1 | API 健康檢查 |
+| | `TestProjectsAPI` | 2 | 建立、列表 |
+| | `TestSuitesAPI` | 3 | 建立、巢狀 Suite、列表 |
+| | `TestCasesAPI` | 9 | CRUD、history、labels |
+| | `TestExportAPI` | 5 | CSV / JSON / AI JSON / suite filter / 錯誤格式 |
+| | `TestDifySyncStatus` | 3 | 未設定狀態、缺少參數、觸發 sync |
+| `test_api_runs.py` | `TestRunsCRUD` | 10 | CRUD、stats、cases |
+| | `TestRunDuplicate` | 2 | 複製 Run |
+| | `TestBulkCopyRuns` | 14 | `$template` 替換、跨 Sprint、input validation |
+| | `TestResultsAPI` | 6 | Result 更新、stats 反映 |
+| | `TestRunFoldersAPI` | 4 | Folder CRUD |
+| `test_api_plans.py` | `TestPlansCRUD` | 9 | CRUD |
+| | `TestPlanClone` | 7 | Clone Plan |
+| | `TestPlanFoldersAPI` | 5 | Plan Folder CRUD |
+| | `TestPlanLinks` | 4 | Run 關聯 |
+| | `TestPlanRunsSummary` | 4 | Runs 進度統計 |
+| | `TestPlanCasesData` | 3 | Cases 資料 |
+| | `TestActorId` | 3 | actor_id 邏輯 |
+| `test_api_dashboard.py` | `TestDashboardStats` | 4 | 統計數字欄位 |
+| | `TestDashboardSummary` | 7 | 近期 Runs / 分佈 / Top failing |
+| | `TestDashboardMe` | 5 | 個人統計 |
+| `test_api_export.py` | `TestCasesExport` | 10 | Cases CSV / JSON / AI JSON |
+| | `TestRunsExport` | 9 | Runs CSV / JSON / 單 Run filter |
+| | `TestPlansExport` | 8 | Plans JSON 結構 |
+| `test_api_backup.py` | `TestBackupAPI` | 14 | ZIP 結構 / 各 JSON 格式驗證 |
+| | `TestRestoreAPI` | 10 | Restore 冪等性 / 資料完整性 |
+| `test_api_users.py` | `TestUsersCRUD` | 10 | 使用者 CRUD |
+| | `TestUsersLogin` | 4 | 登入 / 認證 |
+| | `TestUsersPassword` | 3 | 密碼重設 |
+| | `TestProjectsCompleteCRUD` | 4 | Projects 完整 CRUD |
+| | `TestSuitesCompleteCRUD` | 4 | Suites 完整 CRUD |
+| `test_api_xmind_import.py` | `TestXmindImportAPI` | 15 | 匯入 API 完整流程 |
+| | `TestParsePriority` | 7 | Priority 解析邏輯 |
+| | `TestParseSteps` | 6 | Steps 解析邏輯 |
+| | `TestParseTestCaseData` | 5 | Case 資料解析 |
+| | `TestHasValidTestCases` | 5 | 有效 Case 判斷 |
+| `test_safe_deletion.py` | `TestSafeDeletion` | 3 | Suite / Case cascade 刪除 |
 
 ---
 
@@ -307,3 +393,6 @@ pytest tests/ -v
 | [docs/migration_sqlite_to_postgresql.md](docs/migration_sqlite_to_postgresql.md) | SQLite → PostgreSQL 遷移步驟 |
 | [docs/test_case_management_strategy.md](docs/test_case_management_strategy.md) | Test Case 分類與 Test Run 執行策略 |
 | [docs/PR_DOCKER_COMPOSE_CHECKLIST.md](docs/PR_DOCKER_COMPOSE_CHECKLIST.md) | PR 前 Docker Compose 相容性檢查 |
+| [docs/DATABASE_RECOVERY_AND_BACKUP.md](docs/DATABASE_RECOVERY_AND_BACKUP.md) | 資料庫備份與還原操作指引 |
+| [docs/SAFE_DELETION_GUIDE.md](docs/SAFE_DELETION_GUIDE.md) | Suite / Case 安全刪除指引 |
+| [docs/VERIFICATION_GUIDE.md](docs/VERIFICATION_GUIDE.md) | 部署後驗證清單 |

@@ -127,6 +127,168 @@ class TestRunDuplicate:
         assert res.status_code == 404
 
 
+# ── Bulk Copy ─────────────────────────────────────────────────────────────────
+
+@allure.epic("TCMS API")
+@allure.feature("測試執行管理")
+@allure.story("Bulk Copy Runs")
+class TestBulkCopyRuns:
+    async def test_bulk_copy_replaces_template_in_title(
+        self, client: AsyncClient, project_id: int
+    ):
+        """bulk-copy 應將 $template 替換為 date_string，並建立新 runs"""
+        run_a = await _create_run(client, project_id, "Sprint $template - Feature")
+        run_b = await _create_run(client, project_id, "Sprint $template - Regression")
+
+        res = await client.post("/api/v1/runs/bulk-copy", json={
+            "run_ids": [run_a["id"], run_b["id"]],
+            "date_string": "2026-04",
+        })
+        assert res.status_code == 200
+        copies = res.json()
+        assert len(copies) == 2
+        titles = {c["title"] for c in copies}
+        assert "Sprint 2026-04 - Feature" in titles
+        assert "Sprint 2026-04 - Regression" in titles
+        # 新 id 不同於原始 run
+        new_ids = {c["id"] for c in copies}
+        assert run_a["id"] not in new_ids
+        assert run_b["id"] not in new_ids
+
+    async def test_bulk_copy_copies_results(
+        self, client: AsyncClient, project_id: int, suite_id: int
+    ):
+        """bulk-copy 後新 run 應繼承原 run 的 test results"""
+        await _create_case(client, suite_id, "Case A")
+        run = await _create_run(client, project_id, "Run $template")
+        original_results = (await client.get(f"/api/v1/results/run/{run['id']}")).json()
+
+        res = await client.post("/api/v1/runs/bulk-copy", json={
+            "run_ids": [run["id"]],
+            "date_string": "2026-04",
+        })
+        assert res.status_code == 200
+        new_run = res.json()[0]
+        new_results = (await client.get(f"/api/v1/results/run/{new_run['id']}")).json()
+        assert len(new_results) == len(original_results)
+        # 所有新 result 初始應為 Untested
+        assert all(r["status"] == "Untested" for r in new_results)
+
+    async def test_bulk_copy_new_runs_are_active(
+        self, client: AsyncClient, project_id: int
+    ):
+        """bulk-copy 建立的新 run status 應為 Active"""
+        run = await _create_run(client, project_id, "Run $template")
+        res = await client.post("/api/v1/runs/bulk-copy", json={
+            "run_ids": [run["id"]],
+            "date_string": "2026-04",
+        })
+        assert res.status_code == 200
+        assert res.json()[0]["status"] == "Active"
+
+    async def test_bulk_copy_empty_list_returns_422(self, client: AsyncClient):
+        """空 run_ids 應回傳 422（min_length=1）"""
+        res = await client.post("/api/v1/runs/bulk-copy", json={
+            "run_ids": [],
+            "date_string": "2026-04",
+        })
+        assert res.status_code == 422
+
+    async def test_bulk_copy_nonexistent_ids_returns_404(self, client: AsyncClient):
+        """全部 run_id 都不存在時應回傳 404，含明確錯誤訊息"""
+        res = await client.post("/api/v1/runs/bulk-copy", json={
+            "run_ids": [999998, 999999],
+            "date_string": "2026-04",
+        })
+        assert res.status_code == 404
+        assert "none of the specified" in res.json()["detail"].lower()
+
+    async def test_bulk_copy_partial_ids_returns_404_with_message(
+        self, client: AsyncClient, project_id: int
+    ):
+        """部分 run_id 不存在時應回傳 404，訊息中含缺少的 ID"""
+        run = await _create_run(client, project_id, "Run $template")
+        res = await client.post("/api/v1/runs/bulk-copy", json={
+            "run_ids": [run["id"], 999999],
+            "date_string": "2026-04",
+        })
+        assert res.status_code == 404
+        assert "999999" in res.json()["detail"]
+
+    async def test_bulk_copy_cross_project_returns_400(
+        self, client: AsyncClient, project_id: int
+    ):
+        """跨 project 的 run_ids 應回傳 400"""
+        # 建立第二個 project
+        proj2 = (await client.post("/api/v1/projects/", json={
+            "name": "Project 2", "description": ""
+        })).json()
+        run_a = await _create_run(client, project_id, "Run A $template")
+        run_b = await _create_run(client, proj2["id"], "Run B $template")
+
+        res = await client.post("/api/v1/runs/bulk-copy", json={
+            "run_ids": [run_a["id"], run_b["id"]],
+            "date_string": "2026-04",
+        })
+        assert res.status_code == 400
+
+    async def test_bulk_copy_title_without_template_copied_verbatim(
+        self, client: AsyncClient, project_id: int
+    ):
+        """標題不含 $template 時，應原封不動複製"""
+        run = await _create_run(client, project_id, "Fixed Title")
+        res = await client.post("/api/v1/runs/bulk-copy", json={
+            "run_ids": [run["id"]],
+            "date_string": "2026-04",
+        })
+        assert res.status_code == 200
+        assert res.json()[0]["title"] == "Fixed Title"
+
+    # ── Input validation (422) ────────────────────────────────────────────────
+
+    async def test_bulk_copy_empty_date_string_returns_422(self, client: AsyncClient):
+        """空 date_string 應回傳 422（min_length=1）"""
+        res = await client.post("/api/v1/runs/bulk-copy", json={
+            "run_ids": [1], "date_string": "",
+        })
+        assert res.status_code == 422
+
+    async def test_bulk_copy_date_string_with_control_char_returns_422(self, client: AsyncClient):
+        """date_string 含控制字元應回傳 422"""
+        res = await client.post("/api/v1/runs/bulk-copy", json={
+            "run_ids": [1], "date_string": "bad\x01string",
+        })
+        assert res.status_code == 422
+
+    async def test_bulk_copy_date_string_del_char_returns_422(self, client: AsyncClient):
+        """date_string 含 DEL 字元（0x7F）應回傳 422"""
+        res = await client.post("/api/v1/runs/bulk-copy", json={
+            "run_ids": [1], "date_string": "bad\x7fstring",
+        })
+        assert res.status_code == 422
+
+    async def test_bulk_copy_date_string_too_long_returns_422(self, client: AsyncClient):
+        """date_string 超過 100 字元應回傳 422"""
+        res = await client.post("/api/v1/runs/bulk-copy", json={
+            "run_ids": [1], "date_string": "x" * 101,
+        })
+        assert res.status_code == 422
+
+    async def test_bulk_copy_too_many_run_ids_returns_422(self, client: AsyncClient):
+        """run_ids 超過 1000 筆應回傳 422"""
+        res = await client.post("/api/v1/runs/bulk-copy", json={
+            "run_ids": list(range(1001)), "date_string": "2026-04",
+        })
+        assert res.status_code == 422
+
+    async def test_bulk_copy_duplicate_run_ids_returns_422(self, client: AsyncClient):
+        """run_ids 含重複值應回傳 422"""
+        res = await client.post("/api/v1/runs/bulk-copy", json={
+            "run_ids": [1, 1, 2], "date_string": "2026-04",
+        })
+        assert res.status_code == 422
+
+
 # ── Test Results ──────────────────────────────────────────────────────────────
 
 @allure.epic("TCMS API")
