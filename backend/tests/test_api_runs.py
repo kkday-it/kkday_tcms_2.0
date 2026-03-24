@@ -127,6 +127,83 @@ class TestRunDuplicate:
         assert res.status_code == 404
 
 
+# ── Bulk Copy ─────────────────────────────────────────────────────────────────
+
+@allure.epic("TCMS API")
+@allure.feature("測試執行管理")
+@allure.story("Bulk Copy Runs")
+class TestBulkCopyRuns:
+    async def test_bulk_copy_replaces_template_in_title(
+        self, client: AsyncClient, project_id: int
+    ):
+        """bulk-copy 應將 $template 替換為 date_string，並建立新 runs"""
+        run_a = await _create_run(client, project_id, "Sprint $template - Feature")
+        run_b = await _create_run(client, project_id, "Sprint $template - Regression")
+
+        res = await client.post("/api/v1/runs/bulk-copy", json={
+            "run_ids": [run_a["id"], run_b["id"]],
+            "date_string": "2026-04",
+        })
+        assert res.status_code == 200
+        copies = res.json()
+        assert len(copies) == 2
+        titles = {c["title"] for c in copies}
+        assert "Sprint 2026-04 - Feature" in titles
+        assert "Sprint 2026-04 - Regression" in titles
+        # 新 id 不同於原始 run
+        new_ids = {c["id"] for c in copies}
+        assert run_a["id"] not in new_ids
+        assert run_b["id"] not in new_ids
+
+    async def test_bulk_copy_copies_results(
+        self, client: AsyncClient, project_id: int, suite_id: int
+    ):
+        """bulk-copy 後新 run 應繼承原 run 的 test results"""
+        await _create_case(client, suite_id, "Case A")
+        run = await _create_run(client, project_id, "Run $template")
+        original_results = (await client.get(f"/api/v1/results/run/{run['id']}")).json()
+
+        res = await client.post("/api/v1/runs/bulk-copy", json={
+            "run_ids": [run["id"]],
+            "date_string": "2026-04",
+        })
+        assert res.status_code == 200
+        new_run = res.json()[0]
+        new_results = (await client.get(f"/api/v1/results/run/{new_run['id']}")).json()
+        assert len(new_results) == len(original_results)
+        # 所有新 result 初始應為 Untested
+        assert all(r["status"] == "Untested" for r in new_results)
+
+    async def test_bulk_copy_new_runs_are_active(
+        self, client: AsyncClient, project_id: int
+    ):
+        """bulk-copy 建立的新 run status 應為 Active"""
+        run = await _create_run(client, project_id, "Run $template")
+        res = await client.post("/api/v1/runs/bulk-copy", json={
+            "run_ids": [run["id"]],
+            "date_string": "2026-04",
+        })
+        assert res.status_code == 200
+        assert res.json()[0]["status"] == "Active"
+
+    async def test_bulk_copy_empty_list_returns_empty(self, client: AsyncClient):
+        """空 run_ids 應回傳空陣列"""
+        res = await client.post("/api/v1/runs/bulk-copy", json={
+            "run_ids": [],
+            "date_string": "2026-04",
+        })
+        assert res.status_code == 200
+        assert res.json() == []
+
+    async def test_bulk_copy_nonexistent_ids_returns_404(self, client: AsyncClient):
+        """全部 run_id 都不存在時應回傳 404"""
+        res = await client.post("/api/v1/runs/bulk-copy", json={
+            "run_ids": [999998, 999999],
+            "date_string": "2026-04",
+        })
+        assert res.status_code == 404
+
+
 # ── Test Results ──────────────────────────────────────────────────────────────
 
 @allure.epic("TCMS API")
