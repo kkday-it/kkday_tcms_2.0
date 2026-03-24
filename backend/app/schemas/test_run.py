@@ -33,6 +33,13 @@ class TestRunUpdate(TestRunBase):
     test_plan_id: Optional[int] = None
     case_ids: Optional[List[int]] = None
 
+class BulkCopyRunsRequest(BaseModel):
+    """Request body for bulk-copying a folder's runs."""
+
+    run_ids: List[int]
+    date_string: str
+
+
 class TestRunResponse(TestRunBase):
     id: int
     project_id: int

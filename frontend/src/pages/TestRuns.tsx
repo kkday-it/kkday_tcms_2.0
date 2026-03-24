@@ -281,12 +281,26 @@ export default function TestRuns() {
         return runs.filter(r => r.folder_id !== null && r.folder_id !== undefined && folderIds.has(r.folder_id as number));
     }, [runs, activeFolderId, folders, getDescendantFolderIds]);
 
-    /** Pre-compute run count per folder (including descendants) to avoid O(N²) in render */
+    /** Pre-compute run count per folder (including descendants).
+     *  Single pass over runs → O(R + F*D) instead of O(F*R). */
     const folderRunCountMap = useMemo(() => {
+        // Step 1: direct folder_id → count in one pass
+        const directCount = new Map<number, number>();
+        for (const run of runs) {
+            if (run.folder_id != null) {
+                const fid = run.folder_id as number;
+                directCount.set(fid, (directCount.get(fid) ?? 0) + 1);
+            }
+        }
+        // Step 2: for each folder, sum over descendant IDs
         const map = new Map<number, number>();
         for (const folder of folders) {
             const ids = getDescendantFolderIds(folder.id, folders);
-            map.set(folder.id, runs.filter(r => r.folder_id != null && ids.has(r.folder_id as number)).length);
+            let count = 0;
+            for (const id of ids) {
+                count += directCount.get(id) ?? 0;
+            }
+            map.set(folder.id, count);
         }
         return map;
     }, [folders, runs, getDescendantFolderIds]);
@@ -432,23 +446,11 @@ export default function TestRuns() {
 
         setIsCopyingFolder(true);
         try {
-            // Fetch all run results in parallel (avoid N+1)
-            const resultsAll = await Promise.all(
-                folderRuns.map(run => api.get(`/results/run/${run.id}`))
-            );
-            // Create all new runs in parallel
-            await Promise.all(
-                folderRuns.map((run, i) => api.post('/runs/', {
-                    title: run.title.replace(/\$template/g, copyFolderDate),
-                    run_type: run.run_type || 'Feature Test',
-                    description: '',
-                    project_id: run.project_id,
-                    folder_id: run.folder_id,
-                    assignee_ids: (run.assignees || []).map((a: any) => a.id),
-                    status: 'Active',
-                    case_ids: resultsAll[i].data.map((r: any) => r.case_id),
-                }))
-            );
+            // Single bulk-copy call: backend handles all DB work in one transaction
+            await api.post('/runs/bulk-copy', {
+                run_ids: folderRuns.map(r => r.id),
+                date_string: copyFolderDate,
+            });
             setCopyFolderDateModal(null);
             fetchRuns();
         } catch (error) {
