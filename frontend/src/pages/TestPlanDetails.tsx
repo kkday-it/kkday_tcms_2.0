@@ -184,6 +184,8 @@ interface TestPlan {
     };
     jira_unfix_filter_id?: number | null;
     jira_total_filter_id?: number | null;
+    jira_unfix_filter_ids?: number[] | null;
+    jira_total_filter_ids?: number[] | null;
     jira_display_fields?: string[];
     jira_chart_filter_id?: number | null;
     jira_chart_field?: string | null;
@@ -302,12 +304,17 @@ export default function TestPlanDetails() {
         if (planId) fetchData();
     }, [planId]);
 
-    // Fetch Jira issues when plan has filter IDs
+    // Fetch Jira issues when plan has filter IDs (supports both single and multiple IDs)
     useEffect(() => {
         if (!plan?.id) return;
-        const unfixId = plan.jira_unfix_filter_id;
-        const totalId = plan.jira_total_filter_id;
-        if (!unfixId && !totalId) {
+        // Resolve effective filter ID lists (prefer arrays, fall back to single)
+        const unfixIds: number[] = plan.jira_unfix_filter_ids?.length
+            ? plan.jira_unfix_filter_ids
+            : plan.jira_unfix_filter_id != null ? [plan.jira_unfix_filter_id] : [];
+        const totalIds: number[] = plan.jira_total_filter_ids?.length
+            ? plan.jira_total_filter_ids
+            : plan.jira_total_filter_id != null ? [plan.jira_total_filter_id] : [];
+        if (unfixIds.length === 0 && totalIds.length === 0) {
             setJiraUnfix(null);
             setJiraTotal(null);
             return;
@@ -316,12 +323,25 @@ export default function TestPlanDetails() {
             setJiraLoading(true);
             setJiraError(null);
             try {
-                const [unfixRes, totalRes] = await Promise.all([
-                    unfixId ? api.get(`/plans/${plan.id}/jira-issues`, { params: { filter_type: 'unfix' } }) : Promise.resolve(null),
-                    totalId ? api.get(`/plans/${plan.id}/jira-issues`, { params: { filter_type: 'total' } }) : Promise.resolve(null),
+                // Fetch all filter IDs in parallel, then merge by deduplicating on issue key
+                const [unfixResults, totalResults] = await Promise.all([
+                    Promise.all(unfixIds.map(id => api.get(`/plans/jira/filter/${id}/issues`).catch(() => null))),
+                    Promise.all(totalIds.map(id => api.get(`/plans/jira/filter/${id}/issues`).catch(() => null))),
                 ]);
-                setJiraUnfix(unfixRes?.data?.issues ? { issues: unfixRes.data.issues, view_url: unfixRes.data.view_url } : null);
-                setJiraTotal(totalRes?.data?.issues ? { issues: totalRes.data.issues, view_url: totalRes.data.view_url } : null);
+                const mergeIssues = (results: any[]) => {
+                    const seen = new Set<string>();
+                    const issues: any[] = [];
+                    for (const res of results) {
+                        for (const issue of (res?.data?.issues ?? [])) {
+                            if (!seen.has(issue.key)) { seen.add(issue.key); issues.push(issue); }
+                        }
+                    }
+                    return issues;
+                };
+                const unfixIssues = mergeIssues(unfixResults);
+                const totalIssues = mergeIssues(totalResults);
+                setJiraUnfix(unfixIssues.length > 0 ? { issues: unfixIssues, view_url: unfixResults[0]?.data?.view_url } : null);
+                setJiraTotal(totalIssues.length > 0 ? { issues: totalIssues, view_url: totalResults[0]?.data?.view_url } : null);
             } catch (err: any) {
                 console.error("Jira fetch error:", err);
                 const msg = err.response?.data?.detail || err.message || "Failed to fetch Jira issues.";
@@ -333,7 +353,7 @@ export default function TestPlanDetails() {
             }
         };
         load();
-    }, [plan?.id, plan?.jira_unfix_filter_id, plan?.jira_total_filter_id]);
+    }, [plan?.id, plan?.jira_unfix_filter_id, plan?.jira_total_filter_id, plan?.jira_unfix_filter_ids, plan?.jira_total_filter_ids]);
 
     // Fetch Jira Pie Chart Issues
     useEffect(() => {
@@ -709,11 +729,11 @@ export default function TestPlanDetails() {
 
                 {/* ── Jira Bug List ─────────────────────────────────────────────── */}
                 {
-                    (plan.jira_unfix_filter_id || plan.jira_total_filter_id) && (
+                    (plan.jira_unfix_filter_id || plan.jira_total_filter_id || (plan.jira_unfix_filter_ids?.length ?? 0) > 0 || (plan.jira_total_filter_ids?.length ?? 0) > 0) && (
                         <div className="space-y-6">
                             <h3 className="text-base font-bold text-slate-700 uppercase tracking-wider">Jira 問題</h3>
                             <div className="flex flex-col gap-6 mt-6">
-                                {plan.jira_unfix_filter_id && (
+                                {(plan.jira_unfix_filter_id || (plan.jira_unfix_filter_ids?.length ?? 0) > 0) && (
                                     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-full">
                                         <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-white">
                                             <span className="text-base font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
@@ -785,7 +805,7 @@ export default function TestPlanDetails() {
                                         </div>
                                     </div>
                                 )}
-                                {plan.jira_total_filter_id && (
+                                {(plan.jira_total_filter_id || (plan.jira_total_filter_ids?.length ?? 0) > 0) && (
                                     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-full">
                                         <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-white">
                                             <span className="text-base font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">

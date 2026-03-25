@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Play, CheckCircle2, XCircle, SkipForward, Clock, Loader2, Trash2, Copy, Search, Plus, Folder as FolderIcon, Pencil, Ban, Download, ChevronDown, CalendarDays } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Play, CheckCircle2, XCircle, SkipForward, Clock, Loader2, Trash2, Copy, Search, Plus, Folder as FolderIcon, Pencil, Ban, Download, ChevronDown, CalendarDays, Link2, Check } from 'lucide-react';
 import { DndContext, DragEndEvent, closestCenter, useDroppable, useSensor, useSensors, PointerSensor, useDraggable } from '@dnd-kit/core';
 import api from '../lib/api';
 import CreateRunModal from '../components/runs/CreateRunModal';
@@ -20,6 +20,7 @@ function RootDroppableArea({ children, className }: { children: React.ReactNode,
 }
 
 function DraggableRunCard({ run, onClick, onEdit, onDuplicate, onDelete }: { run: TestRun, onClick: () => void, onEdit: (e: React.MouseEvent) => void, onDuplicate: (e: React.MouseEvent) => void, onDelete: (e: React.MouseEvent) => void }) {
+    const [copied, setCopied] = useState(false);
     const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
         id: `run-${run.id}`,
         data: { type: 'run', run }
@@ -114,6 +115,18 @@ function DraggableRunCard({ run, onClick, onEdit, onDuplicate, onDelete }: { run
                 <button onClick={onDuplicate} className="p-1.5 text-slate-400 hover:text-primary-600 hover:bg-primary-50 rounded transition-colors" title="複製">
                     <Copy className="w-3.5 h-3.5" />
                 </button>
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        navigator.clipboard.writeText(`${window.location.origin}/runs/${run.id}`);
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 1500);
+                    }}
+                    className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded transition-colors"
+                    title="複製連結"
+                >
+                    {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Link2 className="w-3.5 h-3.5" />}
+                </button>
                 <button onClick={onDelete} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors" title="刪除">
                     <Trash2 className="w-3.5 h-3.5" />
                 </button>
@@ -149,6 +162,7 @@ interface TestRunFolder {
 export default function TestRuns() {
     const projectId = 1; // Hardcoded for now
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
 
     // Test Runs state
     const [runs, setRuns] = useState<TestRun[]>([]);
@@ -156,7 +170,8 @@ export default function TestRuns() {
 
     // Folders state
     const [folders, setFolders] = useState<TestRunFolder[]>([]);
-    const [activeFolderId, setActiveFolderId] = useState<number | null>(null);
+    const initialFolderId = searchParams.get('folder') ? Number(searchParams.get('folder')) : null;
+    const [activeFolderId, setActiveFolderId] = useState<number | null>(initialFolderId);
     const [isLoadingFolders, setIsLoadingFolders] = useState(true);
 
     // Modal state

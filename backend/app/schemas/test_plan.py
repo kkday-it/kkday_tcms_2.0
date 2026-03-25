@@ -40,6 +40,8 @@ class TestPlanCreate(TestPlanBase):
     timeline: Optional[dict] = None
     jira_unfix_filter_id: Optional[int] = None
     jira_total_filter_id: Optional[int] = None
+    jira_unfix_filter_ids: Optional[List[int]] = None
+    jira_total_filter_ids: Optional[List[int]] = None
     jira_display_fields: Optional[List[str]] = None
     jira_chart_filter_id: Optional[int] = None
     jira_chart_field: Optional[str] = None
@@ -61,6 +63,8 @@ class TestPlanUpdate(BaseModel):
     timeline: Optional[dict] = None
     jira_unfix_filter_id: Optional[int] = None
     jira_total_filter_id: Optional[int] = None
+    jira_unfix_filter_ids: Optional[List[int]] = None
+    jira_total_filter_ids: Optional[List[int]] = None
     jira_display_fields: Optional[List[str]] = None
     jira_chart_filter_id: Optional[int] = None
     jira_chart_field: Optional[str] = None
@@ -82,6 +86,8 @@ class TestPlanResponse(TestPlanBase):
     timeline: Optional[dict] = None
     jira_unfix_filter_id: Optional[int] = None
     jira_total_filter_id: Optional[int] = None
+    jira_unfix_filter_ids: Optional[List[int]] = None
+    jira_total_filter_ids: Optional[List[int]] = None
     jira_display_fields: Optional[List[str]] = None
     jira_chart_filter_id: Optional[int] = None
     jira_chart_field: Optional[str] = None

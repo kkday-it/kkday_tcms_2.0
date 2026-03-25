@@ -217,6 +217,13 @@ function XmindImportModal({
                         </label>
                         <div
                             onClick={() => fileRef.current?.click()}
+                            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                            onDrop={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                const dropped = e.dataTransfer.files?.[0];
+                                if (dropped?.name.endsWith('.xmind')) setFile(dropped);
+                            }}
                             className={`w-full border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors
                                 ${file ? 'border-primary-400 bg-primary-50' : 'border-slate-200 hover:border-primary-300 hover:bg-primary-50/30'}`}
                         >
@@ -224,7 +231,7 @@ function XmindImportModal({
                             {file ? (
                                 <p className="text-sm font-medium text-primary-700">{file.name}</p>
                             ) : (
-                                <p className="text-sm text-slate-500">點擊選擇 <span className="font-medium">.xmind</span> 檔案</p>
+                                <p className="text-sm text-slate-500">點擊選擇或拖曳 <span className="font-medium">.xmind</span> 檔案</p>
                             )}
                             <input
                                 ref={fileRef}
@@ -554,12 +561,23 @@ export default function Repository() {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [isImporting, setIsImporting] = useState(false);
     const [isXmindModalOpen, setIsXmindModalOpen] = useState(false);
-    const [isExportOpen, setIsExportOpen] = useState(false);
-    const [isImportOpen, setIsImportOpen] = useState(false);
+    const [openMenu, setOpenMenu] = useState<null | 'import' | 'export'>(null);
+    const menuRef = useRef<HTMLDivElement>(null);
     const [isSyncingDify, setIsSyncingDify] = useState(false);
 
+    // Close dropdown when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+                setOpenMenu(null);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
     const handleExport = async (format: 'csv' | 'json' | 'ai_json') => {
-        setIsExportOpen(false);
+        setOpenMenu(null);
         const params = new URLSearchParams({ project_id: String(projectId), format });
         if (activeSuiteId) params.append('suite_id', String(activeSuiteId));
 
@@ -928,9 +946,9 @@ export default function Repository() {
                                     </div>
                                     <span className="text-sm font-semibold text-slate-700">匯出測試案例</span>
                                 </div>
-                                <div className="relative">
+                                <div className="relative" ref={menuRef}>
                                     <button
-                                        onClick={() => setIsExportOpen(prev => !prev)}
+                                        onClick={() => setOpenMenu(prev => prev === 'export' ? null : 'export')}
                                         className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 transition-colors shadow-sm"
                                     >
                                         <span className="flex items-center gap-2">
@@ -938,7 +956,7 @@ export default function Repository() {
                                         </span>
                                         <ChevronDown className="w-3 h-3 text-slate-400" />
                                     </button>
-                                    {isExportOpen && (
+                                    {openMenu === 'export' && (
                                         <div className="absolute left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg z-20 py-1">
                                             <button onClick={() => handleExport('csv')} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">Export CSV</button>
                                             <button onClick={() => handleExport('json')} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">Export JSON</button>
@@ -960,18 +978,18 @@ export default function Repository() {
                             </div>
                             <div className="flex items-center gap-3">
                                 {/* Import 下拉選單 */}
-                                <div className="relative">
+                                <div className="relative" ref={menuRef}>
                                     <input type="file" accept=".xml" ref={fileInputRef} style={{ display: 'none' }} onChange={handleImportZephyr} />
                                     <button
-                                        onClick={() => setIsImportOpen(prev => !prev)}
+                                        onClick={() => setOpenMenu(prev => prev === 'import' ? null : 'import')}
                                         className="bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm"
                                     >
                                         <Upload className="w-4 h-4" /> 匯入 <ChevronDown className="w-3 h-3" />
                                     </button>
-                                    {isImportOpen && (
+                                    {openMenu === 'import' && (
                                         <div className="absolute right-0 mt-1 w-44 bg-white border border-slate-200 rounded-lg shadow-lg z-50 py-1">
                                             <button
-                                                onClick={() => { setIsImportOpen(false); fileInputRef.current?.click(); }}
+                                                onClick={() => { setOpenMenu(null); fileInputRef.current?.click(); }}
                                                 disabled={isImporting}
                                                 className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2 disabled:opacity-50"
                                             >
@@ -979,7 +997,7 @@ export default function Repository() {
                                                 Zephyr XML
                                             </button>
                                             <button
-                                                onClick={() => { setIsImportOpen(false); setIsXmindModalOpen(true); }}
+                                                onClick={() => { setOpenMenu(null); setIsXmindModalOpen(true); }}
                                                 className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
                                             >
                                                 <FileCode2 className="w-4 h-4" /> XMind
@@ -990,12 +1008,12 @@ export default function Repository() {
                                 {/* Export 下拉選單 */}
                                 <div className="relative">
                                     <button
-                                        onClick={() => setIsExportOpen(prev => !prev)}
+                                        onClick={() => setOpenMenu(prev => prev === 'export' ? null : 'export')}
                                         className="bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm"
                                     >
                                         <Download className="w-4 h-4" /> 匯出 <ChevronDown className="w-3 h-3" />
                                     </button>
-                                    {isExportOpen && (
+                                    {openMenu === 'export' && (
                                         <div className="absolute right-0 mt-1 w-44 bg-white border border-slate-200 rounded-lg shadow-lg z-50 py-1">
                                             <button onClick={() => handleExport('csv')} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">匯出 CSV</button>
                                             <button onClick={() => handleExport('json')} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">匯出 JSON</button>

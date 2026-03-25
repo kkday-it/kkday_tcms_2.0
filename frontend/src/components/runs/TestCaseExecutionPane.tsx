@@ -357,26 +357,23 @@ export default function TestCaseExecutionPane({ resultId, onClose, onUpdated }: 
                                                             </div>
                                                         )}
 
-                                                        {/* Step Failure Input */}
-                                                        {step.status === 'Failed' && (
-                                                            <div className="mt-4 p-3 bg-red-50/50 border border-red-100 rounded-lg">
-                                                                <label className="text-xs font-semibold text-red-800 mb-1.5 block">Actual Result (Failure Reason)</label>
-                                                                <textarea
-                                                                    value={step.actual_result || ''}
-                                                                    onChange={(e) => {
-                                                                        // Update local state without API call until blur? For simplicity, we trigger API on blur
-                                                                        const val = e.target.value;
-                                                                        setDetail(prev => prev ? {
-                                                                            ...prev,
-                                                                            steps: prev.steps.map(s => s.step_id === step.step_id ? { ...s, actual_result: val } : s)
-                                                                        } : prev);
-                                                                    }}
-                                                                    onBlur={(e) => handleStepUpdate(step.step_id, 'Failed', e.target.value)}
-                                                                    className="w-full text-sm p-2 rounded-md border-red-200 min-h-[60px] focus:ring-red-500 focus:border-red-500"
-                                                                    placeholder="Describe what actually happened..."
-                                                                />
-                                                            </div>
-                                                        )}
+                                                        {/* Actual Result Input (shown for all steps) */}
+                                                        <div className="mt-4 p-3 bg-slate-50/50 border border-slate-100 rounded-lg">
+                                                            <label className="text-xs font-semibold text-slate-600 mb-1.5 block">實際結果 (Actual Result)</label>
+                                                            <textarea
+                                                                value={step.actual_result || ''}
+                                                                onChange={(e) => {
+                                                                    const val = e.target.value;
+                                                                    setDetail(prev => prev ? {
+                                                                        ...prev,
+                                                                        steps: prev.steps.map(s => s.step_id === step.step_id ? { ...s, actual_result: val } : s)
+                                                                    } : prev);
+                                                                }}
+                                                                onBlur={(e) => handleStepUpdate(step.step_id, step.status, e.target.value)}
+                                                                className="w-full text-sm p-2 rounded-md border-slate-200 min-h-[60px] focus:ring-slate-500 focus:border-slate-500"
+                                                                placeholder="Describe what actually happened..."
+                                                            />
+                                                        </div>
                                                     </div>
                                                     <div className="flex-shrink-0 flex flex-col gap-2">
                                                         <button

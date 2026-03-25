@@ -51,6 +51,8 @@ export interface TestPlan {
     };
     jira_unfix_filter_id?: number | null;
     jira_total_filter_id?: number | null;
+    jira_unfix_filter_ids?: number[] | null;
+    jira_total_filter_ids?: number[] | null;
     jira_display_fields?: string[];
     jira_chart_filter_id?: number | null;
     jira_chart_field?: string | null;
@@ -88,6 +90,10 @@ export default function EditPlanModal({ plan, folders, runs, cases, caseFolders,
     const [timelineRows, setTimelineRows] = useState<TimelineRow[]>([]);
     const [jiraUnfixFilterId, setJiraUnfixFilterId] = useState<string>('');
     const [jiraTotalFilterId, setJiraTotalFilterId] = useState<string>('');
+    const [jiraUnfixFilterIds, setJiraUnfixFilterIds] = useState<number[]>([]);
+    const [jiraTotalFilterIds, setJiraTotalFilterIds] = useState<number[]>([]);
+    const [jiraUnfixInput, setJiraUnfixInput] = useState<string>('');
+    const [jiraTotalInput, setJiraTotalInput] = useState<string>('');
     const [jiraDisplayFields, setJiraDisplayFields] = useState<string[]>(['key', 'summary', 'status', 'assignee', 'priority']);
     const [selectedRunIds, setSelectedRunIds] = useState<number[]>([]);
     const [selectedCaseIds, setSelectedCaseIds] = useState<number[]>([]);
@@ -132,6 +138,8 @@ export default function EditPlanModal({ plan, folders, runs, cases, caseFolders,
             }
             setJiraUnfixFilterId(plan.jira_unfix_filter_id != null ? String(plan.jira_unfix_filter_id) : '');
             setJiraTotalFilterId(plan.jira_total_filter_id != null ? String(plan.jira_total_filter_id) : '');
+            setJiraUnfixFilterIds(plan.jira_unfix_filter_ids ?? (plan.jira_unfix_filter_id != null ? [plan.jira_unfix_filter_id] : []));
+            setJiraTotalFilterIds(plan.jira_total_filter_ids ?? (plan.jira_total_filter_id != null ? [plan.jira_total_filter_id] : []));
             setJiraDisplayFields(plan.jira_display_fields?.length ? plan.jira_display_fields : ['key', 'summary', 'status', 'assignee', 'priority']);
             setChartFilterId(plan.jira_chart_filter_id != null ? String(plan.jira_chart_filter_id) : '');
             setChartFilterInput(plan.jira_chart_filter_id != null ? String(plan.jira_chart_filter_id) : '');
@@ -145,6 +153,8 @@ export default function EditPlanModal({ plan, folders, runs, cases, caseFolders,
             setUedDocs([]); setQaDocs([]); setMindmapUrl('');
             setTimelineRows([]);
             setJiraUnfixFilterId(''); setJiraTotalFilterId('');
+            setJiraUnfixFilterIds([]); setJiraTotalFilterIds([]);
+            setJiraUnfixInput(''); setJiraTotalInput('');
             setJiraDisplayFields(['key', 'summary', 'status', 'assignee', 'priority']);
             setChartFilterId(''); setChartFilterInput(''); setChartField('status');
         }
@@ -220,6 +230,8 @@ export default function EditPlanModal({ plan, folders, runs, cases, caseFolders,
                 timeline: tPayload,
                 jira_unfix_filter_id: jiraUnfixFilterId.trim() ? parseInt(jiraUnfixFilterId, 10) : null,
                 jira_total_filter_id: jiraTotalFilterId.trim() ? parseInt(jiraTotalFilterId, 10) : null,
+                jira_unfix_filter_ids: jiraUnfixFilterIds.length > 0 ? jiraUnfixFilterIds : null,
+                jira_total_filter_ids: jiraTotalFilterIds.length > 0 ? jiraTotalFilterIds : null,
                 jira_display_fields: jiraDisplayFields.length ? jiraDisplayFields : ['key', 'summary', 'status', 'assignee', 'priority'],
                 jira_chart_filter_id: chartFilterId.trim() ? parseInt(chartFilterId, 10) : null,
                 jira_chart_field: chartField,
@@ -476,16 +488,66 @@ export default function EditPlanModal({ plan, folders, runs, cases, caseFolders,
                                 <p className="text-xs text-slate-500">從 <a href="https://kkday.atlassian.net/issues/?filter=18523" target="_blank" rel="noreferrer" className="text-primary-600 underline">Jira Filter</a> 複製 filter ID（網址 ?filter= 後的數字）</p>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label className="block text-sm font-medium text-slate-700 mb-1">Unfix Filter ID（未修復 bug）</label>
-                                        <input type="number" min={1} value={jiraUnfixFilterId} onChange={e => setJiraUnfixFilterId(e.target.value)}
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Unfix Filter IDs（未修復 bug，可多個）</label>
+                                        <div className="flex flex-wrap gap-1.5 mb-1.5">
+                                            {jiraUnfixFilterIds.map(id => (
+                                                <span key={id} className="flex items-center gap-1 px-2 py-0.5 bg-primary-50 text-primary-700 border border-primary-200 rounded text-xs font-medium">
+                                                    {id}
+                                                    <button type="button" onClick={() => setJiraUnfixFilterIds(prev => prev.filter(x => x !== id))} className="hover:text-red-500 leading-none">×</button>
+                                                </span>
+                                            ))}
+                                        </div>
+                                        <input
+                                            type="number" min={1} value={jiraUnfixInput}
+                                            onChange={e => setJiraUnfixInput(e.target.value)}
+                                            onKeyDown={e => {
+                                                if ((e.key === 'Enter' || e.key === ',') && jiraUnfixInput.trim()) {
+                                                    e.preventDefault();
+                                                    const id = parseInt(jiraUnfixInput.trim(), 10);
+                                                    if (!isNaN(id) && !jiraUnfixFilterIds.includes(id)) setJiraUnfixFilterIds(prev => [...prev, id]);
+                                                    setJiraUnfixInput('');
+                                                }
+                                            }}
+                                            onBlur={() => {
+                                                if (jiraUnfixInput.trim()) {
+                                                    const id = parseInt(jiraUnfixInput.trim(), 10);
+                                                    if (!isNaN(id) && !jiraUnfixFilterIds.includes(id)) setJiraUnfixFilterIds(prev => [...prev, id]);
+                                                    setJiraUnfixInput('');
+                                                }
+                                            }}
                                             className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
-                                            placeholder="18523" />
+                                            placeholder="輸入 ID 後按 Enter" />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium text-slate-700 mb-1">Total Filter ID（全部 issues）</label>
-                                        <input type="number" min={1} value={jiraTotalFilterId} onChange={e => setJiraTotalFilterId(e.target.value)}
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Total Filter IDs（全部 issues，可多個）</label>
+                                        <div className="flex flex-wrap gap-1.5 mb-1.5">
+                                            {jiraTotalFilterIds.map(id => (
+                                                <span key={id} className="flex items-center gap-1 px-2 py-0.5 bg-slate-100 text-slate-700 border border-slate-200 rounded text-xs font-medium">
+                                                    {id}
+                                                    <button type="button" onClick={() => setJiraTotalFilterIds(prev => prev.filter(x => x !== id))} className="hover:text-red-500 leading-none">×</button>
+                                                </span>
+                                            ))}
+                                        </div>
+                                        <input
+                                            type="number" min={1} value={jiraTotalInput}
+                                            onChange={e => setJiraTotalInput(e.target.value)}
+                                            onKeyDown={e => {
+                                                if ((e.key === 'Enter' || e.key === ',') && jiraTotalInput.trim()) {
+                                                    e.preventDefault();
+                                                    const id = parseInt(jiraTotalInput.trim(), 10);
+                                                    if (!isNaN(id) && !jiraTotalFilterIds.includes(id)) setJiraTotalFilterIds(prev => [...prev, id]);
+                                                    setJiraTotalInput('');
+                                                }
+                                            }}
+                                            onBlur={() => {
+                                                if (jiraTotalInput.trim()) {
+                                                    const id = parseInt(jiraTotalInput.trim(), 10);
+                                                    if (!isNaN(id) && !jiraTotalFilterIds.includes(id)) setJiraTotalFilterIds(prev => [...prev, id]);
+                                                    setJiraTotalInput('');
+                                                }
+                                            }}
                                             className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
-                                            placeholder="18522" />
+                                            placeholder="輸入 ID 後按 Enter" />
                                     </div>
                                 </div>
                                 <div>

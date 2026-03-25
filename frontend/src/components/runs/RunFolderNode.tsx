@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import { Folder, ChevronRight, ChevronDown, Plus, Edit2, Trash2, Copy } from 'lucide-react';
+import { Folder, ChevronRight, ChevronDown, Plus, Edit2, Trash2, Copy, MoreHorizontal } from 'lucide-react';
 
 interface TestRunFolder {
     id: number;
@@ -35,6 +35,18 @@ export default function RunFolderNode({
     runCount,
 }: RunFolderNodeProps) {
     const [isExpanded, setIsExpanded] = useState(false);
+    const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const menuRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+                setIsMenuOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     // 選中時自動展開以顯示子資料夾
     React.useEffect(() => {
@@ -99,46 +111,54 @@ export default function RunFolderNode({
                     )}
                 </div>
 
-                <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-inherit pl-1 pointer-events-auto shrink-0 pr-1">
-                    {onCopyFolder && (
-                        <button
-                            onClick={(e) => { e.stopPropagation(); onCopyFolder(folder.id); }}
-                            onPointerDown={(e) => e.stopPropagation()}
-                            className="p-1 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded transition-colors"
-                            title="批次複製資料夾內所有執行"
-                        >
-                            <Copy className="w-3.5 h-3.5" />
-                        </button>
-                    )}
-                    {onAddSubFolder && (
-                        <button
-                            onClick={(e) => { e.stopPropagation(); onAddSubFolder(folder.id); setIsExpanded(true); }}
-                            onPointerDown={(e) => e.stopPropagation()}
-                            className="p-1 text-slate-400 hover:text-primary-600 hover:bg-primary-50 rounded transition-colors"
-                            title="新增子資料夾"
-                        >
-                            <Plus className="w-3.5 h-3.5" />
-                        </button>
-                    )}
-                    {onEdit && (
-                        <button
-                            onClick={(e) => { e.stopPropagation(); onEdit(folder); }}
-                            onPointerDown={(e) => e.stopPropagation()}
-                            className="p-1 text-slate-400 hover:text-primary-600 hover:bg-primary-50 rounded transition-colors"
-                            title="編輯資料夾"
-                        >
-                            <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                    )}
-                    {onDelete && (
-                        <button
-                            onClick={(e) => { e.stopPropagation(); onDelete(folder.id); }}
-                            onPointerDown={(e) => e.stopPropagation()}
-                            className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                            title="刪除資料夾"
-                        >
-                            <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                <div className="relative opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto shrink-0 pr-1" ref={menuRef}>
+                    <button
+                        onClick={(e) => { e.stopPropagation(); setIsMenuOpen(prev => !prev); }}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 rounded transition-colors"
+                        title="更多操作"
+                    >
+                        <MoreHorizontal className="w-3.5 h-3.5" />
+                    </button>
+                    {isMenuOpen && (
+                        <div className="absolute right-0 top-full mt-0.5 w-40 bg-white border border-slate-200 rounded-lg shadow-lg z-50 py-1">
+                            {onCopyFolder && (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); onCopyFolder(folder.id); }}
+                                    onPointerDown={(e) => e.stopPropagation()}
+                                    className="w-full text-left px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                                >
+                                    <Copy className="w-3.5 h-3.5 text-emerald-500" /> 批次複製
+                                </button>
+                            )}
+                            {onAddSubFolder && (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); onAddSubFolder(folder.id); setIsExpanded(true); }}
+                                    onPointerDown={(e) => e.stopPropagation()}
+                                    className="w-full text-left px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                                >
+                                    <Plus className="w-3.5 h-3.5 text-primary-500" /> 新增子資料夾
+                                </button>
+                            )}
+                            {onEdit && (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); onEdit(folder); }}
+                                    onPointerDown={(e) => e.stopPropagation()}
+                                    className="w-full text-left px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                                >
+                                    <Edit2 className="w-3.5 h-3.5 text-blue-500" /> 編輯資料夾
+                                </button>
+                            )}
+                            {onDelete && (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); onDelete(folder.id); }}
+                                    onPointerDown={(e) => e.stopPropagation()}
+                                    className="w-full text-left px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                                >
+                                    <Trash2 className="w-3.5 h-3.5" /> 刪除資料夾
+                                </button>
+                            )}
+                        </div>
                     )}
                 </div>
             </div>

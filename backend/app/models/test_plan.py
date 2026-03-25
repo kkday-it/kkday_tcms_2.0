@@ -43,6 +43,8 @@ class TestPlan(Base):
     # Jira: filter id from https://kkday.atlassian.net/issues/?filter=18523
     jira_unfix_filter_id = Column(Integer, nullable=True)
     jira_total_filter_id = Column(Integer, nullable=True)
+    jira_unfix_filter_ids = Column(JSON, nullable=True)  # [int, ...] — multiple filter IDs
+    jira_total_filter_ids = Column(JSON, nullable=True)  # [int, ...]
     jira_display_fields = Column(JSON, nullable=True)  # ['key','summary','status','assignee','priority']
     jira_chart_filter_id = Column(Integer, nullable=True)
     jira_chart_field = Column(String, nullable=True)
