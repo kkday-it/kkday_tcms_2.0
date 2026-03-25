@@ -66,6 +66,8 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
                             cleaned = cleaned.replace(/&gt;/g, '>').replace(/&lt;/g, '<').replace(/&amp;/g, '&').replace(/&quot;/g, '"');
                             // Wrap in paragraph if it doesn't start with an HTML tag
                             if (cleaned && !cleaned.trim().startsWith('<')) {
+                                // Convert plain newlines to paragraph breaks
+                                cleaned = cleaned.replace(/\n/g, '</p><p>');
                                 cleaned = `<p>${cleaned}</p>`;
                             }
                             return cleaned.trim();
