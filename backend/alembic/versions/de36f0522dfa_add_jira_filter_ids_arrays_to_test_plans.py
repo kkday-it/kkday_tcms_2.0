@@ -9,7 +9,6 @@ from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects.postgresql import JSONB
 
 revision: str = "de36f0522dfa"
 down_revision: Union[str, Sequence[str], None] = "c9ed74549000"
@@ -19,8 +18,15 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Add jira_unfix_filter_ids and jira_total_filter_ids JSON array columns."""
-    op.add_column("tcms_test_plans", sa.Column("jira_unfix_filter_ids", JSONB(), nullable=True))
-    op.add_column("tcms_test_plans", sa.Column("jira_total_filter_ids", JSONB(), nullable=True))
+    bind = op.get_bind()
+    # Use JSONB on PostgreSQL, JSON (stored as TEXT) on SQLite
+    if bind.dialect.name == "postgresql":
+        from sqlalchemy.dialects.postgresql import JSONB
+        col_type = JSONB()
+    else:
+        col_type = sa.JSON()
+    op.add_column("tcms_test_plans", sa.Column("jira_unfix_filter_ids", col_type, nullable=True))
+    op.add_column("tcms_test_plans", sa.Column("jira_total_filter_ids", col_type, nullable=True))
 
 
 def downgrade() -> None:

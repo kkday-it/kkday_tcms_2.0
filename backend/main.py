@@ -60,6 +60,14 @@ async def lifespan(app: FastAPI):
                                 ALTER TABLE tcms_test_plans ADD COLUMN qa_docs JSON;
                                 ALTER TABLE tcms_test_plans ADD COLUMN mindmap_url TEXT;
                             END IF;
+
+                            IF NOT EXISTS (
+                                SELECT 1 FROM information_schema.columns
+                                WHERE table_name='tcms_test_plans' AND column_name='jira_unfix_filter_ids'
+                            ) THEN
+                                ALTER TABLE tcms_test_plans ADD COLUMN jira_unfix_filter_ids JSONB;
+                                ALTER TABLE tcms_test_plans ADD COLUMN jira_total_filter_ids JSONB;
+                            END IF;
                         END $$;
                         """
                     )
@@ -74,6 +82,11 @@ async def lifespan(app: FastAPI):
                     await conn.execute(__import__("sqlalchemy").text("ALTER TABLE tcms_test_plans ADD COLUMN ued_docs JSON"))
                     await conn.execute(__import__("sqlalchemy").text("ALTER TABLE tcms_test_plans ADD COLUMN qa_docs JSON"))
                     await conn.execute(__import__("sqlalchemy").text("ALTER TABLE tcms_test_plans ADD COLUMN mindmap_url TEXT"))
+                except Exception:
+                    pass
+                try:
+                    await conn.execute(__import__("sqlalchemy").text("ALTER TABLE tcms_test_plans ADD COLUMN jira_unfix_filter_ids JSON"))
+                    await conn.execute(__import__("sqlalchemy").text("ALTER TABLE tcms_test_plans ADD COLUMN jira_total_filter_ids JSON"))
                 except Exception:
                     pass
         logger.info("Column migration complete (google_id & test_plan docs check).")
