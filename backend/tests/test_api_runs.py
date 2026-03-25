@@ -392,3 +392,173 @@ class TestRunFoldersAPI:
         folder = (await client.post("/api/v1/run-folders/", json={"name": "Delete Me", "project_id": project_id})).json()
         res = await client.delete(f"/api/v1/run-folders/{folder['id']}")
         assert res.status_code == 200
+
+
+# ── KQT-14439: Run 帶有 folder_id ─────────────────────────────────────────────
+
+@allure.epic("TCMS API")
+@allure.feature("測試執行管理")
+@allure.story("Run folder_id 關聯")
+class TestRunFolderIdField:
+    async def test_create_run_without_folder_has_null_folder_id(self, client: AsyncClient, project_id: int):
+        """未指定 folder 時 folder_id 應為 null"""
+        run = await _create_run(client, project_id, "No Folder Run")
+        res = await client.get(f"/api/v1/runs/{run['id']}")
+        assert res.status_code == 200
+        assert res.json()["folder_id"] is None
+
+    async def test_create_run_with_folder_id(self, client: AsyncClient, project_id: int):
+        """建立 run 時可指定 folder_id，GET 應回傳相同值"""
+        folder = (await client.post("/api/v1/run-folders/", json={
+            "name": "Sprint Folder", "project_id": project_id
+        })).json()
+        run_res = await client.post("/api/v1/runs/", json={
+            "title": "Foldered Run",
+            "project_id": project_id,
+            "status": "Active",
+            "run_type": "Feature Test",
+            "folder_id": folder["id"],
+        })
+        assert run_res.status_code == 200
+        run = run_res.json()
+        res = await client.get(f"/api/v1/runs/{run['id']}")
+        assert res.json()["folder_id"] == folder["id"]
+
+    async def test_list_runs_filtered_by_folder(self, client: AsyncClient, project_id: int):
+        """folder 內的 run 應出現在 project runs 清單中（可用 folder_id 辨別）"""
+        folder = (await client.post("/api/v1/run-folders/", json={
+            "name": "Filtered Folder", "project_id": project_id
+        })).json()
+        await client.post("/api/v1/runs/", json={
+            "title": "In Folder", "project_id": project_id,
+            "status": "Active", "run_type": "Feature Test", "folder_id": folder["id"],
+        })
+        await _create_run(client, project_id, "No Folder")
+        all_runs = (await client.get(f"/api/v1/runs/project/{project_id}")).json()
+        in_folder = [r for r in all_runs if r.get("folder_id") == folder["id"]]
+        no_folder = [r for r in all_runs if r.get("folder_id") is None]
+        assert len(in_folder) >= 1
+        assert len(no_folder) >= 1
+
+
+# ── KQT-14441: Step actual_result 對所有狀態顯示 ──────────────────────────────
+
+@allure.epic("TCMS API")
+@allure.feature("測試執行管理")
+@allure.story("Step actual_result 對所有狀態")
+class TestStepActualResult:
+    async def _get_first_step(self, client: AsyncClient, result_id: int) -> dict | None:
+        """取得 result 的第一個 step"""
+        res = await client.get(f"/api/v1/results/{result_id}/details")
+        if res.status_code != 200:
+            return None
+        steps = res.json().get("steps", [])
+        return steps[0] if steps else None
+
+    async def test_actual_result_saved_when_step_failed(self, client: AsyncClient, project_id: int, suite_id: int):
+        """Failed 步驟可儲存 actual_result"""
+        await _create_case(client, suite_id, "Step Case")
+        run = await _create_run(client, project_id)
+        results = (await client.get(f"/api/v1/results/run/{run['id']}")).json()
+        if not results:
+            return
+        result_id = results[0]["id"]
+        step = await self._get_first_step(client, result_id)
+        if not step:
+            return
+        res = await client.put(
+            f"/api/v1/results/{result_id}/steps/{step['step_id']}",
+            json={"status": "Failed", "actual_result": "登入頁面沒有跳轉"},
+        )
+        assert res.status_code == 200
+        updated = await self._get_first_step(client, result_id)
+        assert updated["actual_result"] == "登入頁面沒有跳轉"
+        assert updated["status"] == "Failed"
+
+    async def test_actual_result_saved_when_step_passed(self, client: AsyncClient, project_id: int, suite_id: int):
+        """Passed 步驟也可儲存 actual_result（KQT-14441 核心行為）"""
+        await _create_case(client, suite_id, "Passed Step Case")
+        run = await _create_run(client, project_id)
+        results = (await client.get(f"/api/v1/results/run/{run['id']}")).json()
+        if not results:
+            return
+        result_id = results[0]["id"]
+        step = await self._get_first_step(client, result_id)
+        if not step:
+            return
+        res = await client.put(
+            f"/api/v1/results/{result_id}/steps/{step['step_id']}",
+            json={"status": "Passed", "actual_result": "頁面成功跳轉至首頁"},
+        )
+        assert res.status_code == 200
+        updated = await self._get_first_step(client, result_id)
+        assert updated["actual_result"] == "頁面成功跳轉至首頁"
+        assert updated["status"] == "Passed"
+
+    async def test_actual_result_saved_when_step_untested(self, client: AsyncClient, project_id: int, suite_id: int):
+        """Untested 步驟也可預先填寫 actual_result"""
+        await _create_case(client, suite_id, "Untested Step Case")
+        run = await _create_run(client, project_id)
+        results = (await client.get(f"/api/v1/results/run/{run['id']}")).json()
+        if not results:
+            return
+        result_id = results[0]["id"]
+        step = await self._get_first_step(client, result_id)
+        if not step:
+            return
+        res = await client.put(
+            f"/api/v1/results/{result_id}/steps/{step['step_id']}",
+            json={"status": "Untested", "actual_result": "尚未執行，預填備注"},
+        )
+        assert res.status_code == 200
+        updated = await self._get_first_step(client, result_id)
+        assert updated["actual_result"] == "尚未執行，預填備注"
+
+    async def test_actual_result_can_be_updated_independently(self, client: AsyncClient, project_id: int, suite_id: int):
+        """actual_result 可在不改變 status 的情況下更新"""
+        await _create_case(client, suite_id, "Update Only AR")
+        run = await _create_run(client, project_id)
+        results = (await client.get(f"/api/v1/results/run/{run['id']}")).json()
+        if not results:
+            return
+        result_id = results[0]["id"]
+        step = await self._get_first_step(client, result_id)
+        if not step:
+            return
+        # 先設 Failed + actual_result
+        await client.put(
+            f"/api/v1/results/{result_id}/steps/{step['step_id']}",
+            json={"status": "Failed", "actual_result": "第一次填寫"},
+        )
+        # 再更新 actual_result，status 維持 Failed
+        res = await client.put(
+            f"/api/v1/results/{result_id}/steps/{step['step_id']}",
+            json={"status": "Failed", "actual_result": "修改後的內容"},
+        )
+        assert res.status_code == 200
+        updated = await self._get_first_step(client, result_id)
+        assert updated["actual_result"] == "修改後的內容"
+        assert updated["status"] == "Failed"
+
+    async def test_actual_result_empty_string_allowed(self, client: AsyncClient, project_id: int, suite_id: int):
+        """actual_result 可設為空字串（清空）"""
+        await _create_case(client, suite_id, "Clear AR Case")
+        run = await _create_run(client, project_id)
+        results = (await client.get(f"/api/v1/results/run/{run['id']}")).json()
+        if not results:
+            return
+        result_id = results[0]["id"]
+        step = await self._get_first_step(client, result_id)
+        if not step:
+            return
+        # 先填入
+        await client.put(
+            f"/api/v1/results/{result_id}/steps/{step['step_id']}",
+            json={"status": "Failed", "actual_result": "some text"},
+        )
+        # 清空
+        res = await client.put(
+            f"/api/v1/results/{result_id}/steps/{step['step_id']}",
+            json={"status": "Passed", "actual_result": ""},
+        )
+        assert res.status_code == 200

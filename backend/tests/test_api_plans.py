@@ -349,3 +349,92 @@ class TestActorId:
         history_res = await client.get(f"/api/v1/plans/{plan['id']}/history")
         user_ids = [h["user_id"] for h in history_res.json()]
         assert 7 in user_ids
+
+
+# ── KQT-14444: 多個 Jira Filter IDs ──────────────────────────────────────────
+
+@allure.epic("TCMS API")
+@allure.feature("測試計畫管理")
+@allure.story("多 Jira Filter IDs")
+class TestPlanJiraFilterIds:
+    async def test_create_plan_with_jira_unfix_filter_ids(self, client: AsyncClient, project_id: int):
+        """建立計劃時可設定多個 unfix filter ID"""
+        res = await client.post("/api/v1/plans/", json={
+            "title": "Multi Filter Plan",
+            "project_id": project_id,
+            "status": "Draft",
+            "jira_unfix_filter_ids": [18523, 18524, 18525],
+        })
+        assert res.status_code == 200
+        plan = res.json()
+        assert plan["jira_unfix_filter_ids"] == [18523, 18524, 18525]
+
+    async def test_create_plan_with_jira_total_filter_ids(self, client: AsyncClient, project_id: int):
+        """建立計劃時可設定多個 total filter ID"""
+        res = await client.post("/api/v1/plans/", json={
+            "title": "Total Filter Plan",
+            "project_id": project_id,
+            "status": "Draft",
+            "jira_total_filter_ids": [11111, 22222],
+        })
+        assert res.status_code == 200
+        plan = res.json()
+        assert plan["jira_total_filter_ids"] == [11111, 22222]
+
+    async def test_plan_response_includes_filter_ids_fields(self, client: AsyncClient, project_id: int):
+        """plan response 必須包含 jira_unfix_filter_ids / jira_total_filter_ids 欄位"""
+        plan = await _create_plan(client, project_id)
+        res = await client.get(f"/api/v1/plans/{plan['id']}")
+        assert res.status_code == 200
+        data = res.json()
+        assert "jira_unfix_filter_ids" in data
+        assert "jira_total_filter_ids" in data
+
+    async def test_create_plan_filter_ids_default_null(self, client: AsyncClient, project_id: int):
+        """未設定時 filter IDs 應為 null"""
+        plan = await _create_plan(client, project_id)
+        res = await client.get(f"/api/v1/plans/{plan['id']}")
+        data = res.json()
+        assert data["jira_unfix_filter_ids"] is None
+        assert data["jira_total_filter_ids"] is None
+
+    async def test_update_plan_jira_filter_ids(self, client: AsyncClient, project_id: int):
+        """更新計劃可修改 filter ID 清單"""
+        plan = await _create_plan(client, project_id)
+        res = await client.put(f"/api/v1/plans/{plan['id']}", json={
+            "jira_unfix_filter_ids": [100, 200],
+            "jira_total_filter_ids": [300],
+        })
+        assert res.status_code == 200
+        data = res.json()
+        assert data["jira_unfix_filter_ids"] == [100, 200]
+        assert data["jira_total_filter_ids"] == [300]
+
+    async def test_update_plan_clear_filter_ids(self, client: AsyncClient, project_id: int):
+        """更新計劃可清空 filter ID 清單"""
+        plan = (await client.post("/api/v1/plans/", json={
+            "title": "Clear Filter Plan",
+            "project_id": project_id,
+            "status": "Draft",
+            "jira_unfix_filter_ids": [18523],
+        })).json()
+        res = await client.put(f"/api/v1/plans/{plan['id']}", json={
+            "jira_unfix_filter_ids": None,
+        })
+        assert res.status_code == 200
+        get_res = await client.get(f"/api/v1/plans/{plan['id']}")
+        assert get_res.json()["jira_unfix_filter_ids"] is None
+
+    async def test_plan_preserves_single_filter_id_alongside_ids(self, client: AsyncClient, project_id: int):
+        """舊的 single filter ID 與新的 filter IDs 可並存"""
+        res = await client.post("/api/v1/plans/", json={
+            "title": "Compat Plan",
+            "project_id": project_id,
+            "status": "Draft",
+            "jira_unfix_filter_id": 18523,
+            "jira_unfix_filter_ids": [18523, 18524],
+        })
+        assert res.status_code == 200
+        data = res.json()
+        assert data["jira_unfix_filter_id"] == 18523
+        assert data["jira_unfix_filter_ids"] == [18523, 18524]

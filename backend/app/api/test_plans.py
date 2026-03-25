@@ -65,6 +65,8 @@ def _plan_to_response(plan: TestPlan) -> dict:
         "timeline": getattr(plan, "timeline", None),
         "jira_unfix_filter_id": getattr(plan, "jira_unfix_filter_id", None),
         "jira_total_filter_id": getattr(plan, "jira_total_filter_id", None),
+        "jira_unfix_filter_ids": getattr(plan, "jira_unfix_filter_ids", None),
+        "jira_total_filter_ids": getattr(plan, "jira_total_filter_ids", None),
         "jira_display_fields": getattr(plan, "jira_display_fields", None)
         or ["key", "summary", "status", "assignee", "priority"],
         "created_at": plan.created_at,
@@ -248,6 +250,8 @@ async def _build_list_response(db: AsyncSession, plans: list[TestPlan]) -> list[
             "timeline": getattr(plan, "timeline", None),
             "jira_unfix_filter_id": getattr(plan, "jira_unfix_filter_id", None),
             "jira_total_filter_id": getattr(plan, "jira_total_filter_id", None),
+            "jira_unfix_filter_ids": getattr(plan, "jira_unfix_filter_ids", None),
+            "jira_total_filter_ids": getattr(plan, "jira_total_filter_ids", None),
             "jira_display_fields": getattr(plan, "jira_display_fields", None)
             or ["key", "summary", "status", "assignee", "priority"],
             "created_at": plan.created_at,
@@ -404,6 +408,8 @@ async def clone_test_plan(plan_id: int, db: AsyncSession = Depends(get_db), acto
         timeline=getattr(original, "timeline", None),
         jira_unfix_filter_id=getattr(original, "jira_unfix_filter_id", None),
         jira_total_filter_id=getattr(original, "jira_total_filter_id", None),
+        jira_unfix_filter_ids=getattr(original, "jira_unfix_filter_ids", None),
+        jira_total_filter_ids=getattr(original, "jira_total_filter_ids", None),
         jira_display_fields=getattr(original, "jira_display_fields", None),
     )
     db.add(new_plan)
