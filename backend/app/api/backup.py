@@ -6,6 +6,7 @@ POST /backup/restore?project_id=1  → 上傳 ZIP 還原
 
 import io
 import json
+import os
 import zipfile
 from datetime import datetime, timezone
 from typing import Optional
@@ -240,6 +241,15 @@ async def create_backup(
     plans_data = await _export_plans(project_id, db)
     dashboard_data = await _export_dashboard(db)
 
+    # Collect uploaded image files to include in the backup
+    uploads_dir = "uploads"
+    upload_files: list[str] = []
+    if os.path.isdir(uploads_dir):
+        upload_files = [
+            f for f in os.listdir(uploads_dir)
+            if os.path.isfile(os.path.join(uploads_dir, f))
+        ]
+
     buf = io.BytesIO()
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
@@ -257,8 +267,12 @@ async def create_backup(
                 "cases": len(cases_full_data),
                 "runs": len(runs_data),
                 "plans": len(plans_data),
+                "uploads": len(upload_files),
             },
         }, ensure_ascii=False, indent=2))
+        # Pack all uploaded image files under uploads/ folder inside the ZIP
+        for fname in upload_files:
+            zf.write(os.path.join(uploads_dir, fname), arcname=f"uploads/{fname}")
     buf.seek(0)
 
     filename = f"tcms_backup_project{project_id}_{timestamp}.zip"
@@ -547,6 +561,23 @@ async def restore_backup(
 
     await db.commit()
 
+    # ── 5. 還原上傳圖片 ───────────────────────────────────────────
+    uploads_dir = "uploads"
+    os.makedirs(uploads_dir, exist_ok=True)
+    restored_uploads = 0
+    with zipfile.ZipFile(io.BytesIO(content)) as zf:
+        for name in zf.namelist():
+            if not name.startswith("uploads/"):
+                continue
+            fname = os.path.basename(name)
+            if not fname:  # skip directory entries
+                continue
+            dest_path = os.path.join(uploads_dir, fname)
+            if not os.path.exists(dest_path):
+                with zf.open(name) as src, open(dest_path, "wb") as dest:
+                    dest.write(src.read())
+                restored_uploads += 1
+
     return {
         "status": "success",
         "target_project_id": target_project_id,
@@ -556,6 +587,7 @@ async def restore_backup(
             "runs": summary["runs"],
             "results": summary["results"],
             "plans": summary["plans"],
+            "uploads": restored_uploads,
         },
         "skipped_count": len(summary["skipped"]),
     }
