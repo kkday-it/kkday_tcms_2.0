@@ -525,7 +525,7 @@ async def get_jira_issues_by_filter(
         from app.services.jira_issues import _get_filter_info, fetch_issues_by_filter_id
         from app.core.config import settings
         filter_info = _get_filter_info(filter_id)
-        issues = fetch_issues_by_filter_id(filter_id=filter_id, fields=field_list, max_results=500)
+        issues = fetch_issues_by_filter_id(filter_id=filter_id, fields=field_list, max_results=500, jql=filter_info["jql"])
         return {
             "issues": issues,
             "filter_id": filter_id,

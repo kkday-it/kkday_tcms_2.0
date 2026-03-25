@@ -61,12 +61,15 @@ def fetch_issues_by_filter_id(
     filter_id: int,
     fields: Optional[list[str]] = None,
     max_results: int = 100,
+    jql: Optional[str] = None,
 ) -> list[dict[str, Any]]:
     """
     Fetch Jira issues for a filter ID.
     Uses GET /rest/api/3/filter/{id} to get JQL, then POST /rest/api/3/search.
+    Pass ``jql`` to skip the filter-info HTTP request when JQL is already known.
     """
-    jql = _get_filter_jql(filter_id)
+    if jql is None:
+        jql = _get_filter_jql(filter_id)
     fields = fields or DEFAULT_FIELDS
     jira_fields = [FIELD_MAP.get(f, f) for f in fields]
 

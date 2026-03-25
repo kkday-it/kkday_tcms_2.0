@@ -563,12 +563,16 @@ export default function Repository() {
     const [isXmindModalOpen, setIsXmindModalOpen] = useState(false);
     const [openMenu, setOpenMenu] = useState<null | 'import' | 'export'>(null);
     const menuRef = useRef<HTMLDivElement>(null);
+    const exportMenuRef = useRef<HTMLDivElement>(null);
     const [isSyncingDify, setIsSyncingDify] = useState(false);
 
     // Close dropdown when clicking outside
     useEffect(() => {
         const handleClickOutside = (e: MouseEvent) => {
-            if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+            const target = e.target as Node;
+            const insideImport = menuRef.current?.contains(target);
+            const insideExport = exportMenuRef.current?.contains(target);
+            if (!insideImport && !insideExport) {
                 setOpenMenu(null);
             }
         };
@@ -946,7 +950,7 @@ export default function Repository() {
                                     </div>
                                     <span className="text-sm font-semibold text-slate-700">匯出測試案例</span>
                                 </div>
-                                <div className="relative" ref={menuRef}>
+                                <div className="relative" ref={exportMenuRef}>
                                     <button
                                         onClick={() => setOpenMenu(prev => prev === 'export' ? null : 'export')}
                                         className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 transition-colors shadow-sm"
