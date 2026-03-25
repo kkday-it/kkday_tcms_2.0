@@ -289,46 +289,70 @@ export default function TestCasePreviewPane({ isOpen, onClose, caseId, onEditCli
                                     <div className="text-center p-8 text-slate-500">此測試案例尚無歷史紀錄。</div>
                                 ) : (
                                     <div className="space-y-6 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-200 before:to-transparent">
-                                        {historyLogs.map((log: any, idx: number) => {
-                                            const ActionColor = log.action === 'Created' ? 'bg-emerald-500' : 'bg-blue-500';
-                                            let changesObj: any = {};
-                                            try {
-                                                if (log.changed_fields) {
-                                                    changesObj = JSON.parse(log.changed_fields);
-                                                }
-                                            } catch (e) { }
+                                        {(() => {
+                                            const ACTION_ZH: Record<string, string> = {
+                                                Created: '建立',
+                                                Updated: '更新',
+                                                Archived: '封存',
+                                                Restored: '還原',
+                                                Moved: '移動',
+                                            };
+                                            const FIELD_ZH: Record<string, string> = {
+                                                title: '標題',
+                                                status: '狀態',
+                                                suite_id: 'Suite',
+                                                priority: '優先級',
+                                                layer: '層級',
+                                                type: '類型',
+                                                automation_status: '自動化',
+                                                preconditions: '前置條件',
+                                                steps: '測試步驟',
+                                                tags: '標籤',
+                                                labels: '分類',
+                                                jira_keys: 'Jira Keys',
+                                                external_id: '外部 ID',
+                                                description: '描述',
+                                            };
+                                            return historyLogs.map((log: any, idx: number) => {
+                                                const actionZh = ACTION_ZH[log.action] ?? log.action;
+                                                const ActionColor = log.action === 'Created' ? 'bg-emerald-500' : 'bg-blue-500';
+                                                let changesObj: any = {};
+                                                try {
+                                                    if (log.changed_fields) changesObj = JSON.parse(log.changed_fields);
+                                                } catch (e) { }
 
-                                            return (
-                                                <div key={log.id || idx} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
-                                                    {/* Event dot */}
-                                                    <div className={`flex items-center justify-center w-3 h-3 rounded-full border-4 border-white ${ActionColor} shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 z-10`}></div>
+                                                return (
+                                                    <div key={log.id || idx} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
+                                                        {/* Event dot */}
+                                                        <div className={`flex items-center justify-center w-3 h-3 rounded-full border-4 border-white ${ActionColor} shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 z-10`}></div>
 
-                                                    {/* Card */}
-                                                    <div className="w-[calc(100%-2rem)] md:w-[calc(50%-1.5rem)] p-4 rounded-xl border border-slate-200 bg-white shadow-sm hover:shadow-md transition-shadow">
-                                                        <div className="flex items-center justify-between mb-1">
-                                                            <span className="font-semibold text-slate-900 text-sm">{log.action}</span>
-                                                            <span className="text-xs text-slate-400 font-mono">
-                                                                {new Date(log.created_at).toLocaleString([], { month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                                                            </span>
-                                                        </div>
-                                                        <div className="text-xs text-slate-500 mb-2">
-                                                            由 <span className="font-medium text-slate-700">{log.user?.full_name || log.user?.username || '系統'}</span>
-                                                        </div>
-
-                                                        {Object.keys(changesObj).length > 0 && (
-                                                            <div className="mt-3 space-y-1.5 bg-slate-50 p-2.5 rounded text-xs font-mono">
-                                                                {Object.entries(changesObj).map(([field, delta]: [string, any]) => (
-                                                                    <div key={field} className="flex flex-col gap-0.5">
-                                                                        <span className="font-semibold text-slate-600 capitalize">{field.replace('_', ' ')}:</span>
-                                                                        <span className="text-slate-500 pl-2 break-all">{delta}</span>
-                                                                    </div>
-                                                                ))}
+                                                        {/* Card */}
+                                                        <div className="w-[calc(100%-2rem)] md:w-[calc(50%-1.5rem)] p-4 rounded-xl border border-slate-200 bg-white shadow-sm hover:shadow-md transition-shadow">
+                                                            <div className="flex items-center justify-between mb-1">
+                                                                <span className="font-semibold text-slate-900 text-sm">{actionZh}</span>
+                                                                <span className="text-xs text-slate-400 font-mono">
+                                                                    {new Date(log.created_at).toLocaleString([], { month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                                                </span>
                                                             </div>
-                                                        )}
+                                                            <div className="text-xs text-slate-500 mb-2">
+                                                                由 <span className="font-medium text-slate-700">{log.user?.full_name || log.user?.username || '系統'}</span>
+                                                            </div>
+
+                                                            {Object.keys(changesObj).length > 0 && (
+                                                                <div className="mt-3 space-y-1.5 bg-slate-50 p-2.5 rounded text-xs font-mono">
+                                                                    {Object.entries(changesObj).map(([field, delta]: [string, any]) => (
+                                                                        <div key={field} className="flex flex-col gap-0.5">
+                                                                            <span className="font-semibold text-slate-600">{FIELD_ZH[field] ?? field}:</span>
+                                                                            <span className="text-slate-500 pl-2 break-all">{String(delta)}</span>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            );
-                                        })}
+                                                );
+                                            });
+                                        })()}
                                     </div>
                                 )}
                             </div>
