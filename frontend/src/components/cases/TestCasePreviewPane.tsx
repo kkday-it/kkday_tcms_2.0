@@ -297,6 +297,11 @@ export default function TestCasePreviewPane({ isOpen, onClose, caseId, onEditCli
                                                 Restored: '還原',
                                                 Moved: '移動',
                                             };
+                                            const VALUE_ZH: Record<string, string> = {
+                                                'Steps modified (Smart Update)': '測試步驟已更新',
+                                                'Active -> Archived': '啟用 → 封存',
+                                                'Archived -> Active': '封存 → 啟用',
+                                            };
                                             const FIELD_ZH: Record<string, string> = {
                                                 title: '標題',
                                                 status: '狀態',
@@ -343,7 +348,7 @@ export default function TestCasePreviewPane({ isOpen, onClose, caseId, onEditCli
                                                                     {Object.entries(changesObj).map(([field, delta]: [string, any]) => (
                                                                         <div key={field} className="flex flex-col gap-0.5">
                                                                             <span className="font-semibold text-slate-600">{FIELD_ZH[field] ?? field}:</span>
-                                                                            <span className="text-slate-500 pl-2 break-all">{String(delta)}</span>
+                                                                            <span className="text-slate-500 pl-2 break-all">{VALUE_ZH[String(delta)] ?? String(delta)}</span>
                                                                         </div>
                                                                     ))}
                                                                 </div>

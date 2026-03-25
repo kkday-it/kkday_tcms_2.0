@@ -319,7 +319,7 @@ async def update_case(case_id: int, case_in: TestCaseUpdate, db: AsyncSession = 
                 # but we usually just filter it out in the relationship query.
             
     if steps_changed:
-        changes["steps"] = "Steps modified (Smart Update)"
+        changes["steps"] = "測試步驟已更新"
 
     if changes:
         history = TestCaseHistory(
