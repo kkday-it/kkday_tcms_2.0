@@ -121,7 +121,7 @@ export default function RunFolderNode({
                         <MoreHorizontal className="w-3.5 h-3.5" />
                     </button>
                     {isMenuOpen && (
-                        <div className="absolute right-0 top-full mt-0.5 w-40 bg-white border border-slate-200 rounded-lg shadow-lg z-50 py-1">
+                        <div className="absolute right-0 bottom-full mb-0.5 w-40 bg-white border border-slate-200 rounded-lg shadow-lg z-50 py-1">
                             {onCopyFolder && (
                                 <button
                                     onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); onCopyFolder(folder.id); }}
