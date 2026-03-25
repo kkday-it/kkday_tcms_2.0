@@ -639,7 +639,7 @@ export default function TestRuns() {
                                 initialFolderId={activeFolderId !== null ? activeFolderId : undefined}
                                 onCreated={(runId) => {
                                     fetchRuns();
-                                    navigate(`/runs/${runId}`);
+                                    navigate(`/runs/${runId}${activeFolderId ? `?from_folder=${activeFolderId}` : ''}`);
                                 }}
                             />
 
@@ -671,7 +671,7 @@ export default function TestRuns() {
                                         <DraggableRunCard
                                             key={`run-${run.id}`}
                                             run={run}
-                                            onClick={() => navigate(`/runs/${run.id}`)}
+                                            onClick={() => navigate(`/runs/${run.id}${activeFolderId ? `?from_folder=${activeFolderId}` : ''}`)}
                                             onEdit={(e) => { e.stopPropagation(); setEditingRun(run); }}
                                             onDuplicate={(e) => handleDuplicateRun(e, run.id, run.title)}
                                             onDelete={(e) => handleDeleteRun(e, run.id)}

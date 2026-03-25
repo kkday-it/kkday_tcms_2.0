@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useSearchParams } from 'react-router-dom';
 import { Loader2, ArrowLeft, CheckCircle2, XCircle, SkipForward, Edit2, Filter, X, Save, Ban } from 'lucide-react';
 import api from '../lib/api';
 import { useUsers } from '../lib/useUsers';
@@ -46,6 +46,8 @@ function parseJsonList(raw?: string): string[] {
 
 export default function TestRunDetails() {
     const { runId } = useParams();
+    const [searchParams] = useSearchParams();
+    const fromFolder = searchParams.get('from_folder');
     const [results, setResults] = useState<TestResult[]>([]);
     const [testRun, setTestRun] = useState<any | null>(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -293,7 +295,7 @@ export default function TestRunDetails() {
             {/* ── Header ─────────────────────────────────────────────────────── */}
             <div className="px-8 py-6 border-b border-slate-200 bg-white shadow-sm z-10">
                 <div className="flex items-center gap-4 mb-4">
-                    <Link to={testRun?.folder_id ? `/runs?folder=${testRun.folder_id}` : '/runs'} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500 transition-colors">
+                    <Link to={fromFolder ? `/runs?folder=${fromFolder}` : testRun?.folder_id ? `/runs?folder=${testRun.folder_id}` : '/runs'} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500 transition-colors">
                         <ArrowLeft className="w-5 h-5" />
                     </Link>
                     <h1 className="text-2xl font-bold text-slate-900">{testRun?.title || 'Test Run Execution'}</h1>
