@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Plus, Trash2, Save, Loader2 } from 'lucide-react';
+import { X, Plus, Trash2, Save, Loader2, ImagePlus } from 'lucide-react';
 import api from '../../lib/api';
 import { useUsers } from '../../lib/useUsers';
 import TagInput from '../common/TagInput';
@@ -35,6 +35,7 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
     const [steps, setSteps] = useState<TestStep[]>([{ action: '', data: '', expected_result: '' }]);
     const [isSaving, setIsSaving] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
+    const [uploadingStep, setUploadingStep] = useState<number | null>(null);
     const { users } = useUsers();
     const [availableLabels, setAvailableLabels] = useState<string[]>([]);
 
@@ -156,10 +157,32 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
         setSteps(newSteps);
     };
 
+    const handleImageUpload = async (idx: number, e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setUploadingStep(idx);
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            const res = await api.post('/uploads/', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+            });
+            const imgHtml = `<img src="${res.data.url}" alt="screenshot" style="max-width:100%;" />`;
+            const current = steps[idx].expected_result;
+            handleStepChange(idx, 'expected_result', current + imgHtml);
+        } catch (err) {
+            console.error('Image upload failed', err);
+            alert('圖片上傳失敗，請重試');
+        } finally {
+            setUploadingStep(null);
+            e.target.value = '';
+        }
+    };
 
     const handleSave = async () => {
         if (!title.trim()) {
-            alert("Title is required");
+            alert("請填寫標題");
             return;
         }
 
@@ -205,7 +228,7 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
             } else {
                 // Create
                 if (!suiteId) {
-                    alert("Suite ID is missing");
+                    alert("缺少 Suite ID");
                     return;
                 }
                 await api.post(`/cases/`, payload);
@@ -214,7 +237,7 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
             onClose();
         } catch (error) {
             console.error("Failed to save case", error);
-            alert("Failed to save test case. Please check console.");
+            alert("儲存失敗，請查看主控台記錄");
         } finally {
             setIsSaving(false);
         }
@@ -225,7 +248,7 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
             <div className="relative w-full h-full bg-white flex flex-col overflow-hidden max-w-7xl mx-auto xl:shadow-2xl xl:my-4 xl:rounded-xl xl:h-[calc(100vh-2rem)] border border-slate-200">
                 {/* Header */}
                 <div className="flex items-center justify-between px-8 py-5 border-b border-slate-200 bg-white">
-                    <h2 className="text-xl font-bold text-slate-900">{caseId ? `Edit TC-${caseId}` : 'Create Test Case'}</h2>
+                    <h2 className="text-xl font-bold text-slate-900">{caseId ? `編輯 TC-${caseId}` : '建立測試案例'}</h2>
                     <button onClick={onClose} disabled={isSaving} className="p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 rounded-md transition-colors disabled:opacity-50">
                         <X className="w-5 h-5" />
                     </button>
@@ -242,11 +265,11 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
                             {/* Basic Info */}
                             <section className="space-y-5">
                                 <div>
-                                    <label className="block text-sm font-semibold text-slate-900 mb-1.5">Title <span className="text-rose-500">*</span></label>
+                                    <label className="block text-sm font-semibold text-slate-900 mb-1.5">標題 <span className="text-rose-500">*</span></label>
                                     <input
                                         type="text"
                                         className="w-full rounded-md border border-slate-200 py-2 px-3 text-slate-900 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 sm:text-sm"
-                                        placeholder="Enter test case title"
+                                        placeholder="請輸入測試案例標題"
                                         value={title}
                                         onChange={(e) => setTitle(e.target.value)}
                                         autoFocus
@@ -255,7 +278,7 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
 
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
                                     <div>
-                                        <label className="block text-sm font-semibold text-slate-900 mb-1.5">Status</label>
+                                        <label className="block text-sm font-semibold text-slate-900 mb-1.5">狀態</label>
                                         <select
                                             value={lifecycleStatus}
                                             onChange={(e) => setLifecycleStatus(e.target.value)}
@@ -266,20 +289,20 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
                                         </select>
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-semibold text-slate-900 mb-1.5">Assignee</label>
+                                        <label className="block text-sm font-semibold text-slate-900 mb-1.5">負責人</label>
                                         <select
                                             value={defaultOwnerId}
                                             onChange={(e) => setDefaultOwnerId(e.target.value ? Number(e.target.value) : '')}
                                             className="w-full rounded-md border border-slate-200 py-2 px-3 text-slate-900 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 sm:text-sm bg-white"
                                         >
-                                            <option value="">Unassigned</option>
+                                            <option value="">未指定</option>
                                             {users.map(u => (
                                                 <option key={u.id} value={u.id}>{u.username}</option>
                                             ))}
                                         </select>
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-semibold text-slate-900 mb-1.5">Priority</label>
+                                        <label className="block text-sm font-semibold text-slate-900 mb-1.5">優先級</label>
                                         <select
                                             value={priority}
                                             onChange={(e) => setPriority(e.target.value)}
@@ -292,7 +315,7 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
                                         </select>
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-semibold text-slate-900 mb-1.5">Automation</label>
+                                        <label className="block text-sm font-semibold text-slate-900 mb-1.5">自動化</label>
                                         <select
                                             value={automationStatus}
                                             onChange={(e) => setAutomationStatus(e.target.value)}
@@ -306,7 +329,7 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
 
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
                                     <div>
-                                        <label className="block text-sm font-semibold text-slate-900 mb-1.5">Layer</label>
+                                        <label className="block text-sm font-semibold text-slate-900 mb-1.5">層級</label>
                                         <select
                                             value={layer}
                                             onChange={(e) => setLayer(e.target.value)}
@@ -318,7 +341,7 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
                                         </select>
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-semibold text-slate-900 mb-1.5">Type</label>
+                                        <label className="block text-sm font-semibold text-slate-900 mb-1.5">類型</label>
                                         <select
                                             value={type}
                                             onChange={(e) => setType(e.target.value)}
@@ -337,7 +360,7 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
                             {/* Zephyr / External Fields */}
                             <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 border-t border-slate-100 pt-5">
                                 <div>
-                                    <label className="block text-sm font-semibold text-slate-900 mb-1.5">External ID (Zephyr)</label>
+                                    <label className="block text-sm font-semibold text-slate-900 mb-1.5">外部 ID (Zephyr)</label>
                                     <input
                                         type="text"
                                         className="w-full rounded-md border border-slate-200 py-2 px-3 text-slate-900 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 sm:text-sm"
@@ -348,7 +371,7 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
                                 </div>
                                 <div className="self-end" style={{ zIndex: 30 }}>
                                     <TagInput
-                                        label="Tags"
+                                        label="標籤"
                                         placeholder="Web, Regression"
                                         value={tags}
                                         onChange={setTags}
@@ -379,12 +402,12 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
                             {/* Preconditions */}
                             <section>
                                 <div className="flex items-center justify-between mb-1.5">
-                                    <label className="block text-sm font-semibold text-slate-900">Preconditions</label>
+                                    <label className="block text-sm font-semibold text-slate-900">前置條件</label>
                                 </div>
                                 <RichTextEditor
                                     value={preconditions}
                                     onChange={setPreconditions}
-                                    placeholder="Conditions required before execution..."
+                                    placeholder="執行前的必要條件..."
                                     minHeight="96px"
                                 />
                             </section>
@@ -392,7 +415,7 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
                             {/* Steps */}
                             <section>
                                 <div className="flex items-center justify-between mb-3 border-b border-slate-100 pb-2">
-                                    <h3 className="text-sm font-semibold text-slate-900">Test Steps</h3>
+                                    <h3 className="text-sm font-semibold text-slate-900">測試步驟</h3>
                                 </div>
 
                                 <div className="space-y-2">
@@ -403,29 +426,49 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
                                             </div>
                                             <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-3">
                                                 <div className="flex flex-col gap-1">
-                                                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Action</span>
+                                                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">操作</span>
                                                     <RichTextEditor
                                                         value={step.action}
                                                         onChange={(v: string) => handleStepChange(idx, 'action', v)}
-                                                        placeholder="Action"
+                                                        placeholder="操作步驟"
                                                         minHeight="48px"
                                                     />
                                                 </div>
                                                 <div className="flex flex-col gap-1">
-                                                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Test Data</span>
+                                                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">測試資料</span>
                                                     <RichTextEditor
                                                         value={step.data || ''}
                                                         onChange={(v: string) => handleStepChange(idx, 'data', v)}
-                                                        placeholder="Test Data (optional)"
+                                                        placeholder="測試資料（可選）"
                                                         minHeight="48px"
                                                     />
                                                 </div>
                                                 <div className="flex flex-col gap-1">
-                                                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Expected Result</span>
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">預期結果</span>
+                                                        <label
+                                                            htmlFor={`img-upload-${idx}`}
+                                                            className="cursor-pointer flex items-center gap-1 text-[10px] text-slate-400 hover:text-primary-600 transition-colors"
+                                                            title="上傳圖片"
+                                                        >
+                                                            {uploadingStep === idx
+                                                                ? <Loader2 className="w-3 h-3 animate-spin" />
+                                                                : <ImagePlus className="w-3 h-3" />
+                                                            }
+                                                            <span>圖片</span>
+                                                        </label>
+                                                        <input
+                                                            id={`img-upload-${idx}`}
+                                                            type="file"
+                                                            accept="image/*"
+                                                            className="hidden"
+                                                            onChange={(e) => handleImageUpload(idx, e)}
+                                                        />
+                                                    </div>
                                                     <RichTextEditor
                                                         value={step.expected_result}
                                                         onChange={(v: string) => handleStepChange(idx, 'expected_result', v)}
-                                                        placeholder="Expected Result"
+                                                        placeholder="預期結果"
                                                         minHeight="48px"
                                                     />
                                                 </div>
@@ -437,17 +480,17 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
                                     ))}
                                 </div>
                                 <button onClick={handleAddStep} className="mt-3 text-sm text-primary-600 hover:text-primary-700 font-medium flex items-center gap-1">
-                                    <Plus className="w-4 h-4" /> Add Step
+                                    <Plus className="w-4 h-4" /> 新增步驟
                                 </button>
                             </section>
                         </div>
 
                         {/* Footer */}
                         <div className="px-8 py-4 border-t border-slate-200 bg-slate-50 flex justify-end gap-3 z-10">
-                            <button onClick={onClose} disabled={isSaving} className="btn-secondary disabled:opacity-50">Cancel</button>
+                            <button onClick={onClose} disabled={isSaving} className="btn-secondary disabled:opacity-50">取消</button>
                             <button onClick={handleSave} disabled={isSaving} className="btn-primary flex items-center gap-2 shadow-sm disabled:opacity-50">
                                 {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                                {isSaving ? 'Saving...' : 'Save Test Case'}
+                                {isSaving ? '儲存中...' : '儲存測試案例'}
                             </button>
                         </div>
                     </>
