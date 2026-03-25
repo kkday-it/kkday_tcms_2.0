@@ -71,7 +71,7 @@ export default function TestCasePreviewPane({ isOpen, onClose, caseId, onEditCli
     if (!isOpen || !caseId) return null;
 
     const renderHtmlOrMarkdown = (content?: string) => {
-        if (!content) return <span className="text-slate-400 italic">None</span>;
+        if (!content) return <span className="text-slate-400 italic">無</span>;
 
         // Use react-markdown with rehype-raw to parse both HTML tags and Markdown syntax cleanly.
         return (
@@ -121,7 +121,7 @@ export default function TestCasePreviewPane({ isOpen, onClose, caseId, onEditCli
                             onClick={() => onEditClick(caseId)}
                             className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-primary-700 bg-primary-50 hover:bg-primary-100 rounded-md transition-colors"
                         >
-                            <Edit2 className="w-4 h-4" /> Edit Case
+                            <Edit2 className="w-4 h-4" /> 編輯
                         </button>
                         <div className="w-px h-6 bg-slate-200 mx-1"></div>
                         <button onClick={onClose} className="p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 rounded-md transition-colors">
@@ -136,13 +136,13 @@ export default function TestCasePreviewPane({ isOpen, onClose, caseId, onEditCli
                         onClick={() => setActiveTab('details')}
                         className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'details' ? 'border-primary-500 text-primary-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
                     >
-                        <FileText className="w-4 h-4" /> Details
+                        <FileText className="w-4 h-4" /> 詳細資訊
                     </button>
                     <button
                         onClick={() => setActiveTab('history')}
                         className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'history' ? 'border-primary-500 text-primary-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
                     >
-                        <HistoryIcon className="w-4 h-4" /> History
+                        <HistoryIcon className="w-4 h-4" /> 歷史紀錄
                     </button>
                 </div>
 
@@ -160,10 +160,10 @@ export default function TestCasePreviewPane({ isOpen, onClose, caseId, onEditCli
                                     <h2 className="text-2xl font-bold text-slate-900 leading-tight mb-4">{testCase.title}</h2>
                                     <div className="flex flex-wrap gap-2 text-xs">
                                         <span className="inline-flex items-baseline px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                                            <span className="font-semibold mr-1">Status:</span> {testCase.lifecycle_status || 'Draft'}
+                                            <span className="font-semibold mr-1">狀態:</span> {testCase.lifecycle_status || 'Draft'}
                                         </span>
                                         <span className={`inline-flex items-baseline px-2.5 py-1 rounded-full border ${testCase.automation_status === 'Automated' ? 'border-primary-200 text-primary-700 bg-primary-50' : 'border-slate-200 text-slate-600 bg-slate-50'}`}>
-                                            <span className="font-semibold mr-1">Auto:</span> {testCase.automation_status || 'Manual'}
+                                            <span className="font-semibold mr-1">自動化:</span> {testCase.automation_status || 'Manual'}
                                         </span>
                                         {(() => {
                                             const p = testCase.priority || 'Medium';
@@ -175,18 +175,18 @@ export default function TestCasePreviewPane({ isOpen, onClose, caseId, onEditCli
                                             }[p] || 'text-slate-500 bg-slate-100 border-slate-200';
                                             return (
                                                 <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold border capitalize ${colors}`}>
-                                                    <span className="font-semibold mr-1 opacity-70">Priority:</span> {p}
+                                                    <span className="font-semibold mr-1 opacity-70">優先級:</span> {p}
                                                 </span>
                                             );
                                         })()}
                                         <span className="inline-flex items-baseline px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                                            <span className="font-semibold mr-1">Layer:</span> {testCase.layer || 'E2E'}
+                                            <span className="font-semibold mr-1">層級:</span> {testCase.layer || 'E2E'}
                                         </span>
                                         <span className="inline-flex items-baseline px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                                            <span className="font-semibold mr-1">Type:</span> {testCase.type || 'Functional'}
+                                            <span className="font-semibold mr-1">類型:</span> {testCase.type || 'Functional'}
                                         </span>
                                         <span className="inline-flex items-baseline px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                                            <span className="font-semibold mr-1">Assignee:</span> {assignee ? (assignee.full_name || assignee.username) : 'Unassigned'}
+                                            <span className="font-semibold mr-1">負責人:</span> {assignee ? (assignee.full_name || assignee.username) : '未指定'}
                                         </span>
                                     </div>
                                 </div>
@@ -227,7 +227,7 @@ export default function TestCasePreviewPane({ isOpen, onClose, caseId, onEditCli
 
                                 {/* Preconditions */}
                                 <section>
-                                    <h3 className="text-sm font-bold text-slate-900 mb-3 pb-2 border-b border-slate-100">Preconditions</h3>
+                                    <h3 className="text-sm font-bold text-slate-900 mb-3 pb-2 border-b border-slate-100">前置條件</h3>
                                     <div className="bg-slate-50/50 p-4 rounded-lg border border-slate-100">
                                         {renderHtmlOrMarkdown(testCase.preconditions)}
                                     </div>
@@ -236,12 +236,12 @@ export default function TestCasePreviewPane({ isOpen, onClose, caseId, onEditCli
                                 {/* Steps */}
                                 <section>
                                     <h3 className="text-sm font-bold text-slate-900 mb-4 pb-2 border-b border-slate-100">
-                                        Test Steps <span className="text-slate-400 font-normal ml-2">({testCase.steps?.length || 0})</span>
+                                        測試步驟 <span className="text-slate-400 font-normal ml-2">({testCase.steps?.length || 0})</span>
                                     </h3>
 
                                     {!testCase.steps || testCase.steps.length === 0 ? (
                                         <div className="text-center p-8 bg-slate-50 border border-slate-100 rounded-lg text-slate-400 text-sm">
-                                            No steps defined for this test case.
+                                            此測試案例尚未定義步驟。
                                         </div>
                                     ) : (
                                         <div className="space-y-4">
@@ -252,19 +252,19 @@ export default function TestCasePreviewPane({ isOpen, onClose, caseId, onEditCli
                                                     </div>
                                                     <div className="flex-1 space-y-3 pt-1">
                                                         <div>
-                                                            <div className="text-xs font-semibold text-slate-400 mb-1 uppercase tracking-wider">Action</div>
+                                                            <div className="text-xs font-semibold text-slate-400 mb-1 uppercase tracking-wider">操作</div>
                                                             <div className="text-sm text-slate-800">{renderHtmlOrMarkdown(step.action)}</div>
                                                         </div>
 
                                                         {step.data && (
                                                             <div className="bg-amber-50/50 p-3 rounded border border-amber-100/50">
-                                                                <div className="text-xs font-semibold text-amber-600/70 mb-1 uppercase tracking-wider">Test Data</div>
+                                                                <div className="text-xs font-semibold text-amber-600/70 mb-1 uppercase tracking-wider">測試資料</div>
                                                                 <div className="text-sm text-slate-700">{renderHtmlOrMarkdown(step.data)}</div>
                                                             </div>
                                                         )}
 
                                                         <div className="bg-emerald-50/50 p-3 rounded border border-emerald-100/50">
-                                                            <div className="text-xs font-semibold text-emerald-600/70 mb-1 uppercase tracking-wider">Expected Result</div>
+                                                            <div className="text-xs font-semibold text-emerald-600/70 mb-1 uppercase tracking-wider">預期結果</div>
                                                             <div className="text-sm text-slate-700">{renderHtmlOrMarkdown(step.expected_result)}</div>
                                                         </div>
                                                     </div>
@@ -286,7 +286,7 @@ export default function TestCasePreviewPane({ isOpen, onClose, caseId, onEditCli
                                         <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
                                     </div>
                                 ) : historyLogs.length === 0 ? (
-                                    <div className="text-center p-8 text-slate-500">No history found for this test case.</div>
+                                    <div className="text-center p-8 text-slate-500">此測試案例尚無歷史紀錄。</div>
                                 ) : (
                                     <div className="space-y-6 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-200 before:to-transparent">
                                         {historyLogs.map((log: any, idx: number) => {
@@ -312,7 +312,7 @@ export default function TestCasePreviewPane({ isOpen, onClose, caseId, onEditCli
                                                             </span>
                                                         </div>
                                                         <div className="text-xs text-slate-500 mb-2">
-                                                            by <span className="font-medium text-slate-700">{log.user?.full_name || log.user?.username || 'System API'}</span>
+                                                            由 <span className="font-medium text-slate-700">{log.user?.full_name || log.user?.username || '系統'}</span>
                                                         </div>
 
                                                         {Object.keys(changesObj).length > 0 && (
