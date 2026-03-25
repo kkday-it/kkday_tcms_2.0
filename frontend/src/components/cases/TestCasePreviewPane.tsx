@@ -196,7 +196,7 @@ export default function TestCasePreviewPane({ isOpen, onClose, caseId, onEditCli
                                     <section className="bg-slate-50 p-4 rounded-lg border border-slate-100 space-y-4">
                                         {getTags().length > 0 && (
                                             <div className="flex items-start gap-4">
-                                                <span className="text-xs font-semibold text-slate-500 w-16 pt-1">Tags</span>
+                                                <span className="text-xs font-semibold text-slate-500 w-16 pt-1">標籤</span>
                                                 <div className="flex flex-wrap gap-1.5 flex-1">
                                                     {getTags().map((t: string, i: number) => (
                                                         <span key={i} className="px-2 py-0.5 bg-white border border-slate-200 text-slate-600 text-xs rounded shadow-sm">{t}</span>
@@ -206,7 +206,7 @@ export default function TestCasePreviewPane({ isOpen, onClose, caseId, onEditCli
                                         )}
                                         {getLabels().length > 0 && (
                                             <div className="flex items-start gap-4">
-                                                <span className="text-xs font-semibold text-slate-500 w-16 pt-1">Labels</span>
+                                                <span className="text-xs font-semibold text-slate-500 w-16 pt-1">分類</span>
                                                 <div className="flex flex-wrap gap-1.5 flex-1">
                                                     {getLabels().map((l: string, i: number) => (
                                                         <span key={i} className="px-2 py-0.5 bg-indigo-50 border border-indigo-100 text-indigo-700 text-xs rounded shadow-sm">{l}</span>
