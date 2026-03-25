@@ -402,9 +402,9 @@ export default function TestPlanDetails() {
     const completionRate = totalRuns > 0 ? Math.round((completedRuns / totalRuns) * 100) : 0;
 
     const pieData = [
-        { name: 'Passed', value: totalPassed, color: '#10b981' }, // emarald-500
-        { name: 'Failed', value: totalFailed, color: '#f43f5e' }, // rose-500
-        { name: 'Untested', value: totalUntested, color: '#94a3b8' }, // slate-400
+        { name: '通過', value: totalPassed, color: '#10b981' }, // emarald-500
+        { name: '失敗', value: totalFailed, color: '#f43f5e' }, // rose-500
+        { name: '未測試', value: totalUntested, color: '#94a3b8' }, // slate-400
     ];
 
     const priorityColor: Record<string, string> = {
