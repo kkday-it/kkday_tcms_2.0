@@ -70,7 +70,7 @@ export default function RunFolderNode({
         paddingLeft: `${paddingLeft}px`,
         paddingRight: '8px',
         position: 'relative' as const,
-        zIndex: isDragging ? 50 : 1,
+        zIndex: isDragging ? 50 : isMenuOpen ? 40 : 1,
     };
 
     return (
