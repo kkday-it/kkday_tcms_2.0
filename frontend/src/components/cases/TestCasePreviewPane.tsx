@@ -73,11 +73,14 @@ export default function TestCasePreviewPane({ isOpen, onClose, caseId, onEditCli
     const renderHtmlOrMarkdown = (content?: string) => {
         if (!content) return <span className="text-slate-400 italic">無</span>;
 
+        // Convert empty <p></p> (Tiptap blank lines) to <p><br></p> so they render with visible height.
+        const normalized = content.replace(/<p><\/p>/gi, '<p><br></p>');
+
         // Use react-markdown with rehype-raw to parse both HTML tags and Markdown syntax cleanly.
         return (
             <div className="text-sm text-slate-700 leading-relaxed font-mono prose prose-sm max-w-none">
                 <ReactMarkdown rehypePlugins={[rehypeRaw]}>
-                    {content}
+                    {normalized}
                 </ReactMarkdown>
             </div>
         );
