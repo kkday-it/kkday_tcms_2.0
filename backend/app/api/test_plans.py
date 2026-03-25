@@ -522,12 +522,14 @@ async def get_jira_issues_by_filter(
         if required not in field_list:
             field_list.insert(0, required)
     try:
-        from app.services.jira_issues import fetch_issues_by_filter_id
+        from app.services.jira_issues import _get_filter_info, fetch_issues_by_filter_id
         from app.core.config import settings
+        filter_info = _get_filter_info(filter_id)
         issues = fetch_issues_by_filter_id(filter_id=filter_id, fields=field_list, max_results=500)
         return {
             "issues": issues,
             "filter_id": filter_id,
+            "filter_name": filter_info["name"],
             "view_url": f"{settings.JIRA_HOST}/issues/?filter={filter_id}",
         }
     except Exception as e:

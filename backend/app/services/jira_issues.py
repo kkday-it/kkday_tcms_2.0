@@ -38,8 +38,8 @@ def _get_auth() -> tuple[str, str]:
     return username, api_token
 
 
-def _get_filter_jql(filter_id: int) -> str:
-    """Fetch filter by ID and return its JQL."""
+def _get_filter_info(filter_id: int) -> dict[str, Any]:
+    """Fetch filter by ID and return name and JQL."""
     username, api_token = _get_auth()
     url = f"{settings.JIRA_HOST}/rest/api/3/filter/{filter_id}"
     with httpx.Client(timeout=30) as client:
@@ -49,7 +49,12 @@ def _get_filter_jql(filter_id: int) -> str:
     jql = data.get("jql")
     if not jql:
         raise ValueError(f"Filter {filter_id} has no JQL")
-    return jql
+    return {"name": data.get("name", str(filter_id)), "jql": jql}
+
+
+def _get_filter_jql(filter_id: int) -> str:
+    """Fetch filter by ID and return its JQL."""
+    return _get_filter_info(filter_id)["jql"]
 
 
 def fetch_issues_by_filter_id(

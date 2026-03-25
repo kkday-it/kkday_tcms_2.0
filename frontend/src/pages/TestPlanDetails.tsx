@@ -232,6 +232,8 @@ const STATUS_PILL: Record<string, string> = {
     Pending: 'bg-slate-100 text-slate-600 border-slate-200',
 };
 
+type JiraFilterBlock = { filter_id: number; filter_name: string; issues: JiraIssue[]; view_url?: string };
+
 export default function TestPlanDetails() {
     const { planId } = useParams();
     const [plan, setPlan] = useState<TestPlan | null>(null);
@@ -247,16 +249,16 @@ export default function TestPlanDetails() {
     const [allCases, setAllCases] = useState<any[]>([]);
     const [allSuites, setAllSuites] = useState<CaseFolder[]>([]);
 
-    // Jira issues
-    const [jiraUnfix, setJiraUnfix] = useState<{ issues: JiraIssue[]; view_url?: string } | null>(null);
-    const [jiraTotal, setJiraTotal] = useState<{ issues: JiraIssue[]; view_url?: string } | null>(null);
+    // Jira issues — per-filter blocks
+    const [jiraUnfixFilters, setJiraUnfixFilters] = useState<JiraFilterBlock[]>([]);
+    const [jiraTotalFilters, setJiraTotalFilters] = useState<JiraFilterBlock[]>([]);
     const [jiraLoading, setJiraLoading] = useState(false);
     const [jiraError, setJiraError] = useState<string | null>(null);
 
-    // Jira table pagination (8 rows/page)
+    // Jira table pagination (8 rows/page) — keyed by filter_id
     const JIRA_PAGE_SIZE = 8;
-    const [unfixPage, setUnfixPage] = useState(1);
-    const [totalPage, setTotalPage] = useState(1);
+    const [unfixPages, setUnfixPages] = useState<Record<number, number>>({});
+    const [totalPages, setTotalPages] = useState<Record<number, number>>({});
 
     // Jira Pie Chart State
     const [jiraChartIssues, setJiraChartIssues] = useState<JiraIssue[]>([]);
@@ -315,39 +317,35 @@ export default function TestPlanDetails() {
             ? plan.jira_total_filter_ids
             : plan.jira_total_filter_id != null ? [plan.jira_total_filter_id] : [];
         if (unfixIds.length === 0 && totalIds.length === 0) {
-            setJiraUnfix(null);
-            setJiraTotal(null);
+            setJiraUnfixFilters([]);
+            setJiraTotalFilters([]);
             return;
         }
         const load = async () => {
             setJiraLoading(true);
             setJiraError(null);
             try {
-                // Fetch all filter IDs in parallel, then merge by deduplicating on issue key
                 const [unfixResults, totalResults] = await Promise.all([
                     Promise.all(unfixIds.map(id => api.get(`/plans/jira/filter/${id}/issues`).catch(() => null))),
                     Promise.all(totalIds.map(id => api.get(`/plans/jira/filter/${id}/issues`).catch(() => null))),
                 ]);
-                const mergeIssues = (results: any[]) => {
-                    const seen = new Set<string>();
-                    const issues: any[] = [];
-                    for (const res of results) {
-                        for (const issue of (res?.data?.issues ?? [])) {
-                            if (!seen.has(issue.key)) { seen.add(issue.key); issues.push(issue); }
-                        }
-                    }
-                    return issues;
-                };
-                const unfixIssues = mergeIssues(unfixResults);
-                const totalIssues = mergeIssues(totalResults);
-                setJiraUnfix(unfixIssues.length > 0 ? { issues: unfixIssues, view_url: unfixResults[0]?.data?.view_url } : null);
-                setJiraTotal(totalIssues.length > 0 ? { issues: totalIssues, view_url: totalResults[0]?.data?.view_url } : null);
+                const buildBlocks = (ids: number[], results: any[]) =>
+                    results
+                        .map((res, idx) => res ? {
+                            filter_id: ids[idx],
+                            filter_name: res.data.filter_name || String(ids[idx]),
+                            issues: res.data.issues ?? [],
+                            view_url: res.data.view_url,
+                        } : null)
+                        .filter((b) => b !== null && b.issues.length > 0) as JiraFilterBlock[];
+                setJiraUnfixFilters(buildBlocks(unfixIds, unfixResults));
+                setJiraTotalFilters(buildBlocks(totalIds, totalResults));
             } catch (err: any) {
                 console.error("Jira fetch error:", err);
                 const msg = err.response?.data?.detail || err.message || "Failed to fetch Jira issues.";
                 setJiraError(msg);
-                setJiraUnfix(null);
-                setJiraTotal(null);
+                setJiraUnfixFilters([]);
+                setJiraTotalFilters([]);
             } finally {
                 setJiraLoading(false);
             }
@@ -729,155 +727,140 @@ export default function TestPlanDetails() {
 
                 {/* ── Jira Bug List ─────────────────────────────────────────────── */}
                 {
-                    (plan.jira_unfix_filter_id || plan.jira_total_filter_id || (plan.jira_unfix_filter_ids?.length ?? 0) > 0 || (plan.jira_total_filter_ids?.length ?? 0) > 0) && (
+                    (jiraUnfixFilters.length > 0 || jiraTotalFilters.length > 0 || jiraLoading || jiraError ||
+                        plan.jira_unfix_filter_id || plan.jira_total_filter_id ||
+                        (plan.jira_unfix_filter_ids?.length ?? 0) > 0 || (plan.jira_total_filter_ids?.length ?? 0) > 0) && (
                         <div className="space-y-6">
                             <h3 className="text-base font-bold text-slate-700 uppercase tracking-wider">Jira 問題</h3>
-                            <div className="flex flex-col gap-6 mt-6">
-                                {(plan.jira_unfix_filter_id || (plan.jira_unfix_filter_ids?.length ?? 0) > 0) && (
-                                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-full">
-                                        <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-white">
-                                            <span className="text-base font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
-                                                <Bug className="w-5 h-5 text-rose-400" /> 未修復 Bug
-                                            </span>
-                                            {jiraUnfix?.view_url && (
-                                                <a href={jiraUnfix.view_url} target="_blank" rel="noreferrer" className="text-sm text-primary-600 hover:underline flex items-center gap-1">
-                                                    <ExternalLink className="w-4 h-4" /> 在 Jira 開啟
-                                                </a>
-                                            )}
-                                        </div>
-                                        <div className="overflow-x-auto">
-                                            {jiraLoading ? (
-                                                <div className="p-8 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-primary-500" /></div>
-                                            ) : jiraError ? (
-                                                <div className="p-6 text-center text-red-500 font-medium bg-red-50 text-sm">
-                                                    無資料或 Jira API 未設定<br />
-                                                    <span className="text-xs text-red-400 mt-1 block">錯誤: {jiraError}</span>
+                            {jiraLoading && (
+                                <div className="p-8 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-primary-500" /></div>
+                            )}
+                            {jiraError && (
+                                <div className="p-6 text-center text-red-500 font-medium bg-red-50 rounded-xl text-sm">
+                                    無資料或 Jira API 未設定<br />
+                                    <span className="text-xs text-red-400 mt-1 block">錯誤: {jiraError}</span>
+                                </div>
+                            )}
+                            {!jiraLoading && !jiraError && (
+                                <div className="flex flex-col gap-6 mt-6">
+                                    {/* 未修復 Bug — one block per filter */}
+                                    {jiraUnfixFilters.map(block => {
+                                        const page = unfixPages[block.filter_id] ?? 1;
+                                        const numPages = Math.ceil(block.issues.length / JIRA_PAGE_SIZE);
+                                        const start = (page - 1) * JIRA_PAGE_SIZE;
+                                        const pageItems = block.issues.slice(start, start + JIRA_PAGE_SIZE);
+                                        return (
+                                            <div key={block.filter_id} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                                                <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-white">
+                                                    <span className="text-base font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                                                        <Bug className="w-5 h-5 text-rose-400" /> {block.filter_name}
+                                                    </span>
+                                                    {block.view_url && (
+                                                        <a href={block.view_url} target="_blank" rel="noreferrer" className="text-sm text-primary-600 hover:underline flex items-center gap-1">
+                                                            <ExternalLink className="w-4 h-4" /> 在 Jira 開啟
+                                                        </a>
+                                                    )}
                                                 </div>
-                                            ) : jiraUnfix && jiraUnfix.issues.length > 0 ? (() => {
-                                                const total = jiraUnfix.issues.length;
-                                                const totalPages = Math.ceil(total / JIRA_PAGE_SIZE);
-                                                const start = (unfixPage - 1) * JIRA_PAGE_SIZE;
-                                                const pageItems = jiraUnfix.issues.slice(start, start + JIRA_PAGE_SIZE);
-                                                return (
-                                                    <>
-                                                        <table className="w-full text-left">
-                                                            <thead>
-                                                                <tr className="border-b border-slate-200 bg-white">
-                                                                    <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Key</th>
-                                                                    <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">摘要</th>
-                                                                    <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">狀態</th>
-                                                                    <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">負責人</th>
-                                                                    <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">優先級</th>
+                                                <div className="overflow-x-auto">
+                                                    <table className="w-full text-left">
+                                                        <thead>
+                                                            <tr className="border-b border-slate-200 bg-white">
+                                                                <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Key</th>
+                                                                <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">摘要</th>
+                                                                <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">狀態</th>
+                                                                <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">負責人</th>
+                                                                <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">優先級</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {pageItems.map((issue, i) => (
+                                                                <tr key={i} className="border-b border-slate-100 hover:bg-slate-50">
+                                                                    <td className="px-5 py-4"><a href={issue.url} target="_blank" rel="noreferrer" className="text-base text-primary-600 hover:underline font-mono">{issue.key}</a></td>
+                                                                    <td className="px-5 py-4 text-base text-slate-800 truncate max-w-[180px]" title={issue.summary}>{issue.summary ?? '—'}</td>
+                                                                    <td className="px-5 py-4 text-base text-slate-600">{issue.status ?? '—'}</td>
+                                                                    <td className="px-5 py-4 text-base text-slate-600">{issue.assignee ?? '—'}</td>
+                                                                    <td className="px-5 py-4 text-base text-slate-600">{issue.priority ?? '—'}</td>
                                                                 </tr>
-                                                            </thead>
-                                                            <tbody>
-                                                                {pageItems.map((issue, i) => (
-                                                                    <tr key={i} className="border-b border-slate-100 hover:bg-slate-50">
-                                                                        <td className="px-5 py-4"><a href={issue.url} target="_blank" rel="noreferrer" className="text-base text-primary-600 hover:underline font-mono">{issue.key}</a></td>
-                                                                        <td className="px-5 py-4 text-base text-slate-800 truncate max-w-[180px]" title={issue.summary}>{issue.summary ?? '—'}</td>
-                                                                        <td className="px-5 py-4 text-base text-slate-600">{issue.status ?? '—'}</td>
-                                                                        <td className="px-5 py-4 text-base text-slate-600">{issue.assignee ?? '—'}</td>
-                                                                        <td className="px-5 py-4 text-base text-slate-600">{issue.priority ?? '—'}</td>
-                                                                    </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                    {numPages > 1 && (
+                                                        <div className="flex items-center justify-between px-5 py-3 border-t border-slate-100 bg-slate-50 text-sm text-slate-500">
+                                                            <span>{start + 1}–{Math.min(start + JIRA_PAGE_SIZE, block.issues.length)} / {block.issues.length}</span>
+                                                            <div className="flex items-center gap-1">
+                                                                <button onClick={() => setUnfixPages(p => ({ ...p, [block.filter_id]: Math.max(1, page - 1) }))} disabled={page === 1} className="px-2 py-1 rounded hover:bg-slate-200 disabled:opacity-40">‹</button>
+                                                                {Array.from({ length: numPages }, (_, i) => i + 1).map(p => (
+                                                                    <button key={p} onClick={() => setUnfixPages(prev => ({ ...prev, [block.filter_id]: p }))}
+                                                                        className={`px-2 py-1 rounded ${p === page ? 'bg-primary-100 text-primary-700 font-bold' : 'hover:bg-slate-200'}`}>{p}</button>
                                                                 ))}
-                                                            </tbody>
-                                                        </table>
-                                                        {totalPages > 1 && (
-                                                            <div className="flex items-center justify-between px-5 py-3 border-t border-slate-100 bg-slate-50 text-sm text-slate-500">
-                                                                <span>{start + 1}–{Math.min(start + JIRA_PAGE_SIZE, total)} / {total}</span>
-                                                                <div className="flex items-center gap-1">
-                                                                    <button onClick={() => setUnfixPage(p => Math.max(1, p - 1))} disabled={unfixPage === 1}
-                                                                        className="px-2 py-1 rounded hover:bg-slate-200 disabled:opacity-40">‹</button>
-                                                                    {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
-                                                                        <button key={p} onClick={() => setUnfixPage(p)}
-                                                                            className={`px-2 py-1 rounded ${p === unfixPage ? 'bg-primary-100 text-primary-700 font-bold' : 'hover:bg-slate-200'}`}>{p}</button>
-                                                                    ))}
-                                                                    <button onClick={() => setUnfixPage(p => Math.min(totalPages, p + 1))} disabled={unfixPage === totalPages}
-                                                                        className="px-2 py-1 rounded hover:bg-slate-200 disabled:opacity-40">›</button>
-                                                                </div>
+                                                                <button onClick={() => setUnfixPages(p => ({ ...p, [block.filter_id]: Math.min(numPages, page + 1) }))} disabled={page === numPages} className="px-2 py-1 rounded hover:bg-slate-200 disabled:opacity-40">›</button>
                                                             </div>
-                                                        )}
-                                                    </>
-                                                );
-                                            })() : (
-                                                <div className="p-6 text-center text-slate-400 text-sm">無資料或 Jira API 未設定</div>
-                                            )}
-                                        </div>
-                                    </div>
-                                )}
-                                {(plan.jira_total_filter_id || (plan.jira_total_filter_ids?.length ?? 0) > 0) && (
-                                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-full">
-                                        <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-white">
-                                            <span className="text-base font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
-                                                <ListChecks className="w-5 h-5 text-blue-400" /> 全部 Issue
-                                            </span>
-                                            {jiraTotal?.view_url && (
-                                                <a href={jiraTotal.view_url} target="_blank" rel="noreferrer" className="text-sm text-primary-600 hover:underline flex items-center gap-1">
-                                                    <ExternalLink className="w-4 h-4" /> 在 Jira 開啟
-                                                </a>
-                                            )}
-                                        </div>
-                                        <div className="overflow-x-auto">
-                                            {jiraLoading ? (
-                                                <div className="p-8 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-primary-500" /></div>
-                                            ) : jiraError ? (
-                                                <div className="p-6 text-center text-red-500 font-medium bg-red-50 text-sm">
-                                                    無資料或 Jira API 未設定<br />
-                                                    <span className="text-xs text-red-400 mt-1 block">錯誤: {jiraError}</span>
+                                                        </div>
+                                                    )}
                                                 </div>
-                                            ) : jiraTotal && jiraTotal.issues.length > 0 ? (() => {
-                                                const total = jiraTotal.issues.length;
-                                                const totalPages = Math.ceil(total / JIRA_PAGE_SIZE);
-                                                const start = (totalPage - 1) * JIRA_PAGE_SIZE;
-                                                const pageItems = jiraTotal.issues.slice(start, start + JIRA_PAGE_SIZE);
-                                                return (
-                                                    <>
-                                                        <table className="w-full text-left">
-                                                            <thead>
-                                                                <tr className="border-b border-slate-200 bg-white">
-                                                                    <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Key</th>
-                                                                    <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">摘要</th>
-                                                                    <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">狀態</th>
-                                                                    <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">負責人</th>
-                                                                    <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">優先級</th>
+                                            </div>
+                                        );
+                                    })}
+                                    {/* 全部 Issue — one block per filter */}
+                                    {jiraTotalFilters.map(block => {
+                                        const page = totalPages[block.filter_id] ?? 1;
+                                        const numPages = Math.ceil(block.issues.length / JIRA_PAGE_SIZE);
+                                        const start = (page - 1) * JIRA_PAGE_SIZE;
+                                        const pageItems = block.issues.slice(start, start + JIRA_PAGE_SIZE);
+                                        return (
+                                            <div key={block.filter_id} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                                                <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-white">
+                                                    <span className="text-base font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                                                        <ListChecks className="w-5 h-5 text-blue-400" /> {block.filter_name}
+                                                    </span>
+                                                    {block.view_url && (
+                                                        <a href={block.view_url} target="_blank" rel="noreferrer" className="text-sm text-primary-600 hover:underline flex items-center gap-1">
+                                                            <ExternalLink className="w-4 h-4" /> 在 Jira 開啟
+                                                        </a>
+                                                    )}
+                                                </div>
+                                                <div className="overflow-x-auto">
+                                                    <table className="w-full text-left">
+                                                        <thead>
+                                                            <tr className="border-b border-slate-200 bg-white">
+                                                                <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Key</th>
+                                                                <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">摘要</th>
+                                                                <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">狀態</th>
+                                                                <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">負責人</th>
+                                                                <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">優先級</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {pageItems.map((issue, i) => (
+                                                                <tr key={i} className="border-b border-slate-100 hover:bg-slate-50">
+                                                                    <td className="px-5 py-4"><a href={issue.url} target="_blank" rel="noreferrer" className="text-base text-primary-600 hover:underline font-mono">{issue.key}</a></td>
+                                                                    <td className="px-5 py-4 text-base text-slate-800 truncate max-w-[180px]" title={issue.summary}>{issue.summary ?? '—'}</td>
+                                                                    <td className="px-5 py-4 text-base text-slate-600">{issue.status ?? '—'}</td>
+                                                                    <td className="px-5 py-4 text-base text-slate-600">{issue.assignee ?? '—'}</td>
+                                                                    <td className="px-5 py-4 text-base text-slate-600">{issue.priority ?? '—'}</td>
                                                                 </tr>
-                                                            </thead>
-                                                            <tbody>
-                                                                {pageItems.map((issue, i) => (
-                                                                    <tr key={i} className="border-b border-slate-100 hover:bg-slate-50">
-                                                                        <td className="px-5 py-4"><a href={issue.url} target="_blank" rel="noreferrer" className="text-base text-primary-600 hover:underline font-mono">{issue.key}</a></td>
-                                                                        <td className="px-5 py-4 text-base text-slate-800 truncate max-w-[180px]" title={issue.summary}>{issue.summary ?? '—'}</td>
-                                                                        <td className="px-5 py-4 text-base text-slate-600">{issue.status ?? '—'}</td>
-                                                                        <td className="px-5 py-4 text-base text-slate-600">{issue.assignee ?? '—'}</td>
-                                                                        <td className="px-5 py-4 text-base text-slate-600">{issue.priority ?? '—'}</td>
-                                                                    </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                    {numPages > 1 && (
+                                                        <div className="flex items-center justify-between px-5 py-3 border-t border-slate-100 bg-slate-50 text-sm text-slate-500">
+                                                            <span>{start + 1}–{Math.min(start + JIRA_PAGE_SIZE, block.issues.length)} / {block.issues.length}</span>
+                                                            <div className="flex items-center gap-1">
+                                                                <button onClick={() => setTotalPages(p => ({ ...p, [block.filter_id]: Math.max(1, page - 1) }))} disabled={page === 1} className="px-2 py-1 rounded hover:bg-slate-200 disabled:opacity-40">‹</button>
+                                                                {Array.from({ length: numPages }, (_, i) => i + 1).map(p => (
+                                                                    <button key={p} onClick={() => setTotalPages(prev => ({ ...prev, [block.filter_id]: p }))}
+                                                                        className={`px-2 py-1 rounded ${p === page ? 'bg-primary-100 text-primary-700 font-bold' : 'hover:bg-slate-200'}`}>{p}</button>
                                                                 ))}
-                                                            </tbody>
-                                                        </table>
-                                                        {totalPages > 1 && (
-                                                            <div className="flex items-center justify-between px-5 py-3 border-t border-slate-100 bg-slate-50 text-sm text-slate-500">
-                                                                <span>{start + 1}–{Math.min(start + JIRA_PAGE_SIZE, total)} / {total}</span>
-                                                                <div className="flex items-center gap-1">
-                                                                    <button onClick={() => setTotalPage(p => Math.max(1, p - 1))} disabled={totalPage === 1}
-                                                                        className="px-2 py-1 rounded hover:bg-slate-200 disabled:opacity-40">‹</button>
-                                                                    {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
-                                                                        <button key={p} onClick={() => setTotalPage(p)}
-                                                                            className={`px-2 py-1 rounded ${p === totalPage ? 'bg-primary-100 text-primary-700 font-bold' : 'hover:bg-slate-200'}`}>{p}</button>
-                                                                    ))}
-                                                                    <button onClick={() => setTotalPage(p => Math.min(totalPages, p + 1))} disabled={totalPage === totalPages}
-                                                                        className="px-2 py-1 rounded hover:bg-slate-200 disabled:opacity-40">›</button>
-                                                                </div>
+                                                                <button onClick={() => setTotalPages(p => ({ ...p, [block.filter_id]: Math.min(numPages, page + 1) }))} disabled={page === numPages} className="px-2 py-1 rounded hover:bg-slate-200 disabled:opacity-40">›</button>
                                                             </div>
-                                                        )}
-                                                    </>
-                                                );
-                                            })() : (
-                                                <div className="p-6 text-center text-slate-400 text-sm">無資料或 Jira API 未設定</div>
-                                            )}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
 
                             {/* Jira Pie Chart Dashboard View */}
                             {plan.jira_chart_filter_id && (
