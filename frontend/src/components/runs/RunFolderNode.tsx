@@ -111,11 +111,11 @@ export default function RunFolderNode({
                     )}
                 </div>
 
-                <div className="relative opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto shrink-0 pr-1" ref={menuRef}>
+                <div className={`relative transition-opacity pointer-events-auto shrink-0 pr-1 ${isMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`} ref={menuRef}>
                     <button
                         onClick={(e) => { e.stopPropagation(); setIsMenuOpen(prev => !prev); }}
                         onPointerDown={(e) => e.stopPropagation()}
-                        className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 rounded transition-colors"
+                        className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 rounded transition-colors focus:outline-none"
                         title="更多操作"
                     >
                         <MoreHorizontal className="w-3.5 h-3.5" />
