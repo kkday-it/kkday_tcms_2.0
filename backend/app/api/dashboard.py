@@ -145,7 +145,7 @@ async def get_my_dashboard(user_id: int, db: AsyncSession = Depends(get_db)):
     # 1. Assigned Active Test Runs — check both M2M assignees and legacy assignee_id
     assigned_runs_query = (
         select(TestRun)
-        .outerjoin(test_run_assignees, TestRun.id == test_run_assignees.c.run_id)
+        .outerjoin(test_run_assignees, TestRun.id == test_run_assignees.c.test_run_id)
         .where(
             or_(
                 test_run_assignees.c.user_id == user_id,
