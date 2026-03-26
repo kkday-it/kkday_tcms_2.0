@@ -77,8 +77,15 @@ export default function Dashboard() {
     const [myData, setMyData] = useState<MyDashboardData | null>(null);
     const [isMyDataLoading, setIsMyDataLoading] = useState(true);
 
-    // Hardcode user_id=1 for now as there is no central Auth context yet
-    const currentUserId = 1;
+    // Read user id from localStorage (set by Google OAuth login)
+    const currentUserId = (() => {
+        try {
+            const user = JSON.parse(localStorage.getItem('tcms_user') || '{}');
+            return user?.id || 1;
+        } catch {
+            return 1;
+        }
+    })();
 
     useEffect(() => {
         const fetchOverview = async () => {

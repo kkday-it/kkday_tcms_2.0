@@ -99,19 +99,20 @@ async def get_dashboard_summary(db: AsyncSession = Depends(get_db)):
             row[0]: (row[1] or 0, row[2] or 0, row[3] or 0, row[4] or 0)
             for row in stats_res.all()
         }
-    recent_runs = [
-        {
+    recent_runs = []
+    for run in runs:
+        p, f, b, tot = stats_map.get(run.id, (0, 0, 0, 0))
+        recent_runs.append({
             "id": run.id,
             "title": run.title,
             "status": run.status,
             "run_type": run.run_type,
-            "passed": stats_map.get(run.id, (0, 0, 0, 0))[0],
-            "failed": stats_map.get(run.id, (0, 0, 0, 0))[1],
-            "blocked": stats_map.get(run.id, (0, 0, 0, 0))[2],
-            "total": stats_map.get(run.id, (0, 0, 0, 0))[3],
-        }
-        for run in runs
-    ]
+            "passed": p,
+            "failed": f,
+            "blocked": b,
+            "untested": tot - p - f - b,
+            "total": tot,
+        })
 
     # 5. Top Failing Test Cases
     # Count how many times a case has failed
