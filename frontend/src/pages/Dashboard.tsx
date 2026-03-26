@@ -67,7 +67,7 @@ const COLORS = ['#00bcd4', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'
 
 export default function Dashboard() {
     const navigate = useNavigate();
-    const [activeTab, setActiveTab] = useState<'my_space' | 'overview'>('my_space');
+    const [activeTab, setActiveTab] = useState<'my_space' | 'overview'>('overview');
 
     // Overview State
     const [overviewData, setOverviewData] = useState<DashboardSummary | null>(null);
