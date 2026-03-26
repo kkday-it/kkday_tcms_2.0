@@ -131,6 +131,11 @@ export default function TestCaseExecutionPane({ resultId, onClose, onUpdated }: 
     const handleStepUpdate = async (stepId: number, status: string, actualResult?: string) => {
         if (!detail) return;
 
+        // Compute updated steps before async call (for all-passed check)
+        const updatedSteps = detail.steps.map(s =>
+            s.step_id === stepId ? { ...s, status } : s
+        );
+
         // Optimistic update
         setDetail(prev => {
             if (!prev) return prev;
@@ -145,9 +150,12 @@ export default function TestCaseExecutionPane({ resultId, onClose, onUpdated }: 
                 status,
                 actual_result: actualResult
             });
-            // Auto fail the whole case if a step fails
+            // Auto-fail case if a step fails
             if (status === 'Failed' && detail.status !== 'Failed') {
                 handleCaseUpdate('Failed');
+            // Auto-pass case if all steps are now Passed
+            } else if (status === 'Passed' && updatedSteps.every(s => s.status === 'Passed') && detail.status !== 'Passed') {
+                handleCaseUpdate('Passed');
             }
         } catch (error) {
             console.error("Failed to update step", error);
