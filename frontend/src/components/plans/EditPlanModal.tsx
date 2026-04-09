@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Loader2, Search, Plus, X, UploadCloud, ExternalLink } from 'lucide-react';
 import api from '../../lib/api';
 
@@ -22,6 +22,7 @@ export interface TestRun {
 export interface CaseFolder {
     id: number;
     name: string;
+    parent_suite_id?: number | null;
 }
 
 export interface TestCase {
@@ -56,6 +57,80 @@ export interface TestPlan {
     jira_display_fields?: string[];
     jira_chart_filter_id?: number | null;
     jira_chart_field?: string | null;
+}
+
+// ─── Collapsible Suite Tree Selector ────────────────────────────────────────
+function SuiteTreeSelect({ value, onChange, folders }: {
+    value: string;
+    onChange: (v: string) => void;
+    folders: CaseFolder[];
+}) {
+    const [open, setOpen] = useState(false);
+    const [expanded, setExpanded] = useState<Set<number>>(new Set());
+    const ref = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handler = (e: MouseEvent) => {
+            if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, []);
+
+    const roots = folders.filter(f => !f.parent_suite_id);
+    const selectedName = value ? folders.find(f => String(f.id) === value)?.name ?? 'All Suites' : 'All Suites';
+
+    const toggle = (id: number, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setExpanded(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
+    };
+
+    const renderNode = (folder: CaseFolder, depth: number): React.ReactNode => {
+        const children = folders.filter(f => f.parent_suite_id === folder.id);
+        const isExpanded = expanded.has(folder.id);
+        const isSelected = String(folder.id) === value;
+        return (
+            <div key={folder.id}>
+                <div
+                    className={`flex items-center gap-1 py-1.5 pr-2 cursor-pointer rounded ${isSelected ? 'bg-primary-100 text-primary-700' : 'hover:bg-primary-50 text-slate-700'}`}
+                    style={{ paddingLeft: `${8 + depth * 16}px` }}
+                    onClick={() => { onChange(String(folder.id)); setOpen(false); }}
+                >
+                    {children.length > 0 ? (
+                        <span onClick={e => toggle(folder.id, e)}
+                            className="w-4 h-4 flex items-center justify-center text-slate-400 hover:text-slate-600 shrink-0 text-[10px]">
+                            {isExpanded ? '▾' : '▸'}
+                        </span>
+                    ) : (
+                        <span className="w-4 shrink-0" />
+                    )}
+                    <span className="text-xs truncate">{folder.name}</span>
+                </div>
+                {isExpanded && children.map(child => renderNode(child, depth + 1))}
+            </div>
+        );
+    };
+
+    return (
+        <div ref={ref} className="relative">
+            <button type="button" onClick={() => setOpen(o => !o)}
+                className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-primary-500 flex items-center justify-between gap-1">
+                <span className="truncate">{selectedName}</span>
+                <span className="text-slate-400 shrink-0">▾</span>
+            </button>
+            {open && (
+                <div className="absolute top-full left-0 right-0 z-50 bg-white border border-slate-200 rounded-lg shadow-lg max-h-52 overflow-y-auto mt-1 py-1">
+                    <div
+                        className={`px-2 py-1.5 cursor-pointer rounded text-xs mx-1 ${!value ? 'bg-primary-100 text-primary-700' : 'hover:bg-primary-50 text-slate-700'}`}
+                        onClick={() => { onChange(''); setOpen(false); }}
+                    >
+                        All Suites
+                    </div>
+                    {roots.map(root => renderNode(root, 0))}
+                </div>
+            )}
+        </div>
+    );
 }
 
 export default function EditPlanModal({ plan, folders, runs, cases, caseFolders, onClose, onSaved }: {
@@ -206,9 +281,22 @@ export default function EditPlanModal({ plan, folders, runs, cases, caseFolders,
     const toggleCase = (id: number) =>
         setSelectedCaseIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 
+    // Build set of all descendant suite IDs for the selected suite (for KQT-14713)
+    const descendantSuiteIds = (rootId: string): Set<string> => {
+        const ids = new Set<string>();
+        const visit = (id: string) => {
+            ids.add(id);
+            caseFolders.filter(f => String(f.parent_suite_id) === id).forEach(f => visit(String(f.id)));
+        };
+        if (rootId) visit(rootId);
+        return ids;
+    };
+    const activeSuiteIds = caseFolderFilter ? descendantSuiteIds(caseFolderFilter) : null;
+
     const filteredCases = cases
-        .filter(c => caseFolderFilter === '' || String(c.suite_id) === caseFolderFilter)
+        .filter(c => !activeSuiteIds || activeSuiteIds.has(String(c.suite_id)))
         .filter(c => c.title.toLowerCase().includes(caseSearch.toLowerCase()));
+
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -634,13 +722,11 @@ export default function EditPlanModal({ plan, folders, runs, cases, caseFolders,
                                             {/* ── Left: Available Cases ── */}
                                             <div className="flex-1 flex flex-col min-w-0 border border-slate-200 rounded-xl overflow-hidden">
                                                 <div className="px-3 py-2.5 border-b border-slate-100 bg-slate-50 shrink-0 space-y-2">
-                                                    <select value={caseFolderFilter} onChange={e => setCaseFolderFilter(e.target.value)}
-                                                        className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-primary-500">
-                                                        <option value="">All Suites</option>
-                                                        {caseFolders.map(f => (
-                                                            <option key={f.id} value={String(f.id)}>{f.name}</option>
-                                                        ))}
-                                                    </select>
+                                                    <SuiteTreeSelect
+                                                        value={caseFolderFilter}
+                                                        onChange={setCaseFolderFilter}
+                                                        folders={caseFolders}
+                                                    />
                                                     <div className="relative">
                                                         <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                                                         <input type="text" placeholder="Search cases…" value={caseSearch}

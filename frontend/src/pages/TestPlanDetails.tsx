@@ -52,8 +52,10 @@ function GanttTimeline({ rows }: { rows: TimelineRow[] }) {
     const firstDataDate = new Date(Math.min(...allMs));
     for (const d = new Date(firstDataDate); d.getTime() <= maxMs; d.setDate(d.getDate() + step)) ticks.push(new Date(d));
 
-    const todayMs   = new Date().setHours(0, 0, 0, 0);
-    const showToday = todayMs > minMs && todayMs < maxMs;
+    const _now = new Date();
+    const nowMs     = _now.getTime(); // actual current time for line position
+    const todayMs   = new Date(_now.getFullYear(), _now.getMonth(), _now.getDate()).getTime();
+    const showToday = todayMs >= minMs && todayMs <= maxMs;
 
     return (
         <div className="space-y-4">
@@ -125,9 +127,9 @@ function GanttTimeline({ rows }: { rows: TimelineRow[] }) {
                                             <div key={i} style={{ left: `${pct(tick.getTime())}%` }}
                                                 className="absolute inset-y-0 border-l border-dashed border-slate-200 z-0" />
                                         ))}
-                                        {/* Today marker */}
+                                        {/* Today marker — positioned at current time, not just midnight */}
                                         {showToday && (
-                                            <div style={{ left: `${pct(todayMs)}%` }}
+                                            <div style={{ left: `${pct(nowMs)}%` }}
                                                 className="absolute inset-y-0 border-l-2 border-rose-300 z-20 pointer-events-none" />
                                         )}
                                         {/* Phase bars */}
@@ -241,6 +243,8 @@ export default function TestPlanDetails() {
     const [cases, setCases] = useState<CaseResult[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<'runs' | 'cases'>('runs');
+    const [runSort, setRunSort] = useState<{ col: 'title' | 'status'; dir: 'asc' | 'desc' } | null>(null);
+    const [caseSort, setCaseSort] = useState<{ col: 'title' | 'priority'; dir: 'asc' | 'desc' } | null>(null);
 
     // Edit modal
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -259,6 +263,30 @@ export default function TestPlanDetails() {
     const JIRA_PAGE_SIZE = 8;
     const [unfixPages, setUnfixPages] = useState<Record<number, number>>({});
     const [totalPages, setTotalPages] = useState<Record<number, number>>({});
+
+    // Jira table sort — keyed by filter_id
+    type JiraCol = 'key' | 'summary' | 'status' | 'assignee' | 'priority';
+    const [jiraSort, setJiraSort] = useState<Record<number, { col: JiraCol; dir: 'asc' | 'desc' }>>({});
+    const toggleJiraSort = (filterId: number, col: JiraCol) => {
+        setJiraSort(prev => {
+            const cur = prev[filterId];
+            return { ...prev, [filterId]: cur?.col === col ? { col, dir: cur.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'asc' } };
+        });
+    };
+    const sortedIssues = (issues: JiraIssue[], filterId: number): JiraIssue[] => {
+        const s = jiraSort[filterId];
+        if (!s) return issues;
+        return [...issues].sort((a, b) => {
+            const va = (a[s.col as keyof JiraIssue] ?? '') as string;
+            const vb = (b[s.col as keyof JiraIssue] ?? '') as string;
+            return s.dir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
+        });
+    };
+    const JiraSortIcon = ({ filterId, col }: { filterId: number; col: JiraCol }) => {
+        const s = jiraSort[filterId];
+        if (!s || s.col !== col) return <span className="ml-1 text-slate-300 text-[10px]">⇅</span>;
+        return <span className="ml-1 text-primary-500 text-[10px]">{s.dir === 'asc' ? '▲' : '▼'}</span>;
+    };
 
     // Jira Pie Chart State
     const [jiraChartIssues, setJiraChartIssues] = useState<JiraIssue[]>([]);
@@ -296,7 +324,7 @@ export default function TestPlanDetails() {
             setFolders(foldersRes.data);
             setAllRuns(runsRes.data);
             setAllCases(casesRes.data);
-            setAllSuites(suitesRes.data.map((s: any) => ({ id: s.id, name: s.name })));
+            setAllSuites(suitesRes.data.map((s: any) => ({ id: s.id, name: s.name, parent_suite_id: s.parent_suite_id ?? null })));
         } catch (err) {
             console.error('Failed to load edit data', err);
         }
@@ -390,6 +418,30 @@ export default function TestPlanDetails() {
 
     if (!plan) return <div className="p-8 text-center text-slate-500">Test Plan not found.</div>;
 
+    // ── Sort helpers ─────────────────────────────────────────────────────────
+    const toggleRunSort = (col: 'title' | 'status') => {
+        setRunSort(prev => prev?.col === col ? { col, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'asc' });
+    };
+    const toggleCaseSort = (col: 'title' | 'priority') => {
+        setCaseSort(prev => prev?.col === col ? { col, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'asc' });
+    };
+    const PRIORITY_ORDER: Record<string, number> = { Critical: 0, High: 1, Medium: 2, Low: 3 };
+    const sortedRuns = runSort ? [...runs].sort((a, b) => {
+        const v = runSort.col === 'title' ? a.title.localeCompare(b.title) : a.status.localeCompare(b.status);
+        return runSort.dir === 'asc' ? v : -v;
+    }) : runs;
+    const sortedCases = caseSort ? [...cases].sort((a, b) => {
+        let v = 0;
+        if (caseSort.col === 'title') v = a.title.localeCompare(b.title);
+        else v = (PRIORITY_ORDER[a.priority] ?? 99) - (PRIORITY_ORDER[b.priority] ?? 99);
+        return caseSort.dir === 'asc' ? v : -v;
+    }) : cases;
+    const SortIcon = ({ col, sort }: { col: string; sort: { col: string; dir: string } | null }) => (
+        <span className="ml-1 text-slate-400 text-xs select-none">
+            {sort?.col === col ? (sort.dir === 'asc' ? '▲' : '▼') : '⇅'}
+        </span>
+    );
+
     // ── Aggregations ──────────────────────────────────────────────────────────
     const totalRuns = runs.length;
     const completedRuns = runs.filter(r => r.status === 'Done').length;
@@ -474,8 +526,9 @@ export default function TestPlanDetails() {
                                 {plan.prd_url && (
                                     <div className="flex flex-col gap-1 rounded-lg bg-slate-50 p-3 border border-slate-100 min-w-[180px] flex-1">
                                         <span className="text-sm font-semibold text-slate-500">PRD</span>
-                                        <a href={resolveUrl(plan.prd_url)} target="_blank" rel="noreferrer" className="text-base font-medium text-primary-600 hover:text-primary-700 hover:underline truncate">
-                                            {plan.prd_url}
+                                        <a href={resolveUrl(plan.prd_url)} target="_blank" rel="noreferrer" className="text-base font-medium text-primary-600 hover:text-primary-700 hover:underline flex items-center gap-1">
+                                            <ExternalLink className="w-3.5 h-3.5 shrink-0" />
+                                            Link
                                         </a>
                                     </div>
                                 )}
@@ -656,15 +709,15 @@ export default function TestPlanDetails() {
                                 <table className="w-full text-left border-collapse">
                                     <thead>
                                         <tr className="border-b border-slate-200 bg-white">
-                                            <th className="px-6 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">執行名稱</th>
-                                            <th className="px-6 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">狀態</th>
+                                            <th className="px-6 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider cursor-pointer hover:text-primary-600 select-none" onClick={() => toggleRunSort('title')}>執行名稱<SortIcon col="title" sort={runSort} /></th>
+                                            <th className="px-6 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider cursor-pointer hover:text-primary-600 select-none" onClick={() => toggleRunSort('status')}>狀態<SortIcon col="status" sort={runSort} /></th>
                                             <th className="px-6 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">進度</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100 bg-white">
-                                        {runs.length === 0 ? (
+                                        {sortedRuns.length === 0 ? (
                                             <tr><td colSpan={3} className="px-6 py-10 text-center text-sm text-slate-400">尚無連結的測試執行。</td></tr>
-                                        ) : runs.map(run => {
+                                        ) : sortedRuns.map(run => {
                                             const total = run.passed + run.failed + run.untested;
                                             const pct = total > 0 ? Math.round((run.passed / total) * 100) : 0;
                                             return (
@@ -701,14 +754,14 @@ export default function TestPlanDetails() {
                                 <table className="w-full text-left border-collapse">
                                     <thead>
                                         <tr className="border-b border-slate-200 bg-white">
-                                            <th className="px-6 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">案例名稱</th>
-                                            <th className="px-6 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">優先級</th>
+                                            <th className="px-6 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider cursor-pointer hover:text-primary-600 select-none" onClick={() => toggleCaseSort('title')}>案例名稱<SortIcon col="title" sort={caseSort} /></th>
+                                            <th className="px-6 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider cursor-pointer hover:text-primary-600 select-none" onClick={() => toggleCaseSort('priority')}>優先級<SortIcon col="priority" sort={caseSort} /></th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100 bg-white">
-                                        {cases.length === 0 ? (
+                                        {sortedCases.length === 0 ? (
                                             <tr><td colSpan={2} className="px-6 py-10 text-center text-sm text-slate-400">尚無連結的測試案例。</td></tr>
-                                        ) : cases.map(tc => (
+                                        ) : sortedCases.map(tc => (
                                             <tr key={tc.id} className="hover:bg-slate-50 transition-colors">
                                                 <td className="px-6 py-4 text-base font-medium text-slate-900">{tc.title}</td>
                                                 <td className="px-6 py-4">
@@ -746,9 +799,10 @@ export default function TestPlanDetails() {
                                     {/* 未修復 Bug — one block per filter */}
                                     {jiraUnfixFilters.map(block => {
                                         const page = unfixPages[block.filter_id] ?? 1;
-                                        const numPages = Math.ceil(block.issues.length / JIRA_PAGE_SIZE);
+                                        const sorted = sortedIssues(block.issues, block.filter_id);
+                                        const numPages = Math.ceil(sorted.length / JIRA_PAGE_SIZE);
                                         const start = (page - 1) * JIRA_PAGE_SIZE;
-                                        const pageItems = block.issues.slice(start, start + JIRA_PAGE_SIZE);
+                                        const pageItems = sorted.slice(start, start + JIRA_PAGE_SIZE);
                                         return (
                                             <div key={block.filter_id} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                                                 <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-white">
@@ -765,11 +819,13 @@ export default function TestPlanDetails() {
                                                     <table className="w-full text-left">
                                                         <thead>
                                                             <tr className="border-b border-slate-200 bg-white">
-                                                                <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Key</th>
-                                                                <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">摘要</th>
-                                                                <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">狀態</th>
-                                                                <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">負責人</th>
-                                                                <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">優先級</th>
+                                                                {(['key', 'summary', 'status', 'assignee', 'priority'] as JiraCol[]).map(col => (
+                                                                    <th key={col} onClick={() => toggleJiraSort(block.filter_id, col)}
+                                                                        className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider cursor-pointer hover:bg-slate-50 select-none whitespace-nowrap">
+                                                                        {col === 'key' ? 'Key' : col === 'summary' ? '摘要' : col === 'status' ? '狀態' : col === 'assignee' ? '負責人' : '優先級'}
+                                                                        <JiraSortIcon filterId={block.filter_id} col={col} />
+                                                                    </th>
+                                                                ))}
                                                             </tr>
                                                         </thead>
                                                         <tbody>
@@ -804,9 +860,10 @@ export default function TestPlanDetails() {
                                     {/* 全部 Issue — one block per filter */}
                                     {jiraTotalFilters.map(block => {
                                         const page = totalPages[block.filter_id] ?? 1;
-                                        const numPages = Math.ceil(block.issues.length / JIRA_PAGE_SIZE);
+                                        const sorted = sortedIssues(block.issues, block.filter_id);
+                                        const numPages = Math.ceil(sorted.length / JIRA_PAGE_SIZE);
                                         const start = (page - 1) * JIRA_PAGE_SIZE;
-                                        const pageItems = block.issues.slice(start, start + JIRA_PAGE_SIZE);
+                                        const pageItems = sorted.slice(start, start + JIRA_PAGE_SIZE);
                                         return (
                                             <div key={block.filter_id} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                                                 <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-white">
@@ -823,11 +880,13 @@ export default function TestPlanDetails() {
                                                     <table className="w-full text-left">
                                                         <thead>
                                                             <tr className="border-b border-slate-200 bg-white">
-                                                                <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">Key</th>
-                                                                <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">摘要</th>
-                                                                <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">狀態</th>
-                                                                <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">負責人</th>
-                                                                <th className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider">優先級</th>
+                                                                {(['key', 'summary', 'status', 'assignee', 'priority'] as JiraCol[]).map(col => (
+                                                                    <th key={col} onClick={() => toggleJiraSort(block.filter_id, col)}
+                                                                        className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider cursor-pointer hover:bg-slate-50 select-none whitespace-nowrap">
+                                                                        {col === 'key' ? 'Key' : col === 'summary' ? '摘要' : col === 'status' ? '狀態' : col === 'assignee' ? '負責人' : '優先級'}
+                                                                        <JiraSortIcon filterId={block.filter_id} col={col} />
+                                                                    </th>
+                                                                ))}
                                                             </tr>
                                                         </thead>
                                                         <tbody>

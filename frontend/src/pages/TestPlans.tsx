@@ -197,7 +197,7 @@ export default function TestPlans() {
             ]);
             setRuns(runsRes.data);
             setCases(casesRes.data);
-            setCaseFolders(suitesRes.data.map((s: any) => ({ id: s.id, name: s.name })));
+            setCaseFolders(suitesRes.data.map((s: any) => ({ id: s.id, name: s.name, parent_suite_id: s.parent_suite_id ?? null })));
             editDataLoaded.current = true;
         } catch (e) { /* silent */ }
     };

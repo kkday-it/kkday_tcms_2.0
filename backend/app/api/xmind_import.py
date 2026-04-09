@@ -104,10 +104,15 @@ def parse_steps(sub_topics: list) -> List[Dict]:
         children = step.get("children", {}).get("attached", [])
         expected_result = ""
         if children:
-            expected_result = children[0].get("title", "")
-            href = children[0].get("href", "")
-            if href:
-                expected_result += f"\n{href}"
+            parts = []
+            for child in children:
+                part = child.get("title", "")
+                href = child.get("href", "")
+                if href:
+                    part += f"\n{href}"
+                if part:
+                    parts.append(part)
+            expected_result = "\n".join(parts)
         steps.append(
             {
                 "order": idx + 1,

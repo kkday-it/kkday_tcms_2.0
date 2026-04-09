@@ -321,6 +321,7 @@ async def get_plan_runs(plan_id: int, db: AsyncSession = Depends(get_db)):
         )
         .outerjoin(TestResult, TestRun.id == TestResult.run_id)
         .where(TestRun.id.in_(subq))
+        .where(TestRun.status != "Archived")
         .group_by(TestRun.id)
     )
     rows = (await db.execute(query)).all()

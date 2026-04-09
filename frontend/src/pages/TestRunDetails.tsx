@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useParams, Link, useSearchParams } from 'react-router-dom';
 import { Loader2, ArrowLeft, CheckCircle2, XCircle, SkipForward, Edit2, Filter, X, Save, Ban } from 'lucide-react';
 import api from '../lib/api';
@@ -53,6 +53,7 @@ export default function TestRunDetails() {
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [selectedResultId, setSelectedResultId] = useState<number | null>(null);
+    const resultListRef = useRef<HTMLDivElement>(null);
 
     // Local unsaved state maps: resultId → value
     const [unsavedStatuses, setUnsavedStatuses] = useState<Record<number, string>>({});
@@ -249,6 +250,15 @@ export default function TestRunDetails() {
         }
     };
 
+    /** Re-fetch while keeping the list scroll position (for onUpdated from pane) */
+    const fetchDataPreservingScroll = useCallback(async () => {
+        const scrollTop = resultListRef.current?.scrollTop ?? 0;
+        await fetchData();
+        requestAnimationFrame(() => {
+            if (resultListRef.current) resultListRef.current.scrollTop = scrollTop;
+        });
+    }, [fetchData]);
+
     const handleCompleteRun = async () => {
         if (!window.confirm('Mark this run as Done?')) return;
         try {
@@ -382,7 +392,7 @@ export default function TestRunDetails() {
             </div>
 
             {/* ── List ────────────────────────────────────────────────────────── */}
-            <div className="flex-1 overflow-y-auto w-full p-8">
+            <div ref={resultListRef} className="flex-1 overflow-y-auto w-full p-8">
                 <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
 
                     {/* ── Filter Bar ─────────────────────────────────────────────── */}
@@ -668,7 +678,7 @@ export default function TestRunDetails() {
             <TestCaseExecutionPane
                 resultId={selectedResultId}
                 onClose={() => setSelectedResultId(null)}
-                onUpdated={fetchData}
+                onUpdated={fetchDataPreservingScroll}
             />
 
             <EditRunModal

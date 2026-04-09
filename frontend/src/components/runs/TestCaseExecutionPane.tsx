@@ -341,6 +341,7 @@ export default function TestCaseExecutionPane({ resultId, onClose, onUpdated }: 
                                         {detail.steps.map((step, index) => (
                                             <div key={step.step_id} className={`bg-white border rounded-xl overflow-hidden transition-all ${step.status === 'Passed' ? 'border-green-200 shadow-sm shadow-green-100/50' :
                                                 step.status === 'Failed' ? 'border-red-200 shadow-sm shadow-red-100/50' :
+                                                step.status === 'Blocked' ? 'border-amber-200 shadow-sm shadow-amber-100/50' :
                                                     'border-slate-200'
                                                 }`}>
                                                 <div className="p-4 flex gap-4">
@@ -397,6 +398,13 @@ export default function TestCaseExecutionPane({ resultId, onClose, onUpdated }: 
                                                             className={`p-2 rounded-md transition-colors ${step.status === 'Failed' ? 'bg-red-100 text-red-700' : 'bg-slate-50 text-slate-400 hover:bg-red-50 hover:text-red-600'}`}
                                                         >
                                                             <XCircle className="w-5 h-5" />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleStepUpdate(step.step_id, 'Blocked')}
+                                                            title="Block Step"
+                                                            className={`p-2 rounded-md transition-colors ${step.status === 'Blocked' ? 'bg-amber-100 text-amber-700' : 'bg-slate-50 text-slate-400 hover:bg-amber-50 hover:text-amber-600'}`}
+                                                        >
+                                                            <Ban className="w-5 h-5" />
                                                         </button>
                                                     </div>
                                                 </div>

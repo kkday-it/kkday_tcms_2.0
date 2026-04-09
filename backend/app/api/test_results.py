@@ -21,6 +21,7 @@ async def get_results_by_run(run_id: int, db: AsyncSession = Depends(get_db)):
                TestCase.labels, TestCase.tags, TestCase.suite_id)
         .join(TestCase, TestResult.case_id == TestCase.id)
         .where(TestResult.run_id == run_id)
+        .order_by(TestResult.id)
     )
     result = await db.execute(query)
     rows = result.all()
