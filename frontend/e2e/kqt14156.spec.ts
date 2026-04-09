@@ -1,20 +1,5 @@
 import { test, expect } from '@playwright/test';
-
-// Helper: login if needed
-async function ensureLoggedIn(page: import('@playwright/test').Page) {
-    await page.goto('/');
-    const isLoginPage = await page.locator('input[type="password"]').isVisible({ timeout: 3000 }).catch(() => false);
-    if (isLoginPage) {
-        await page.fill('input[type="email"], input[type="text"]', process.env.TEST_EMAIL ?? '');
-        await page.fill('input[type="password"]', process.env.TEST_PASSWORD ?? '');
-        await page.click('button[type="submit"]');
-        // After login the app redirects to root "/" (dashboard at root path)
-        await page.waitForFunction(
-            () => !document.querySelector('input[type="password"]'),
-            { timeout: 10000 }
-        );
-    }
-}
+import { ensureLoggedIn, selectReactOption } from './utils';
 
 // ─── KQT-14481: PRD 欄位顯示 Link 超連結 ──────────────────────────────────────
 test('KQT-14481: PRD field shows "Link" hyperlink, not raw URL', async ({ page }) => {
@@ -124,16 +109,9 @@ test('KQT-14496: Result list order is stable after updating a case status', asyn
     const firstSelect = page.locator('tbody tr').first().locator('select').first();
     const currentVal = await firstSelect.inputValue();
     const newVal = currentVal === 'Untested' ? 'Passed' : 'Untested';
-    // React controlled <select> requires native value setter + change event to
-    // trigger synthetic onChange (plain selectOption may not fire React's handler)
-    await firstSelect.evaluate((el: HTMLSelectElement, val: string) => {
-        const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set;
-        setter?.call(el, val);
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-    }, newVal);
-    // Wait for Save button to become enabled (React state update is async)
-    await expect(page.locator('button:has-text("Save")')).toBeEnabled({ timeout: 3000 });
-    await page.click('button:has-text("Save")');
+    const saveBtn = page.locator('button:has-text("Save")');
+    await selectReactOption(firstSelect, newVal, saveBtn);
+    await saveBtn.click();
     await page.waitForLoadState('networkidle');
     const after = await getOrder();
     expect(after).toEqual(before);
@@ -212,6 +190,11 @@ test('KQT-14531/14713: Suite tree selector shows expandable hierarchy', async ({
 // 再非同步載入資料，若有 hook 放在 early return 後面就會觸發
 // "Rendered more hooks than during the previous render" 崩潰 → 白畫面。
 test('Regression: direct URL navigation to /plans/:id does not crash', async ({ page }) => {
+    // Capture browser console errors via Playwright's event API (reliable, no globals needed)
+    const consoleErrors: string[] = [];
+    page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
+    page.on('pageerror', err => consoleErrors.push(err.message));
+
     await ensureLoggedIn(page);
 
     // Fetch the first available plan ID directly from the API to avoid hardcoding
@@ -232,9 +215,6 @@ test('Regression: direct URL navigation to /plans/:id does not crash', async ({ 
     // No React error boundary message must appear
     await expect(page.locator('text=Something went wrong')).toHaveCount(0);
 
-    // Console must have zero errors
-    const errors = await page.evaluate(() =>
-        (window as any).__playwrightErrors ?? []
-    );
-    expect(errors).toHaveLength(0);
+    // No JS errors in the console
+    expect(consoleErrors).toHaveLength(0);
 });

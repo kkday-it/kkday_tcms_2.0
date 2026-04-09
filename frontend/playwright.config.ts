@@ -2,13 +2,17 @@ import { defineConfig, devices } from '@playwright/test';
 import * as fs from 'fs';
 // Load .env.test.local (gitignored) for local test credentials
 try {
-    fs.readFileSync('.env.test.local', 'utf-8').split('\n').forEach(line => {
+    // split on \r?\n to handle both Unix and Windows line endings
+    fs.readFileSync('.env.test.local', 'utf-8').split(/\r?\n/).forEach(line => {
         const trimmed = line.trim();
         if (!trimmed || trimmed.startsWith('#')) return;
         const idx = trimmed.indexOf('=');
         if (idx <= 0) return;
         const key = trimmed.slice(0, idx).trim();
-        let val = trimmed.slice(idx + 1).split('#')[0].trim(); // strip inline comments
+        let val = trimmed.slice(idx + 1);
+        // Strip inline comments only when # is preceded by whitespace,
+        // so URL fragments like https://example.com/#section are preserved.
+        val = val.replace(/\s+#.*$/, '').trim();
         if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
             val = val.slice(1, -1); // strip surrounding quotes
         }

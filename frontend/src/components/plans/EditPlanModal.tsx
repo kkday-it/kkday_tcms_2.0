@@ -333,12 +333,12 @@ export default function EditPlanModal({ plan, folders, runs, cases, caseFolders,
                 qa_docs: qaDocs.filter(d => d.url.trim()).map(d => ({ title: d.title?.trim() || undefined, url: d.url.trim() })),
                 mindmap_url: mindmapUrl.trim() || null,
                 timeline: tPayload,
-                jira_unfix_filter_id: jiraUnfixFilterId.trim() ? parseInt(jiraUnfixFilterId, 10) : null,
-                jira_total_filter_id: jiraTotalFilterId.trim() ? parseInt(jiraTotalFilterId, 10) : null,
+                jira_unfix_filter_id: (() => { const n = parseInt(jiraUnfixFilterId, 10); return Number.isFinite(n) ? n : null; })(),
+                jira_total_filter_id: (() => { const n = parseInt(jiraTotalFilterId, 10); return Number.isFinite(n) ? n : null; })(),
                 jira_unfix_filter_ids: jiraUnfixFilterIds.length > 0 ? jiraUnfixFilterIds : null,
                 jira_total_filter_ids: jiraTotalFilterIds.length > 0 ? jiraTotalFilterIds : null,
                 jira_display_fields: jiraDisplayFields.length ? jiraDisplayFields : ['key', 'summary', 'status', 'assignee', 'priority'],
-                jira_chart_filter_id: chartFilterId.trim() ? parseInt(chartFilterId, 10) : null,
+                jira_chart_filter_id: (() => { const n = parseInt(chartFilterId, 10); return Number.isFinite(n) ? n : null; })(),
                 jira_chart_field: chartField,
                 run_ids: selectedRunIds,
                 case_ids: selectedCaseIds,
@@ -609,14 +609,14 @@ export default function EditPlanModal({ plan, folders, runs, cases, caseFolders,
                                                 if ((e.key === 'Enter' || e.key === ',') && jiraUnfixInput.trim()) {
                                                     e.preventDefault();
                                                     const id = parseInt(jiraUnfixInput.trim(), 10);
-                                                    if (!isNaN(id) && !jiraUnfixFilterIds.includes(id)) setJiraUnfixFilterIds(prev => [...prev, id]);
+                                                    if (Number.isFinite(id) && id > 0 && !jiraUnfixFilterIds.includes(id)) setJiraUnfixFilterIds(prev => [...prev, id]);
                                                     setJiraUnfixInput('');
                                                 }
                                             }}
                                             onBlur={() => {
                                                 if (jiraUnfixInput.trim()) {
                                                     const id = parseInt(jiraUnfixInput.trim(), 10);
-                                                    if (!isNaN(id) && !jiraUnfixFilterIds.includes(id)) setJiraUnfixFilterIds(prev => [...prev, id]);
+                                                    if (Number.isFinite(id) && id > 0 && !jiraUnfixFilterIds.includes(id)) setJiraUnfixFilterIds(prev => [...prev, id]);
                                                     setJiraUnfixInput('');
                                                 }
                                             }}
@@ -640,14 +640,14 @@ export default function EditPlanModal({ plan, folders, runs, cases, caseFolders,
                                                 if ((e.key === 'Enter' || e.key === ',') && jiraTotalInput.trim()) {
                                                     e.preventDefault();
                                                     const id = parseInt(jiraTotalInput.trim(), 10);
-                                                    if (!isNaN(id) && !jiraTotalFilterIds.includes(id)) setJiraTotalFilterIds(prev => [...prev, id]);
+                                                    if (Number.isFinite(id) && id > 0 && !jiraTotalFilterIds.includes(id)) setJiraTotalFilterIds(prev => [...prev, id]);
                                                     setJiraTotalInput('');
                                                 }
                                             }}
                                             onBlur={() => {
                                                 if (jiraTotalInput.trim()) {
                                                     const id = parseInt(jiraTotalInput.trim(), 10);
-                                                    if (!isNaN(id) && !jiraTotalFilterIds.includes(id)) setJiraTotalFilterIds(prev => [...prev, id]);
+                                                    if (Number.isFinite(id) && id > 0 && !jiraTotalFilterIds.includes(id)) setJiraTotalFilterIds(prev => [...prev, id]);
                                                     setJiraTotalInput('');
                                                 }
                                             }}
