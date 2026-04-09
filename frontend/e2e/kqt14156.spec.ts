@@ -1,21 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { selectReactOption } from './utils/select';
-
-// Helper: login if needed
-async function ensureLoggedIn(page: import('@playwright/test').Page) {
-    await page.goto('/');
-    const isLoginPage = await page.locator('input[type="password"]').isVisible({ timeout: 3000 }).catch(() => false);
-    if (isLoginPage) {
-        await page.fill('input[type="email"], input[type="text"]', process.env.TEST_EMAIL ?? 'CI_test@kkday.com');
-        await page.fill('input[type="password"]', process.env.TEST_PASSWORD ?? 'KKday1234567890!');
-        await page.click('button[type="submit"]');
-        // After login the app redirects to root "/" (dashboard at root path)
-        await page.waitForFunction(
-            () => !document.querySelector('input[type="password"]'),
-            { timeout: 10000 }
-        );
-    }
-}
+import { ensureLoggedIn, selectReactOption } from './utils';
 
 // ─── KQT-14481: PRD 欄位顯示 Link 超連結 ──────────────────────────────────────
 test('KQT-14481: PRD field shows "Link" hyperlink, not raw URL', async ({ page }) => {

@@ -1,3 +1,4 @@
+import { expect } from '@playwright/test';
 import type { Locator } from '@playwright/test';
 
 /**
@@ -8,11 +9,12 @@ import type { Locator } from '@playwright/test';
  *  1. Playwright's built-in selectOption() — fires native 'change' event; works
  *     for React 16/17/18 when the root-delegated listener picks it up.
  *  2. Native value-setter + explicit 'input' + 'change' dispatch — covers cases
- *     where the first attempt fires but React batches the update and the DOM
- *     value reverts before the synthetic handler runs.
+ *     where selectOption() fires the event but React batches/defers the update
+ *     so the dirty signal doesn't become enabled within the timeout window.
  *
- * We confirm success by checking whether `isDirtySignal` becomes truthy within
- * `timeout` ms.  If neither attempt succeeds we throw an actionable error.
+ * Each attempt is verified with expect(isDirtySignal).toBeEnabled() which
+ * uses Playwright's built-in auto-retry/polling — unlike isEnabled() which
+ * only checks the current state without waiting.
  *
  * ⚠️  Do NOT use React-internal keys (__reactProps, __reactFiber, etc.) here.
  *     Those are private APIs that break across minor React versions and violate
@@ -28,8 +30,8 @@ export async function selectReactOption(
 ): Promise<void> {
     // Attempt 1 — Playwright native
     await locator.selectOption(value);
-    const enabled = await isDirtySignal.isEnabled({ timeout }).catch(() => false);
-    if (enabled) return;
+    const attempt1Ok = await expect(isDirtySignal).toBeEnabled({ timeout }).then(() => true).catch(() => false);
+    if (attempt1Ok) return;
 
     // Attempt 2 — native setter + input + change events
     // React 18 batches updates; dispatching 'input' before 'change' mirrors what
@@ -42,8 +44,8 @@ export async function selectReactOption(
         el.dispatchEvent(new Event('input',  { bubbles: true, cancelable: true }));
         el.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
     }, value);
-    const enabled2 = await isDirtySignal.isEnabled({ timeout }).catch(() => false);
-    if (enabled2) return;
+    const attempt2Ok = await expect(isDirtySignal).toBeEnabled({ timeout }).then(() => true).catch(() => false);
+    if (attempt2Ok) return;
 
     throw new Error(
         `selectReactOption: selecting "${value}" did not enable the dirty signal within ${timeout}ms. ` +
