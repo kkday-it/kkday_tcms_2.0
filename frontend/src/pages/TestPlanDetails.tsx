@@ -414,15 +414,7 @@ export default function TestPlanDetails() {
         loadChart();
     }, [plan?.id, plan?.jira_chart_filter_id, plan?.jira_chart_field]);
 
-    if (isLoading) return (
-        <div className="flex-1 flex items-center justify-center bg-slate-50">
-            <Loader2 className="w-8 h-8 animate-spin text-primary-500" />
-        </div>
-    );
-
-    if (!plan) return <div className="p-8 text-center text-slate-500">Test Plan not found.</div>;
-
-    // ── Sort helpers ─────────────────────────────────────────────────────────
+    // ── Sort helpers — must be before any early return (Rules of Hooks) ──────
     const toggleRunSort = (col: 'title' | 'status') => {
         setRunSort(prev => prev?.col === col ? { col, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'asc' });
     };
@@ -440,6 +432,14 @@ export default function TestPlanDetails() {
         else v = (PRIORITY_ORDER[a.priority] ?? 99) - (PRIORITY_ORDER[b.priority] ?? 99);
         return caseSort.dir === 'asc' ? v : -v;
     }) : cases, [cases, caseSort]);
+
+    if (isLoading) return (
+        <div className="flex-1 flex items-center justify-center bg-slate-50">
+            <Loader2 className="w-8 h-8 animate-spin text-primary-500" />
+        </div>
+    );
+
+    if (!plan) return <div className="p-8 text-center text-slate-500">Test Plan not found.</div>;
     const SortIcon = ({ col, sort }: { col: string; sort: { col: string; dir: string } | null }) => (
         <span className="ml-1 text-slate-400 text-xs select-none">
             {sort?.col === col ? (sort.dir === 'asc' ? '▲' : '▼') : '⇅'}
