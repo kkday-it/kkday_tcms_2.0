@@ -206,6 +206,11 @@ test('KQT-14531/14713: Suite tree selector shows expandable hierarchy', async ({
 // 再非同步載入資料，若有 hook 放在 early return 後面就會觸發
 // "Rendered more hooks than during the previous render" 崩潰 → 白畫面。
 test('Regression: direct URL navigation to /plans/:id does not crash', async ({ page }) => {
+    // Capture browser console errors via Playwright's event API (reliable, no globals needed)
+    const consoleErrors: string[] = [];
+    page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
+    page.on('pageerror', err => consoleErrors.push(err.message));
+
     await ensureLoggedIn(page);
 
     // Fetch the first available plan ID directly from the API to avoid hardcoding
@@ -226,9 +231,6 @@ test('Regression: direct URL navigation to /plans/:id does not crash', async ({ 
     // No React error boundary message must appear
     await expect(page.locator('text=Something went wrong')).toHaveCount(0);
 
-    // Console must have zero errors
-    const errors = await page.evaluate(() =>
-        (window as any).__playwrightErrors ?? []
-    );
-    expect(errors).toHaveLength(0);
+    // No JS errors in the console
+    expect(consoleErrors).toHaveLength(0);
 });
