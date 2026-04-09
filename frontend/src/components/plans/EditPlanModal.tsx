@@ -89,7 +89,7 @@ function SuiteTreeSelect({ value, onChange, folders }: {
         });
         return map;
     }, [folders]);
-    const roots = useMemo(() => folders.filter(f => !f.parent_suite_id), [folders]);
+    const roots = useMemo(() => folders.filter(f => f.parent_suite_id == null), [folders]);
     const selectedName = value ? folders.find(f => String(f.id) === value)?.name ?? 'All Suites' : 'All Suites';
 
     const toggle = (id: number, e: React.MouseEvent) => {
@@ -297,13 +297,18 @@ export default function EditPlanModal({ plan, folders, runs, cases, caseFolders,
     const descendantSuiteIds = (rootId: string): Set<string> => {
         const ids = new Set<string>();
         const visit = (id: string) => {
+            if (ids.has(id)) return; // cycle guard
             ids.add(id);
             caseFolders.filter(f => String(f.parent_suite_id) === id).forEach(f => visit(String(f.id)));
         };
         if (rootId) visit(rootId);
         return ids;
     };
-    const activeSuiteIds = caseFolderFilter ? descendantSuiteIds(caseFolderFilter) : null;
+    const activeSuiteIds = useMemo(
+        () => caseFolderFilter ? descendantSuiteIds(caseFolderFilter) : null,
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [caseFolderFilter, caseFolders]
+    );
 
     const filteredCases = cases
         .filter(c => !activeSuiteIds || activeSuiteIds.has(String(c.suite_id)))

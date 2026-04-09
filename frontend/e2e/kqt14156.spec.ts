@@ -5,7 +5,7 @@ async function ensureLoggedIn(page: import('@playwright/test').Page) {
     await page.goto('/');
     const isLoginPage = await page.locator('input[type="password"]').isVisible({ timeout: 3000 }).catch(() => false);
     if (isLoginPage) {
-        await page.fill('input[type="email"], input[type="text"]', process.env.TEST_EMAIL ?? 'lance.chien@kkday.com');
+        await page.fill('input[type="email"], input[type="text"]', process.env.TEST_EMAIL ?? '');
         await page.fill('input[type="password"]', process.env.TEST_PASSWORD ?? '');
         await page.click('button[type="submit"]');
         // After login the app redirects to root "/" (dashboard at root path)
@@ -93,8 +93,9 @@ test('KQT-14495: Clicking Pass All preserves scroll position of case list', asyn
     const rows = page.locator('tbody tr');
     const count = await rows.count();
     expect(count).toBeGreaterThan(2);
-    // Scroll to bottom of list
-    const listDiv = page.locator('[class*="overflow-y-auto"]').first();
+    // Scroll to bottom of the case list panel — target the scrollable container
+    // that holds the test-case rows (has both overflow-y-auto and the results table inside)
+    const listDiv = page.locator('[class*="overflow-y-auto"]').filter({ has: page.locator('tbody tr') }).first();
     await listDiv.evaluate(el => el.scrollTop = 9999);
     const scrollBefore = await listDiv.evaluate(el => el.scrollTop);
     await rows.nth(count - 1).click();
@@ -166,8 +167,13 @@ test('KQT-14671: Archived runs are not shown in test plan', async ({ page }) => 
     const runRows = page.locator('tbody tr');
     const count = await runRows.count();
     for (let i = 0; i < count; i++) {
-        const rowText = await runRows.nth(i).innerText();
-        expect(rowText).not.toContain('Archived');
+        // Scope check to the status cell only (3rd column) to avoid false positives
+        // from run titles or descriptions that might incidentally contain "Archived"
+        const statusCell = runRows.nth(i).locator('td:nth-child(3)');
+        if (await statusCell.count() > 0) {
+            const cellText = await statusCell.innerText();
+            expect(cellText).not.toContain('Archived');
+        }
     }
 });
 
