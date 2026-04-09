@@ -124,12 +124,18 @@ test('KQT-14496: Result list order is stable after updating a case status', asyn
     const firstSelect = page.locator('tbody tr').first().locator('select').first();
     const currentVal = await firstSelect.inputValue();
     const newVal = currentVal === 'Untested' ? 'Passed' : 'Untested';
-    // React controlled <select> requires native value setter + change event to
-    // trigger synthetic onChange (plain selectOption may not fire React's handler)
+    // For React 18 controlled <select> we call the React onChange prop directly
+    // via the element's __reactProps fiber key — more reliable than native event dispatch
     await firstSelect.evaluate((el: HTMLSelectElement, val: string) => {
-        const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set;
-        setter?.call(el, val);
-        el.dispatchEvent(new Event('change', { bubbles: true }));
+        const propsKey = Object.keys(el).find(k => k.startsWith('__reactProps'));
+        if (propsKey) {
+            (el as any)[propsKey].onChange({ target: { value: val } });
+        } else {
+            // Fallback: native setter + change event for non-React or older versions
+            const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set;
+            setter?.call(el, val);
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+        }
     }, newVal);
     // Wait for Save button to become enabled (React state update is async)
     await expect(page.locator('button:has-text("Save")')).toBeEnabled({ timeout: 3000 });
