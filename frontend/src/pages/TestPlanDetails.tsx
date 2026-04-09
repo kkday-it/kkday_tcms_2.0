@@ -852,7 +852,7 @@ export default function TestPlanDetails() {
                                                     </table>
                                                     {numPages > 1 && (
                                                         <div className="flex items-center justify-between px-5 py-3 border-t border-slate-100 bg-slate-50 text-sm text-slate-500">
-                                                            <span>{start + 1}–{Math.min(start + JIRA_PAGE_SIZE, block.issues.length)} / {block.issues.length}</span>
+                                                            <span>{start + 1}–{Math.min(start + JIRA_PAGE_SIZE, sorted.length)} / {sorted.length}</span>
                                                             <div className="flex items-center gap-1">
                                                                 <button onClick={() => setUnfixPages(p => ({ ...p, [block.filter_id]: Math.max(1, page - 1) }))} disabled={page === 1} className="px-2 py-1 rounded hover:bg-slate-200 disabled:opacity-40">‹</button>
                                                                 {Array.from({ length: numPages }, (_, i) => i + 1).map(p => (
@@ -913,7 +913,7 @@ export default function TestPlanDetails() {
                                                     </table>
                                                     {numPages > 1 && (
                                                         <div className="flex items-center justify-between px-5 py-3 border-t border-slate-100 bg-slate-50 text-sm text-slate-500">
-                                                            <span>{start + 1}–{Math.min(start + JIRA_PAGE_SIZE, block.issues.length)} / {block.issues.length}</span>
+                                                            <span>{start + 1}–{Math.min(start + JIRA_PAGE_SIZE, sorted.length)} / {sorted.length}</span>
                                                             <div className="flex items-center gap-1">
                                                                 <button onClick={() => setTotalPages(p => ({ ...p, [block.filter_id]: Math.max(1, page - 1) }))} disabled={page === 1} className="px-2 py-1 rounded hover:bg-slate-200 disabled:opacity-40">‹</button>
                                                                 {Array.from({ length: numPages }, (_, i) => i + 1).map(p => (
