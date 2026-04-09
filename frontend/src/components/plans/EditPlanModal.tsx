@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Loader2, Search, Plus, X, UploadCloud, ExternalLink } from 'lucide-react';
 import api from '../../lib/api';
 
@@ -77,7 +77,19 @@ function SuiteTreeSelect({ value, onChange, folders }: {
         return () => document.removeEventListener('mousedown', handler);
     }, []);
 
-    const roots = folders.filter(f => !f.parent_suite_id);
+    // Pre-build parent → children map to avoid O(n) scans per node
+    const childrenMap = useMemo(() => {
+        const map = new Map<number, CaseFolder[]>();
+        folders.forEach(f => {
+            if (f.parent_suite_id != null) {
+                const arr = map.get(f.parent_suite_id) ?? [];
+                arr.push(f);
+                map.set(f.parent_suite_id, arr);
+            }
+        });
+        return map;
+    }, [folders]);
+    const roots = useMemo(() => folders.filter(f => !f.parent_suite_id), [folders]);
     const selectedName = value ? folders.find(f => String(f.id) === value)?.name ?? 'All Suites' : 'All Suites';
 
     const toggle = (id: number, e: React.MouseEvent) => {
@@ -86,7 +98,7 @@ function SuiteTreeSelect({ value, onChange, folders }: {
     };
 
     const renderNode = (folder: CaseFolder, depth: number): React.ReactNode => {
-        const children = folders.filter(f => f.parent_suite_id === folder.id);
+        const children = childrenMap.get(folder.id) ?? [];
         const isExpanded = expanded.has(folder.id);
         const isSelected = String(folder.id) === value;
         return (

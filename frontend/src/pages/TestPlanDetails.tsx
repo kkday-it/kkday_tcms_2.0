@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft, Loader2, ClipboardList, PlayCircle, FileText, CheckCircle2, XCircle, Clock, Edit2, ExternalLink, Bug, ListChecks } from 'lucide-react';
 import api from '../lib/api';
@@ -273,15 +273,19 @@ export default function TestPlanDetails() {
             return { ...prev, [filterId]: cur?.col === col ? { col, dir: cur.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'asc' } };
         });
     };
-    const sortedIssues = (issues: JiraIssue[], filterId: number): JiraIssue[] => {
-        const s = jiraSort[filterId];
-        if (!s) return issues;
-        return [...issues].sort((a, b) => {
-            const va = (a[s.col as keyof JiraIssue] ?? '') as string;
-            const vb = (b[s.col as keyof JiraIssue] ?? '') as string;
-            return s.dir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
+    // Pre-sorted issue maps — recompute only when source data or sort config changes
+    const jiraSortedMap = useMemo(() => {
+        const result: Record<number, JiraIssue[]> = {};
+        [...jiraUnfixFilters, ...jiraTotalFilters].forEach(block => {
+            const s = jiraSort[block.filter_id];
+            result[block.filter_id] = s ? [...block.issues].sort((a, b) => {
+                const va = (a[s.col as keyof JiraIssue] ?? '') as string;
+                const vb = (b[s.col as keyof JiraIssue] ?? '') as string;
+                return s.dir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
+            }) : block.issues;
         });
-    };
+        return result;
+    }, [jiraUnfixFilters, jiraTotalFilters, jiraSort]);
     const JiraSortIcon = ({ filterId, col }: { filterId: number; col: JiraCol }) => {
         const s = jiraSort[filterId];
         if (!s || s.col !== col) return <span className="ml-1 text-slate-300 text-[10px]">⇅</span>;
@@ -426,16 +430,16 @@ export default function TestPlanDetails() {
         setCaseSort(prev => prev?.col === col ? { col, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'asc' });
     };
     const PRIORITY_ORDER: Record<string, number> = { Critical: 0, High: 1, Medium: 2, Low: 3 };
-    const sortedRuns = runSort ? [...runs].sort((a, b) => {
+    const sortedRuns = useMemo(() => runSort ? [...runs].sort((a, b) => {
         const v = runSort.col === 'title' ? a.title.localeCompare(b.title) : a.status.localeCompare(b.status);
         return runSort.dir === 'asc' ? v : -v;
-    }) : runs;
-    const sortedCases = caseSort ? [...cases].sort((a, b) => {
+    }) : runs, [runs, runSort]);
+    const sortedCases = useMemo(() => caseSort ? [...cases].sort((a, b) => {
         let v = 0;
         if (caseSort.col === 'title') v = a.title.localeCompare(b.title);
         else v = (PRIORITY_ORDER[a.priority] ?? 99) - (PRIORITY_ORDER[b.priority] ?? 99);
         return caseSort.dir === 'asc' ? v : -v;
-    }) : cases;
+    }) : cases, [cases, caseSort]);
     const SortIcon = ({ col, sort }: { col: string; sort: { col: string; dir: string } | null }) => (
         <span className="ml-1 text-slate-400 text-xs select-none">
             {sort?.col === col ? (sort.dir === 'asc' ? '▲' : '▼') : '⇅'}
@@ -580,8 +584,9 @@ export default function TestPlanDetails() {
                                 {plan.mindmap_url && (
                                     <div className="flex flex-col gap-1 rounded-lg bg-slate-50 p-3 border border-slate-100 min-w-[180px] flex-1">
                                         <span className="text-sm font-semibold text-slate-500">Case Mindmap</span>
-                                        <a href={resolveUrl(plan.mindmap_url)} target="_blank" rel="noreferrer" className="text-base font-medium text-amber-600 hover:text-amber-700 hover:underline truncate">
-                                            {plan.mindmap_url}
+                                        <a href={resolveUrl(plan.mindmap_url)} target="_blank" rel="noreferrer" className="text-base font-medium text-amber-600 hover:text-amber-700 hover:underline flex items-center gap-1">
+                                            <ExternalLink className="w-3.5 h-3.5 shrink-0" />
+                                            Link
                                         </a>
                                     </div>
                                 )}
@@ -799,7 +804,7 @@ export default function TestPlanDetails() {
                                     {/* 未修復 Bug — one block per filter */}
                                     {jiraUnfixFilters.map(block => {
                                         const page = unfixPages[block.filter_id] ?? 1;
-                                        const sorted = sortedIssues(block.issues, block.filter_id);
+                                        const sorted = jiraSortedMap[block.filter_id] ?? block.issues;
                                         const numPages = Math.ceil(sorted.length / JIRA_PAGE_SIZE);
                                         const start = (page - 1) * JIRA_PAGE_SIZE;
                                         const pageItems = sorted.slice(start, start + JIRA_PAGE_SIZE);
@@ -860,7 +865,7 @@ export default function TestPlanDetails() {
                                     {/* 全部 Issue — one block per filter */}
                                     {jiraTotalFilters.map(block => {
                                         const page = totalPages[block.filter_id] ?? 1;
-                                        const sorted = sortedIssues(block.issues, block.filter_id);
+                                        const sorted = jiraSortedMap[block.filter_id] ?? block.issues;
                                         const numPages = Math.ceil(sorted.length / JIRA_PAGE_SIZE);
                                         const start = (page - 1) * JIRA_PAGE_SIZE;
                                         const pageItems = sorted.slice(start, start + JIRA_PAGE_SIZE);
