@@ -245,6 +245,11 @@ const SortIcon = ({ col, sort }: { col: string; sort: { col: string; dir: string
     </span>
 );
 
+const JiraSortIcon = ({ sort, col }: { sort?: { col: string; dir: 'asc' | 'desc' }; col: string }) => {
+    if (!sort || sort.col !== col) return <span className="ml-1 text-slate-300 text-[10px]">⇅</span>;
+    return <span className="ml-1 text-primary-500 text-[10px]">{sort.dir === 'asc' ? '▲' : '▼'}</span>;
+};
+
 export default function TestPlanDetails() {
     const { planId } = useParams();
     const [plan, setPlan] = useState<TestPlan | null>(null);
@@ -298,12 +303,6 @@ export default function TestPlanDetails() {
         });
         return result;
     }, [jiraUnfixFilters, jiraTotalFilters, jiraSort]);
-    const JiraSortIcon = ({ filterId, col }: { filterId: number; col: JiraCol }) => {
-        const s = jiraSort[filterId];
-        if (!s || s.col !== col) return <span className="ml-1 text-slate-300 text-[10px]">⇅</span>;
-        return <span className="ml-1 text-primary-500 text-[10px]">{s.dir === 'asc' ? '▲' : '▼'}</span>;
-    };
-
     // Jira Pie Chart State
     const [jiraChartIssues, setJiraChartIssues] = useState<JiraIssue[]>([]);
     const [jiraChartLoading, setJiraChartLoading] = useState(false);
@@ -456,7 +455,7 @@ export default function TestPlanDetails() {
     const totalRuns = runs.length;
     const completedRuns = runs.filter(r => r.status === 'Done').length;
     let totalPassed = 0, totalFailed = 0, totalUntested = 0;
-    runs.forEach(r => { totalPassed += r.passed; totalFailed += r.failed; totalUntested += r.untested; });
+    runs.forEach(r => { totalPassed += r.passed ?? 0; totalFailed += r.failed ?? 0; totalUntested += r.untested ?? 0; });
     const totalCaseExecs = totalPassed + totalFailed + totalUntested;
     const passRate = totalCaseExecs > 0 ? Math.round((totalPassed / totalCaseExecs) * 100) : 0;
     const completionRate = totalRuns > 0 ? Math.round((completedRuns / totalRuns) * 100) : 0;
@@ -834,7 +833,7 @@ export default function TestPlanDetails() {
                                                                     <th key={col} onClick={() => toggleJiraSort(block.filter_id, col)}
                                                                         className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider cursor-pointer hover:bg-slate-50 select-none whitespace-nowrap">
                                                                         {col === 'key' ? 'Key' : col === 'summary' ? '摘要' : col === 'status' ? '狀態' : col === 'assignee' ? '負責人' : '優先級'}
-                                                                        <JiraSortIcon filterId={block.filter_id} col={col} />
+                                                                        <JiraSortIcon sort={jiraSort[block.filter_id]} col={col} />
                                                                     </th>
                                                                 ))}
                                                             </tr>
@@ -895,7 +894,7 @@ export default function TestPlanDetails() {
                                                                     <th key={col} onClick={() => toggleJiraSort(block.filter_id, col)}
                                                                         className="px-5 py-4 text-sm font-bold text-slate-700 uppercase tracking-wider cursor-pointer hover:bg-slate-50 select-none whitespace-nowrap">
                                                                         {col === 'key' ? 'Key' : col === 'summary' ? '摘要' : col === 'status' ? '狀態' : col === 'assignee' ? '負責人' : '優先級'}
-                                                                        <JiraSortIcon filterId={block.filter_id} col={col} />
+                                                                        <JiraSortIcon sort={jiraSort[block.filter_id]} col={col} />
                                                                     </th>
                                                                 ))}
                                                             </tr>

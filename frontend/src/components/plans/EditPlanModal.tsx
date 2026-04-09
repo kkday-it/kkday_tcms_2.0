@@ -609,14 +609,14 @@ export default function EditPlanModal({ plan, folders, runs, cases, caseFolders,
                                                 if ((e.key === 'Enter' || e.key === ',') && jiraUnfixInput.trim()) {
                                                     e.preventDefault();
                                                     const id = parseInt(jiraUnfixInput.trim(), 10);
-                                                    if (!isNaN(id) && !jiraUnfixFilterIds.includes(id)) setJiraUnfixFilterIds(prev => [...prev, id]);
+                                                    if (Number.isFinite(id) && id > 0 && !jiraUnfixFilterIds.includes(id)) setJiraUnfixFilterIds(prev => [...prev, id]);
                                                     setJiraUnfixInput('');
                                                 }
                                             }}
                                             onBlur={() => {
                                                 if (jiraUnfixInput.trim()) {
                                                     const id = parseInt(jiraUnfixInput.trim(), 10);
-                                                    if (!isNaN(id) && !jiraUnfixFilterIds.includes(id)) setJiraUnfixFilterIds(prev => [...prev, id]);
+                                                    if (Number.isFinite(id) && id > 0 && !jiraUnfixFilterIds.includes(id)) setJiraUnfixFilterIds(prev => [...prev, id]);
                                                     setJiraUnfixInput('');
                                                 }
                                             }}
@@ -640,14 +640,14 @@ export default function EditPlanModal({ plan, folders, runs, cases, caseFolders,
                                                 if ((e.key === 'Enter' || e.key === ',') && jiraTotalInput.trim()) {
                                                     e.preventDefault();
                                                     const id = parseInt(jiraTotalInput.trim(), 10);
-                                                    if (!isNaN(id) && !jiraTotalFilterIds.includes(id)) setJiraTotalFilterIds(prev => [...prev, id]);
+                                                    if (Number.isFinite(id) && id > 0 && !jiraTotalFilterIds.includes(id)) setJiraTotalFilterIds(prev => [...prev, id]);
                                                     setJiraTotalInput('');
                                                 }
                                             }}
                                             onBlur={() => {
                                                 if (jiraTotalInput.trim()) {
                                                     const id = parseInt(jiraTotalInput.trim(), 10);
-                                                    if (!isNaN(id) && !jiraTotalFilterIds.includes(id)) setJiraTotalFilterIds(prev => [...prev, id]);
+                                                    if (Number.isFinite(id) && id > 0 && !jiraTotalFilterIds.includes(id)) setJiraTotalFilterIds(prev => [...prev, id]);
                                                     setJiraTotalInput('');
                                                 }
                                             }}
