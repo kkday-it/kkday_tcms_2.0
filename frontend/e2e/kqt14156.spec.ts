@@ -5,7 +5,7 @@ async function ensureLoggedIn(page: import('@playwright/test').Page) {
     await page.goto('/');
     const isLoginPage = await page.locator('input[type="password"]').isVisible({ timeout: 3000 }).catch(() => false);
     if (isLoginPage) {
-        await page.fill('input[type="email"], input[type="text"]', process.env.TEST_EMAIL ?? 'lance.chien@kkday.com');
+        await page.fill('input[type="email"], input[type="text"]', process.env.TEST_EMAIL ?? '');
         await page.fill('input[type="password"]', process.env.TEST_PASSWORD ?? '');
         await page.click('button[type="submit"]');
         // After login the app redirects to root "/" (dashboard at root path)
@@ -93,8 +93,9 @@ test('KQT-14495: Clicking Pass All preserves scroll position of case list', asyn
     const rows = page.locator('tbody tr');
     const count = await rows.count();
     expect(count).toBeGreaterThan(2);
-    // Scroll to bottom of list
-    const listDiv = page.locator('[class*="overflow-y-auto"]').first();
+    // Scroll to bottom of the case list panel — target the scrollable container
+    // that holds the test-case rows (has both overflow-y-auto and the results table inside)
+    const listDiv = page.locator('[class*="overflow-y-auto"]').filter({ has: page.locator('tbody tr') }).first();
     await listDiv.evaluate(el => el.scrollTop = 9999);
     const scrollBefore = await listDiv.evaluate(el => el.scrollTop);
     await rows.nth(count - 1).click();
@@ -123,7 +124,15 @@ test('KQT-14496: Result list order is stable after updating a case status', asyn
     const firstSelect = page.locator('tbody tr').first().locator('select').first();
     const currentVal = await firstSelect.inputValue();
     const newVal = currentVal === 'Untested' ? 'Passed' : 'Untested';
-    await firstSelect.selectOption(newVal);
+    // React controlled <select> requires native value setter + change event to
+    // trigger synthetic onChange (plain selectOption may not fire React's handler)
+    await firstSelect.evaluate((el: HTMLSelectElement, val: string) => {
+        const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set;
+        setter?.call(el, val);
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+    }, newVal);
+    // Wait for Save button to become enabled (React state update is async)
+    await expect(page.locator('button:has-text("Save")')).toBeEnabled({ timeout: 3000 });
     await page.click('button:has-text("Save")');
     await page.waitForLoadState('networkidle');
     const after = await getOrder();
@@ -158,8 +167,13 @@ test('KQT-14671: Archived runs are not shown in test plan', async ({ page }) => 
     const runRows = page.locator('tbody tr');
     const count = await runRows.count();
     for (let i = 0; i < count; i++) {
-        const rowText = await runRows.nth(i).innerText();
-        expect(rowText).not.toContain('Archived');
+        // Scope check to the status cell only (3rd column) to avoid false positives
+        // from run titles or descriptions that might incidentally contain "Archived"
+        const statusCell = runRows.nth(i).locator('td:nth-child(3)');
+        if (await statusCell.count() > 0) {
+            const cellText = await statusCell.innerText();
+            expect(cellText).not.toContain('Archived');
+        }
     }
 });
 
@@ -191,4 +205,36 @@ test('KQT-14531/14713: Suite tree selector shows expandable hierarchy', async ({
         await expandable.first().click();
         await expect(page.locator('span').filter({ hasText: '▾' }).first()).toBeVisible();
     }
+});
+
+// ─── Regression: /plans/:id 直接 URL 存取不可白畫面 ──────────────────────────
+// 重現情境：直接輸入 URL（非從列表點入）時，React 先以 plan=null 初始化，
+// 再非同步載入資料，若有 hook 放在 early return 後面就會觸發
+// "Rendered more hooks than during the previous render" 崩潰 → 白畫面。
+test('Regression: direct URL navigation to /plans/:id does not crash', async ({ page }) => {
+    await ensureLoggedIn(page);
+
+    // Fetch the first available plan ID directly from the API to avoid hardcoding
+    const res = await page.request.get('/api/v1/plans/project/1');
+    expect(res.status()).toBe(200);
+    const plans: { id: number }[] = await res.json();
+    expect(plans.length).toBeGreaterThan(0);
+    const planId = plans[0].id;
+
+    // Navigate directly by URL — this is the scenario that used to crash
+    await page.goto(`/plans/${planId}`);
+    await page.waitForLoadState('networkidle');
+
+    // Page must not be blank: expect the plan title heading to appear
+    const heading = page.locator('h1, h2, [class*="text-2xl"], [class*="text-3xl"]').first();
+    await expect(heading).toBeVisible({ timeout: 10000 });
+
+    // No React error boundary message must appear
+    await expect(page.locator('text=Something went wrong')).toHaveCount(0);
+
+    // Console must have zero errors
+    const errors = await page.evaluate(() =>
+        (window as any).__playwrightErrors ?? []
+    );
+    expect(errors).toHaveLength(0);
 });

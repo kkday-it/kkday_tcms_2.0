@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft, Loader2, ClipboardList, PlayCircle, FileText, CheckCircle2, XCircle, Clock, Edit2, ExternalLink, Bug, ListChecks } from 'lucide-react';
 import api from '../lib/api';
@@ -236,6 +236,15 @@ const STATUS_PILL: Record<string, string> = {
 
 type JiraFilterBlock = { filter_id: number; filter_name: string; issues: JiraIssue[]; view_url?: string };
 
+// ── Module-level constants / pure components (no hooks) ──────────────────────
+const PRIORITY_ORDER: Record<string, number> = { Critical: 0, High: 1, Medium: 2, Low: 3 };
+
+const SortIcon = ({ col, sort }: { col: string; sort: { col: string; dir: string } | null }) => (
+    <span className="ml-1 text-slate-400 text-xs select-none">
+        {sort?.col === col ? (sort.dir === 'asc' ? '▲' : '▼') : '⇅'}
+    </span>
+);
+
 export default function TestPlanDetails() {
     const { planId } = useParams();
     const [plan, setPlan] = useState<TestPlan | null>(null);
@@ -267,20 +276,23 @@ export default function TestPlanDetails() {
     // Jira table sort — keyed by filter_id
     type JiraCol = 'key' | 'summary' | 'status' | 'assignee' | 'priority';
     const [jiraSort, setJiraSort] = useState<Record<number, { col: JiraCol; dir: 'asc' | 'desc' }>>({});
-    const toggleJiraSort = (filterId: number, col: JiraCol) => {
+    const toggleJiraSort = useCallback((filterId: number, col: JiraCol) => {
         setJiraSort(prev => {
             const cur = prev[filterId];
             return { ...prev, [filterId]: cur?.col === col ? { col, dir: cur.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'asc' } };
         });
-    };
+        // Reset pagination for this filter when sort changes
+        setUnfixPages(prev => ({ ...prev, [filterId]: 1 }));
+        setTotalPages(prev => ({ ...prev, [filterId]: 1 }));
+    }, []);
     // Pre-sorted issue maps — recompute only when source data or sort config changes
     const jiraSortedMap = useMemo(() => {
         const result: Record<number, JiraIssue[]> = {};
         [...jiraUnfixFilters, ...jiraTotalFilters].forEach(block => {
             const s = jiraSort[block.filter_id];
             result[block.filter_id] = s ? [...block.issues].sort((a, b) => {
-                const va = (a[s.col as keyof JiraIssue] ?? '') as string;
-                const vb = (b[s.col as keyof JiraIssue] ?? '') as string;
+                const va = String(a[s.col as keyof JiraIssue] ?? '');
+                const vb = String(b[s.col as keyof JiraIssue] ?? '');
                 return s.dir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
             }) : block.issues;
         });
@@ -415,13 +427,12 @@ export default function TestPlanDetails() {
     }, [plan?.id, plan?.jira_chart_filter_id, plan?.jira_chart_field]);
 
     // ── Sort helpers — must be before any early return (Rules of Hooks) ──────
-    const toggleRunSort = (col: 'title' | 'status') => {
+    const toggleRunSort = useCallback((col: 'title' | 'status') => {
         setRunSort(prev => prev?.col === col ? { col, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'asc' });
-    };
-    const toggleCaseSort = (col: 'title' | 'priority') => {
+    }, []);
+    const toggleCaseSort = useCallback((col: 'title' | 'priority') => {
         setCaseSort(prev => prev?.col === col ? { col, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'asc' });
-    };
-    const PRIORITY_ORDER: Record<string, number> = { Critical: 0, High: 1, Medium: 2, Low: 3 };
+    }, []);
     const sortedRuns = useMemo(() => runSort ? [...runs].sort((a, b) => {
         const v = runSort.col === 'title' ? a.title.localeCompare(b.title) : a.status.localeCompare(b.status);
         return runSort.dir === 'asc' ? v : -v;
@@ -440,11 +451,6 @@ export default function TestPlanDetails() {
     );
 
     if (!plan) return <div className="p-8 text-center text-slate-500">Test Plan not found.</div>;
-    const SortIcon = ({ col, sort }: { col: string; sort: { col: string; dir: string } | null }) => (
-        <span className="ml-1 text-slate-400 text-xs select-none">
-            {sort?.col === col ? (sort.dir === 'asc' ? '▲' : '▼') : '⇅'}
-        </span>
-    );
 
     // ── Aggregations ──────────────────────────────────────────────────────────
     const totalRuns = runs.length;
