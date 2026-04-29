@@ -753,9 +753,18 @@ export default function EditPlanModal({ plan, folders, runs, cases, caseFolders,
                                                             onChange={e => setCaseSearch(e.target.value)}
                                                             className="w-full pl-8 pr-3 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-primary-500" />
                                                     </div>
-                                                    <p className="text-[11px] text-slate-400 px-0.5">
-                                                        {filteredCases.filter(c => !selectedCaseIds.includes(c.id)).length} 筆可選
-                                                    </p>
+                                                    <div className="flex items-center justify-between px-0.5">
+                                                        <p className="text-[11px] text-slate-400">
+                                                            {filteredCases.filter(c => !selectedCaseIds.includes(c.id)).length} 筆可選
+                                                        </p>
+                                                        {filteredCases.filter(c => !selectedCaseIds.includes(c.id)).length > 0 && (
+                                                            <button type="button"
+                                                                onClick={() => setSelectedCaseIds(prev => [...new Set([...prev, ...filteredCases.map(c => c.id)])])}
+                                                                className="text-[11px] text-primary-600 hover:text-primary-800 transition-colors font-medium">
+                                                                加入全部
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </div>
                                                 <div className="flex-1 overflow-y-auto divide-y divide-slate-100 bg-white">
                                                     {filteredCases.filter(c => !selectedCaseIds.includes(c.id)).length === 0 ? (

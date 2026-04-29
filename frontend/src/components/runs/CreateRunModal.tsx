@@ -491,6 +491,7 @@ export default function CreateRunModal({ isOpen, onClose, projectId, initialTitl
                                     >
                                         <option value="">全部</option>
                                         <option value="Highest">Highest</option>
+                                        <option value="Critical">Critical</option>
                                         <option value="High">High</option>
                                         <option value="Medium">Medium</option>
                                         <option value="Low">Low</option>

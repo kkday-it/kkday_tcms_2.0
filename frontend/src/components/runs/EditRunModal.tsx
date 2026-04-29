@@ -497,6 +497,7 @@ export default function EditRunModal({ isOpen, onClose, run, folders, onUpdated 
                                     >
                                         <option value="">全部</option>
                                         <option value="Highest">Highest</option>
+                                        <option value="Critical">Critical</option>
                                         <option value="High">High</option>
                                         <option value="Medium">Medium</option>
                                         <option value="Low">Low</option>

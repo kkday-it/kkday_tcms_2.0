@@ -313,7 +313,9 @@ export default function TestCaseExecutionPane({ resultId, onClose, onUpdated }: 
                                 {detail.test_case.preconditions && (
                                     <div className="mb-4">
                                         <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Preconditions</h4>
-                                        <p className="text-sm text-slate-700 bg-slate-50 p-3 rounded-md border border-slate-100">{detail.test_case.preconditions}</p>
+                                        <div className="bg-slate-50 p-3 rounded-md border border-slate-100">
+                                            {renderMarkdown(detail.test_case.preconditions)}
+                                        </div>
                                     </div>
                                 )}
 

@@ -60,7 +60,7 @@ async def get_result_details(result_id: int, db: AsyncSession = Depends(get_db))
     test_case = await db.get(TestCase, result.case_id)
     
     # Fetch steps and their existing results
-    steps_query = select(TestStep).where(TestStep.test_case_id == test_case.id).order_by(TestStep.order)
+    steps_query = select(TestStep).where(TestStep.test_case_id == test_case.id, TestStep.status == 'Active').order_by(TestStep.order)
     steps_res = await db.execute(steps_query)
     steps = steps_res.scalars().all()
     
