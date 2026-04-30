@@ -7,6 +7,8 @@ import allure
 import pytest
 from httpx import AsyncClient
 
+from app.api.test_cases import EXTERNAL_ID_OFFSET, EXTERNAL_ID_PREFIX
+
 pytestmark = pytest.mark.asyncio
 
 
@@ -153,6 +155,59 @@ class TestCasesAPI:
         res = await client.get("/api/v1/cases/labels/all")
         assert res.status_code == 200
         assert "regression" in res.json()
+
+    @allure.title("建立 case 時未提供 external_id，自動產生 KQT-T5xxxx")
+    async def test_create_case_auto_generates_external_id(self, client: AsyncClient, suite_id: int):
+        res = await client.post("/api/v1/cases/", json={"title": "Auto ID Case", "suite_id": suite_id})
+        assert res.status_code == 200
+        data = res.json()
+        assert data["external_id"] is not None
+        assert data["external_id"].startswith(EXTERNAL_ID_PREFIX)
+        assert data["external_id"] == f"{EXTERNAL_ID_PREFIX}{EXTERNAL_ID_OFFSET + data['id']}"
+
+    @allure.title("建立 case 時提供 external_id，保留原值不覆蓋")
+    async def test_create_case_preserves_provided_external_id(self, client: AsyncClient, suite_id: int):
+        res = await client.post("/api/v1/cases/", json={
+            "title": "Zephyr Migrated Case",
+            "suite_id": suite_id,
+            "external_id": "KQT-T23248",
+        })
+        assert res.status_code == 200
+        assert res.json()["external_id"] == "KQT-T23248"
+
+    @allure.title("建立 case 時 external_id 為空字串，視同未提供，自動產生")
+    async def test_create_case_empty_external_id_gets_auto_generated(self, client: AsyncClient, suite_id: int):
+        res = await client.post("/api/v1/cases/", json={
+            "title": "Empty External ID Case",
+            "suite_id": suite_id,
+            "external_id": "",
+        })
+        assert res.status_code == 200
+        data = res.json()
+        assert data["external_id"] == f"{EXTERNAL_ID_PREFIX}{EXTERNAL_ID_OFFSET + data['id']}"
+
+    @allure.title("建立 case 時 external_id 為空白字串，視同未提供，自動產生")
+    async def test_create_case_whitespace_external_id_gets_auto_generated(self, client: AsyncClient, suite_id: int):
+        res = await client.post("/api/v1/cases/", json={
+            "title": "Whitespace External ID Case",
+            "suite_id": suite_id,
+            "external_id": "   ",
+        })
+        assert res.status_code == 200
+        data = res.json()
+        assert data["external_id"] == f"{EXTERNAL_ID_PREFIX}{EXTERNAL_ID_OFFSET + data['id']}"
+
+    @allure.title("建立多個 case 時，各自的 external_id 唯一且不重複")
+    async def test_create_multiple_cases_have_unique_external_ids(self, client: AsyncClient, suite_id: int):
+        res1 = await client.post("/api/v1/cases/", json={"title": "Case Alpha", "suite_id": suite_id})
+        res2 = await client.post("/api/v1/cases/", json={"title": "Case Beta", "suite_id": suite_id})
+        assert res1.status_code == 200
+        assert res2.status_code == 200
+        ext_id_1 = res1.json()["external_id"]
+        ext_id_2 = res2.json()["external_id"]
+        assert ext_id_1 != ext_id_2
+        assert ext_id_1.startswith(EXTERNAL_ID_PREFIX)
+        assert ext_id_2.startswith(EXTERNAL_ID_PREFIX)
 
 
 @allure.epic("TCMS API")

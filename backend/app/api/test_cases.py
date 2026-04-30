@@ -23,6 +23,11 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# external_id 格式：KQT-T{EXTERNAL_ID_OFFSET + case.id}
+# offset 50000 確保與 Zephyr Scale 現有編號（上限約 38000）不重疊
+EXTERNAL_ID_PREFIX = "KQT-T"
+EXTERNAL_ID_OFFSET = 50000
+
 @router.get("/labels/all", response_model=List[str])
 async def get_all_labels(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(TestCase.labels).where(TestCase.labels.is_not(None)))
@@ -101,7 +106,10 @@ async def create_case(case_in: TestCaseCreate, db: AsyncSession = Depends(get_db
     case = TestCase(**case_data)
     
     db.add(case)
-    await db.flush() # get case.id
+    await db.flush()  # get case.id
+
+    if not (case.external_id and case.external_id.strip()):
+        case.external_id = f"{EXTERNAL_ID_PREFIX}{EXTERNAL_ID_OFFSET + case.id}"
 
     for step_in in case_in.steps:
         step = TestStep(**step_in.model_dump(), test_case_id=case.id)
