@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     # After successful Google login, redirect browser to this frontend base URL
     FRONTEND_BASE_URL: str = "/tcms/"
 
+    # ASGI root_path for reverse proxy (e.g. "/tcms"); set "" for local dev
+    ROOT_PATH: str = "/tcms"
+
     class Config:
         env_file = ".env"
         extra = "ignore"  # 忽略 .env 中未定義的 key

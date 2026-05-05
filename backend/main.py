@@ -121,6 +121,7 @@ app = FastAPI(
     description="Backend API for KK TCMS 1.5",
     version="1.5.0",
     lifespan=lifespan,
+    root_path=settings.ROOT_PATH,
 )
 
 app.add_middleware(
