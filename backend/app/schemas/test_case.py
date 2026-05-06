@@ -52,11 +52,15 @@ class TestCaseCreate(TestCaseBase):
 class TestCaseUpdate(TestCaseBase):
     title: Optional[str] = None
     suite_id: Optional[int] = None
+    # external_id 即使帶入也會被 API 層忽略（不可更改）
+    # 帶入目前的 version 以啟用 optimistic locking；不帶則 last-write-wins
+    version: Optional[int] = None
     steps: Optional[List[TestStepUpdate]] = None
 
 class TestCaseResponse(TestCaseBase):
     id: int
     suite_id: int
+    version: int = 0
     created_at: datetime
     updated_at: Optional[datetime]
     steps: List[TestStepResponse] = []

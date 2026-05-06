@@ -209,6 +209,94 @@ class TestCasesAPI:
         assert ext_id_1.startswith(EXTERNAL_ID_PREFIX)
         assert ext_id_2.startswith(EXTERNAL_ID_PREFIX)
 
+    @allure.title("建立 case 時使用已存在的 external_id，回傳 409 Conflict")
+    async def test_create_case_duplicate_external_id_returns_409(self, client: AsyncClient, suite_id: int):
+        # 第一筆建立成功
+        res1 = await client.post("/api/v1/cases/", json={
+            "title": "Original Case",
+            "suite_id": suite_id,
+            "external_id": "KQT-T99901",
+        })
+        assert res1.status_code == 200
+        # 第二筆相同 external_id 應該 409
+        res2 = await client.post("/api/v1/cases/", json={
+            "title": "Duplicate External ID Case",
+            "suite_id": suite_id,
+            "external_id": "KQT-T99901",
+        })
+        assert res2.status_code == 409
+        assert "KQT-T99901" in res2.json()["detail"]
+
+    @allure.title("更新 case 時帶入 external_id，external_id 不會被更改")
+    async def test_update_case_cannot_change_external_id(self, client: AsyncClient, suite_id: int):
+        create_res = await client.post("/api/v1/cases/", json={
+            "title": "Immutable External ID Case",
+            "suite_id": suite_id,
+            "external_id": "KQT-T99902",
+        })
+        assert create_res.status_code == 200
+        case_id = create_res.json()["id"]
+        original_ext_id = create_res.json()["external_id"]
+
+        update_res = await client.put(f"/api/v1/cases/{case_id}", json={
+            "title": "Updated Title",
+            "external_id": "KQT-T00000",  # 嘗試竄改
+        })
+        assert update_res.status_code == 200
+        assert update_res.json()["external_id"] == original_ext_id
+
+    @allure.title("更新 case 帶正確 version，成功後 version + 1")
+    async def test_update_case_version_increments_after_update(self, client: AsyncClient, suite_id: int):
+        create_res = await client.post("/api/v1/cases/", json={
+            "title": "Version Test Case",
+            "suite_id": suite_id,
+        })
+        assert create_res.status_code == 200
+        case_id = create_res.json()["id"]
+        assert create_res.json()["version"] == 0
+
+        update_res = await client.put(f"/api/v1/cases/{case_id}", json={
+            "title": "Updated Title",
+            "version": 0,
+        })
+        assert update_res.status_code == 200
+        assert update_res.json()["version"] == 1
+
+    @allure.title("更新 case 帶錯誤 version，回傳 409 Conflict 並含 case title")
+    async def test_update_case_version_mismatch_returns_409(self, client: AsyncClient, suite_id: int):
+        create_res = await client.post("/api/v1/cases/", json={
+            "title": "Concurrent Edit Case",
+            "suite_id": suite_id,
+        })
+        assert create_res.status_code == 200
+        case_id = create_res.json()["id"]
+
+        # 模擬 version 已被他人推進（DB version=0，client 帶 version=99）
+        update_res = await client.put(f"/api/v1/cases/{case_id}", json={
+            "title": "My Conflicting Edit",
+            "version": 99,
+        })
+        assert update_res.status_code == 409
+        detail = update_res.json()["detail"]
+        assert detail["error"] == "conflict"
+        assert "Concurrent Edit Case" in detail["message"]
+        assert detail["current_version"] == 0
+
+    @allure.title("更新 case 不帶 version，last-write-wins（向後相容）")
+    async def test_update_case_without_version_succeeds(self, client: AsyncClient, suite_id: int):
+        create_res = await client.post("/api/v1/cases/", json={
+            "title": "No Version Case",
+            "suite_id": suite_id,
+        })
+        assert create_res.status_code == 200
+        case_id = create_res.json()["id"]
+
+        update_res = await client.put(f"/api/v1/cases/{case_id}", json={
+            "title": "Updated Without Version",
+        })
+        assert update_res.status_code == 200
+        assert update_res.json()["title"] == "Updated Without Version"
+
 
 @allure.epic("TCMS API")
 @allure.feature("測試案例匯出")

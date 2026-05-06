@@ -6,6 +6,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload, with_loader_criteria
@@ -102,11 +103,20 @@ async def list_cases_by_suite(suite_id: int, db: AsyncSession = Depends(get_db))
 
 @router.post("/", response_model=TestCaseResponse)
 async def create_case(case_in: TestCaseCreate, db: AsyncSession = Depends(get_db)):
+    provided_ext_id = case_in.external_id and case_in.external_id.strip()
+
     case_data = case_in.model_dump(exclude={"steps"})
     case = TestCase(**case_data)
-    
-    db.add(case)
-    await db.flush()  # get case.id
+
+    try:
+        db.add(case)
+        await db.flush()  # get case.id
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail=f"external_id '{provided_ext_id}' 已存在，請使用不同的 ID",
+        )
 
     if not (case.external_id and case.external_id.strip()):
         case.external_id = f"{EXTERNAL_ID_PREFIX}{EXTERNAL_ID_OFFSET + case.id}"
@@ -114,7 +124,7 @@ async def create_case(case_in: TestCaseCreate, db: AsyncSession = Depends(get_db
     for step_in in case_in.steps:
         step = TestStep(**step_in.model_dump(), test_case_id=case.id)
         db.add(step)
-    
+
     # Create History Record (Created)
     history = TestCaseHistory(
         case_id=case.id,
@@ -124,9 +134,17 @@ async def create_case(case_in: TestCaseCreate, db: AsyncSession = Depends(get_db
     )
     db.add(history)
 
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail=f"external_id '{case.external_id}' 已存在，請使用不同的 ID",
+        )
+
     await db.refresh(case)
-    
+
     # Reload with steps
     result = await db.execute(
         select(TestCase)
@@ -288,9 +306,21 @@ async def update_case(case_id: int, case_in: TestCaseUpdate, db: AsyncSession = 
     
     if not case:
         raise HTTPException(status_code=404, detail="TestCase not found")
-    
-    update_data = case_in.model_dump(exclude={"steps"}, exclude_unset=True)
-    
+
+    # Optimistic locking：若 client 帶了 version，檢查是否與 DB 一致
+    if case_in.version is not None and case.version != case_in.version:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "conflict",
+                "message": f"「{case.title}」已被他人修改，請重新整理後再編輯",
+                "case_title": case.title,
+                "current_version": case.version,
+            },
+        )
+
+    update_data = case_in.model_dump(exclude={"steps", "version", "external_id"}, exclude_unset=True)
+
     # Track changed fields
     changes = {}
     for key, value in update_data.items():
@@ -298,6 +328,9 @@ async def update_case(case_id: int, case_in: TestCaseUpdate, db: AsyncSession = 
         if old_val != value:
             changes[key] = f"{old_val} -> {value}"
         setattr(case, key, value)
+
+    # 每次成功更新，version + 1
+    case.version = case.version + 1
     
     # Handle steps (Smart Update)
     steps_changed = False

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime, UniqueConstraint
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.db.database import Base
@@ -26,11 +26,14 @@ class TestCase(Base):
     default_owner_id = Column(Integer, ForeignKey("tcms_users.id"), nullable=True)
 
     # Zephyr / Legacy Integration Fields
-    external_id = Column(String, index=True, nullable=True)
+    external_id = Column(String, nullable=True, unique=True)
     tags = Column(String, nullable=True) # Stored as JSON string or comma-separated
     labels = Column(String, nullable=True) # Stored as JSON string or comma-separated
     jira_keys = Column(String, nullable=True) # Stored as comma-separated
-    
+
+    # Optimistic locking — incremented on every successful update
+    version = Column(Integer, nullable=False, default=0)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

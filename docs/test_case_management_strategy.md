@@ -44,6 +44,34 @@ Repository 結構應該反映系統的真實架構。可以直接把業務領域
 
 ---
 
+---
+
+## 4. 🔒 External ID 管理辦法（Zephyr 整合）
+
+`external_id` 欄位用於對應 Zephyr Scale 的 test case key（例如 `KQT-T23248`），是跨系統的唯一識別碼，遵守以下規則：
+
+### 生成規則
+- **建立時未提供**：自動生成 `KQT-T{50000 + case.id}`，確保與 Zephyr 既有編號（上限約 38000）不重疊
+- **建立時提供**：保留原值（適用於 Zephyr 搬家匯入）
+- **空字串**：視同未提供，自動生成
+
+### 不可變性
+- `external_id` 一旦建立就**不可透過 API 更改**
+- `PUT /api/v1/cases/{id}` 傳入 `external_id` 欄位會被靜默忽略
+- 若需更正，需聯絡管理員直接操作 DB
+
+### 唯一性保護
+- DB 層：`UNIQUE constraint` 強制唯一
+- 應用層：建立前查重，重複時回傳 `HTTP 409 Conflict`
+
+### Zephyr Import 策略
+| 參數 | 行為 |
+|------|------|
+| `?strategy=skip`（預設） | 已存在的 external_id 跳過，回傳 `skipped_keys` |
+| `?strategy=overwrite` | 以 XML 內容覆蓋，更新 title/description/steps |
+
+---
+
 ## 小結：系統介面設計的配合點
 
 如果採用這個最佳實踐，目前我們架構中的設計方向是：

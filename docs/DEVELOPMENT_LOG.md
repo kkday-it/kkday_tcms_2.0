@@ -2,6 +2,58 @@
 
 本文件專注於紀錄 TCMS 1.5 測試管理系統的核心功能開發、架構優化與關鍵修復。
 
+## 2026-05: External ID 強化與並發保護
+
+### 2026-05-06: External ID 管理辦法（PR: feature/external-id-hardening）
+
+**背景**：PR #647 已實作 `external_id` 自動生成（`KQT-T{50000+id}`），本次針對 Zephyr 搬家期間發現的管理漏洞進行全面加固。
+
+#### 變更重點
+
+**1. External ID 設為不可變欄位**
+- `PUT /api/v1/cases/{id}` 即使傳入 `external_id` 也會被忽略，不影響現有值
+- Schema 層（`TestCaseUpdate`）已移除對 `external_id` 的寫入入口
+
+**2. 唯一性約束（DB + 應用層雙重保護）**
+- 資料庫層：新增 `UNIQUE constraint`（`uq_tcms_test_cases_external_id`）
+- 應用層：`POST /api/v1/cases/` 建立前先查重，重複時回傳 `409 Conflict`
+- Migration 執行前自動清理舊有重複資料（保留最舊的 id）
+
+**3. Zephyr Import 重複處理策略**
+- `POST /import/zephyr?strategy=skip`（預設）：重複的 external_id 跳過，回傳 `skipped_keys`
+- `POST /import/zephyr?strategy=overwrite`：以 XML 內容覆蓋既有 case（title、description、steps）
+- 適合搬家期間（skip）與需要重新同步（overwrite）兩種場景
+
+**4. Optimistic Locking（並發衝突保護）**
+- 新增 `version` INT 欄位（初始值 0，每次成功 PUT + 1）
+- Client 帶 `version` 欄位時啟用衝突檢查：版本不符回傳 `409 Conflict`，並附帶 `case_title` 與 `current_version`
+- 不帶 `version` 時維持 last-write-wins（向後相容）
+
+#### 409 Conflict 回應格式
+
+重複 external_id（建立時）：
+```json
+{"detail": "external_id 'KQT-T123' 已存在，請使用不同的 ID"}
+```
+
+並發衝突（更新時）：
+```json
+{
+  "detail": {
+    "error": "conflict",
+    "message": "「登入流程驗證」已被他人修改，請重新整理後再編輯",
+    "case_title": "登入流程驗證",
+    "current_version": 6
+  }
+}
+```
+
+#### Migration 說明
+- 檔案：`alembic/versions/a1b2c3d4e5f6_external_id_unique_and_version.py`（revision: `f857c452af6f`）
+- 執行：`set -a && source .env && set +a && alembic upgrade head`
+
+---
+
 ## 2026-03: 系統架構隔離與功能深化
 
 ### Week 2 (本週進度)
