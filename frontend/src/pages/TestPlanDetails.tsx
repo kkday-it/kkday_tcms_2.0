@@ -1,9 +1,24 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft, Loader2, ClipboardList, PlayCircle, FileText, CheckCircle2, XCircle, Clock, Edit2, ExternalLink, Bug, ListChecks } from 'lucide-react';
 import api from '../lib/api';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend } from 'recharts';
 import EditPlanModal, { CaseFolder } from '../components/plans/EditPlanModal';
+
+const PLAN_DESCRIPTION_COMPONENTS: React.ComponentProps<typeof ReactMarkdown>['components'] = {
+    p: ({ children }) => <p className="mb-1 last:mb-0">{children}</p>,
+    strong: ({ children }) => <strong className="font-semibold text-slate-700">{children}</strong>,
+    em: ({ children }) => <em className="italic">{children}</em>,
+    ul: ({ children }) => <ul className="list-disc list-inside my-1 space-y-0.5">{children}</ul>,
+    ol: ({ children }) => <ol className="list-decimal list-inside my-1 space-y-0.5">{children}</ol>,
+    li: ({ children }) => <li className="text-slate-500">{children}</li>,
+    a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary-600 underline hover:text-primary-700">{children}</a>,
+    code: ({ children }) => <code className="bg-slate-100 text-slate-700 px-1 py-0.5 rounded text-sm font-mono">{children}</code>,
+    h1: ({ children }) => <h1 className="text-lg font-bold text-slate-700 mb-1">{children}</h1>,
+    h2: ({ children }) => <h2 className="text-base font-bold text-slate-700 mb-1">{children}</h2>,
+    h3: ({ children }) => <h3 className="text-sm font-bold text-slate-700 mb-1">{children}</h3>,
+};
 
 interface DocEntry {
     title?: string;
@@ -504,7 +519,15 @@ export default function TestPlanDetails() {
                     </div>
                     <div className="flex-1 min-w-0">
                         <h1 className="text-3xl font-extrabold text-slate-900 flex-1 truncate tracking-tight">{plan.title}</h1>
-                        <p className="text-base text-slate-500 mt-1">{plan.description || '尚無描述。'}</p>
+                        {plan.description ? (
+                            <div className="text-base text-slate-500 mt-1 prose-description">
+                                <ReactMarkdown components={PLAN_DESCRIPTION_COMPONENTS}>
+                                    {plan.description}
+                                </ReactMarkdown>
+                            </div>
+                        ) : (
+                            <p className="text-base text-slate-500 mt-1">尚無描述。</p>
+                        )}
                     </div>
                     <div className="flex items-center gap-3">
                         <span className={`shrink-0 px-3 py-1 rounded-full text-xs font-semibold border ${STATUS_PILL[plan.status] ?? STATUS_PILL.Draft}`}>

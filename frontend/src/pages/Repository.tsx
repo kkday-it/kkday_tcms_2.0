@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Plus, Search, Filter, Loader2, Upload, Download, RefreshCw, Trash2, FolderOpen, ChevronDown, X, CheckCircle2, AlertCircle, FileCode2, GripVertical } from 'lucide-react';
 import { DndContext, DragEndEvent, pointerWithin, closestCenter, useDroppable, useDraggable, useSensor, useSensors, PointerSensor } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
@@ -318,11 +319,25 @@ function XmindImportModal({
 
 export default function Repository() {
     const projectId = 1; // single-project mode; extend with project selector when needed
+    const [searchParams, setSearchParams] = useSearchParams();
 
     const [suites, setSuites] = useState<TestSuite[]>([]);
     const [cases, setCases] = useState<TestCase[]>([]);
-    const [activeSuiteId, setActiveSuiteId] = useState<number | null>(null);
+    const initialSuiteId = searchParams.get('suite') ? Number(searchParams.get('suite')) : null;
+    const [activeSuiteId, setActiveSuiteId] = useState<number | null>(initialSuiteId);
     const [isLoading, setIsLoading] = useState(true);
+
+    // Pre-build parent→children map once per suites update to avoid O(n²) filter in renderSuite
+    const suiteChildrenMap = useMemo(() => {
+        const map = new Map<number | null, TestSuite[]>();
+        for (const s of suites) {
+            const key = s.parent_suite_id ?? null;
+            if (!map.has(key)) map.set(key, []);
+            map.get(key)!.push(s);
+        }
+        return map;
+    }, [suites]);
+    const rootSuites = useMemo(() => suiteChildrenMap.get(null) ?? [], [suiteChildrenMap]);
 
     const [sidebarWidth, setSidebarWidth] = useState(288);
     const isResizing = useRef(false);
@@ -405,6 +420,26 @@ export default function Repository() {
     const [isAddingSuite, setIsAddingSuite] = useState(false);
     const [newSuiteName, setNewSuiteName] = useState('');
 
+    // Sub-suite inline add states
+    const [isAddingSubSuite, setIsAddingSubSuite] = useState(false);
+    const [subSuiteParentId, setSubSuiteParentId] = useState<number | null>(null);
+    const [subSuiteName, setSubSuiteName] = useState('');
+
+    // Share link copy feedback
+    const [copiedSuiteId, setCopiedSuiteId] = useState<number | null>(null);
+
+    const handleSelectSuite = (id: number) => {
+        setActiveSuiteId(id);
+        setSearchParams(prev => { const next = new URLSearchParams(prev); next.set('suite', String(id)); return next; });
+    };
+
+    const handleShareSuiteLink = (id: number) => {
+        const url = `${window.location.origin}${window.location.pathname}?suite=${id}`;
+        navigator.clipboard.writeText(url).catch(console.warn);
+        setCopiedSuiteId(id);
+        setTimeout(() => setCopiedSuiteId(null), 1500);
+    };
+
     const handleCreateSuite = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!newSuiteName.trim()) return;
@@ -420,6 +455,26 @@ export default function Repository() {
         } catch (error) {
             console.error("Failed to create suite:", error);
             alert("Failed to create suite");
+        }
+    };
+
+    const handleCreateSubSuite = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!subSuiteName.trim()) return;
+
+        try {
+            await api.post('/suites/', {
+                name: subSuiteName.trim(),
+                project_id: projectId,
+                parent_suite_id: subSuiteParentId
+            });
+            setSubSuiteName('');
+            setIsAddingSubSuite(false);
+            setSubSuiteParentId(null);
+            fetchSuites();
+        } catch (error) {
+            console.error("Failed to create sub suite:", error);
+            alert("Failed to create sub suite");
         }
     };
 
@@ -451,6 +506,7 @@ export default function Repository() {
             setSelectedSuites([]);
             if (activeSuiteId && selectedSuites.includes(activeSuiteId)) {
                 setActiveSuiteId(null);
+                setSearchParams(prev => { const next = new URLSearchParams(prev); next.delete('suite'); return next; });
             }
             fetchSuites();
         } catch (error) {
@@ -460,13 +516,15 @@ export default function Repository() {
         }
     };
 
-    const handleDeleteSuite = async (e: React.MouseEvent, id: number) => {
-        e.stopPropagation();
+    const handleDeleteSuite = async (id: number) => {
         if (!window.confirm("Are you sure you want to delete this suite? This will delete all its test cases.")) return;
 
         try {
             await api.delete(`/suites/${id}`);
-            if (activeSuiteId === id) setActiveSuiteId(null);
+            if (activeSuiteId === id) {
+                setActiveSuiteId(null);
+                setSearchParams(prev => { const next = new URLSearchParams(prev); next.delete('suite'); return next; });
+            }
             fetchSuites();
         } catch (error) {
             console.error("Failed to delete suite:", error);
@@ -477,8 +535,7 @@ export default function Repository() {
     const [isEditSuiteModalOpen, setIsEditSuiteModalOpen] = useState(false);
     const [editingSuite, setEditingSuite] = useState<TestSuite | null>(null);
 
-    const handleEditSuite = (e: React.MouseEvent, suite: TestSuite) => {
-        e.stopPropagation();
+    const handleEditSuite = (suite: TestSuite) => {
         setEditingSuite(suite);
         setIsEditSuiteModalOpen(true);
     };
@@ -784,7 +841,47 @@ export default function Repository() {
     };
 
     const renderSuite = (suite: TestSuite, level: number = 0) => {
-        const children = suites.filter(s => s.parent_suite_id === suite.id);
+        const children = suiteChildrenMap.get(suite.id) ?? [];
+        const hasSubForm = isAddingSubSuite && subSuiteParentId === suite.id;
+        const childrenContent = (children.length > 0 || hasSubForm) ? (
+            <>
+                {children.map(child => renderSuite(child, level + 1))}
+                {hasSubForm && (
+                    <div className="mt-1 mb-2" style={{ paddingLeft: `${(level + 1) * 16 + 8}px`, paddingRight: '8px' }}>
+                        <form onSubmit={handleCreateSubSuite} className="bg-white rounded border border-primary-200 shadow-sm overflow-hidden">
+                            <input
+                                autoFocus
+                                type="text"
+                                value={subSuiteName}
+                                onChange={(e) => setSubSuiteName(e.target.value)}
+                                placeholder="Sub-suite name..."
+                                className="w-full px-2 py-1.5 text-sm outline-none"
+                                onBlur={() => {
+                                    if (!subSuiteName.trim()) { setIsAddingSubSuite(false); setSubSuiteParentId(null); }
+                                }}
+                            />
+                            <div className="flex bg-slate-50 px-2 py-1 gap-1 border-t border-slate-100">
+                                <button
+                                    type="submit"
+                                    disabled={!subSuiteName.trim()}
+                                    className="flex-1 text-xs font-medium text-primary-600 hover:bg-primary-50 rounded py-1 transition-colors disabled:opacity-50"
+                                >
+                                    Save
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => { setIsAddingSubSuite(false); setSubSuiteParentId(null); setSubSuiteName(''); }}
+                                    className="flex-1 text-xs font-medium text-slate-500 hover:bg-slate-200 rounded py-1 transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                )}
+            </>
+        ) : undefined;
+
         return (
             <SuiteNode
                 key={suite.id}
@@ -792,16 +889,17 @@ export default function Repository() {
                 level={level}
                 isActive={activeSuiteId === suite.id}
                 isSelected={selectedSuites.includes(suite.id)}
-                onSelect={(id) => setActiveSuiteId(id)}
+                onSelect={handleSelectSuite}
                 onToggleSelection={(e, id) => toggleSuiteSelection(e as any, id)}
-                onEdit={handleEditSuite as any}
-                onDelete={handleDeleteSuite as any}
-                childrenNodes={children.length > 0 ? children.map(child => renderSuite(child, level + 1)) : undefined}
+                onEdit={handleEditSuite}
+                onDelete={handleDeleteSuite}
+                onAddSubFolder={(id) => { setIsAddingSubSuite(true); setSubSuiteParentId(id); setSubSuiteName(''); }}
+                onShareLink={handleShareSuiteLink}
+                copiedSuiteId={copiedSuiteId}
+                childrenNodes={childrenContent}
             />
         );
     };
-
-    const rootSuites = suites.filter(s => !s.parent_suite_id);
 
     const dndCollision = (args: Parameters<typeof pointerWithin>[0]) =>
         String(args.active.id).startsWith('case-')

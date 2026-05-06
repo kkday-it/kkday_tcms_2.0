@@ -162,7 +162,7 @@ interface TestRunFolder {
 export default function TestRuns() {
     const projectId = 1; // Hardcoded for now
     const navigate = useNavigate();
-    const [searchParams] = useSearchParams();
+    const [searchParams, setSearchParams] = useSearchParams();
 
     // Test Runs state
     const [runs, setRuns] = useState<TestRun[]>([]);
@@ -189,6 +189,16 @@ export default function TestRuns() {
     const [newFolderParentId, setNewFolderParentId] = useState<number | null>(null);
     const [isEditFolderModalOpen, setIsEditFolderModalOpen] = useState(false);
     const [editingFolder, setEditingFolder] = useState<TestRunFolder | null>(null);
+
+    // Share link copy feedback
+    const [copiedFolderId, setCopiedFolderId] = useState<number | null>(null);
+
+    const handleShareFolderLink = (id: number) => {
+        const url = `${window.location.origin}${window.location.pathname}?folder=${id}`;
+        navigator.clipboard.writeText(url).catch(console.warn);
+        setCopiedFolderId(id);
+        setTimeout(() => setCopiedFolderId(null), 1500);
+    };
 
     // Initialize DndKit sensors to ignore small clicks
     const sensors = useSensors(useSensor(PointerSensor, {
@@ -368,7 +378,10 @@ export default function TestRuns() {
         if (!confirm("Are you sure you want to delete this folder? All child folders will NOT be deleted automatically (may cause issues), and runs won't be deleted.")) return;
         try {
             await api.delete(`/run-folders/${folderId}`);
-            if (activeFolderId === folderId) setActiveFolderId(null);
+            if (activeFolderId === folderId) {
+                setActiveFolderId(null);
+                setSearchParams(prev => { const next = new URLSearchParams(prev); next.delete('folder'); return next; });
+            }
             fetchFolders();
         } catch (error) {
             console.error("Failed to delete folder:", error);
@@ -490,11 +503,16 @@ export default function TestRuns() {
                         folder={folder}
                         level={level}
                         isActive={activeFolderId === folder.id}
-                        onSelect={(id) => setActiveFolderId(id)}
+                        onSelect={(id) => {
+                            setActiveFolderId(id);
+                            setSearchParams(prev => { const next = new URLSearchParams(prev); next.set('folder', String(id)); return next; });
+                        }}
                         onAddSubFolder={(id) => { setIsAddingFolder(true); setNewFolderParentId(id); setNewFolderName(''); }}
                         onEdit={handleEditFolder}
                         onDelete={handleDeleteFolder}
                         onCopyFolder={handleCopyFolder}
+                        onShareLink={handleShareFolderLink}
+                        copiedFolderId={copiedFolderId}
                         runCount={folderRunCount}
                         childrenNodes={renderFolderTree(folder.id, level + 1)}
                     />
@@ -581,7 +599,7 @@ export default function TestRuns() {
                             <RootDroppableArea className={`w-full flex items-center justify-between px-4 py-2 text-sm transition-colors cursor-pointer group hover:bg-slate-100 ${activeFolderId === null ? 'bg-primary-50 text-primary-700 font-medium' : 'text-slate-700'}`} >
                                 <div
                                     className="flex items-center gap-2 flex-1 relative z-10"
-                                    onClick={() => setActiveFolderId(null)}
+                                    onClick={() => { setActiveFolderId(null); setSearchParams(prev => { const next = new URLSearchParams(prev); next.delete('folder'); return next; }); }}
                                 >
                                     <FolderIcon className={`w-4 h-4 ${activeFolderId === null ? 'text-primary-500' : 'text-slate-400'}`} />
                                     <span className={activeFolderId === null ? 'text-primary-700 font-medium' : 'text-slate-700'}>全部執行</span>

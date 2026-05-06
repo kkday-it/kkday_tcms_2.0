@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import { Folder, Edit2, Trash2, ChevronRight, ChevronDown } from 'lucide-react';
+import { Folder, ChevronRight, ChevronDown, Plus, Edit2, Trash2, MoreHorizontal, Link2, Check } from 'lucide-react';
 
 interface TestSuite {
     id: number;
@@ -18,8 +18,11 @@ interface SuiteNodeProps {
     isSelected: boolean;
     onSelect: (id: number) => void;
     onToggleSelection: (e: React.MouseEvent, id: number) => void;
-    onEdit: (e: React.MouseEvent, suite: TestSuite) => void;
-    onDelete: (e: React.MouseEvent, id: number) => void;
+    onEdit: (suite: TestSuite) => void;
+    onDelete: (id: number) => void;
+    onAddSubFolder?: (id: number) => void;
+    onShareLink?: (id: number) => void;
+    copiedSuiteId?: number | null;
     childrenNodes?: React.ReactNode;
 }
 
@@ -32,9 +35,24 @@ export default function SuiteNode({
     onToggleSelection,
     onEdit,
     onDelete,
+    onAddSubFolder,
+    onShareLink,
+    copiedSuiteId,
     childrenNodes
 }: SuiteNodeProps) {
     const [isExpanded, setIsExpanded] = useState(false);
+    const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const menuRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+                setIsMenuOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     const { attributes, listeners, setNodeRef: setDraggableRef, transform, isDragging } = useDraggable({
         id: suite.id,
@@ -46,7 +64,6 @@ export default function SuiteNode({
         data: { type: 'suite', suite }
     });
 
-    // Reduce padding left slightly to make room for the chevron
     const paddingLeft = level * 16 + 4;
     const style = {
         transform: CSS.Translate.toString(transform),
@@ -54,8 +71,10 @@ export default function SuiteNode({
         paddingLeft: `${paddingLeft}px`,
         paddingRight: '8px',
         position: 'relative' as const,
-        zIndex: isDragging ? 50 : 1,
+        zIndex: isDragging ? 50 : isMenuOpen ? 40 : 1,
     };
+
+    const isCopied = copiedSuiteId === suite.id;
 
     return (
         <div>
@@ -102,22 +121,59 @@ export default function SuiteNode({
                     {(suite.cases ?? 0) > 0 && (
                         <span className="text-xs text-slate-400 w-5 text-right pointer-events-none">{suite.cases}</span>
                     )}
-                    {/* Edit / Delete: hover only */}
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-inherit pl-1 pointer-events-auto">
+                    {/* MoreHorizontal context menu */}
+                    <div
+                        className={`relative transition-opacity pointer-events-auto shrink-0 pr-1 ${isMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                        ref={menuRef}
+                    >
                         <button
-                            onClick={(e) => onEdit(e, suite)}
-                            className="p-1 text-slate-400 hover:text-primary-600 hover:bg-primary-50 rounded"
-                            title="Edit/Move Suite"
+                            onClick={(e) => { e.stopPropagation(); setIsMenuOpen(prev => !prev); }}
+                            onPointerDown={(e) => e.stopPropagation()}
+                            className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 rounded transition-colors focus:outline-none"
+                            title="更多操作"
                         >
-                            <Edit2 className="w-3.5 h-3.5" />
+                            <MoreHorizontal className="w-3.5 h-3.5" />
                         </button>
-                        <button
-                            onClick={(e) => onDelete(e, suite.id)}
-                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded"
-                            title="Delete Suite"
-                        >
-                            <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        {isMenuOpen && (
+                            <div className="absolute right-0 top-full mt-0.5 w-40 bg-white border border-slate-200 rounded-lg shadow-lg z-50 py-1">
+                                {onAddSubFolder && (
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); onAddSubFolder(suite.id); setIsExpanded(true); }}
+                                        onPointerDown={(e) => e.stopPropagation()}
+                                        className="w-full text-left px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                                    >
+                                        <Plus className="w-3.5 h-3.5 text-primary-500" /> 新增子資料夾
+                                    </button>
+                                )}
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); onEdit(suite); }}
+                                    onPointerDown={(e) => e.stopPropagation()}
+                                    className="w-full text-left px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                                >
+                                    <Edit2 className="w-3.5 h-3.5 text-blue-500" /> 編輯資料夾
+                                </button>
+                                {onShareLink && (
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); onShareLink(suite.id); }}
+                                        onPointerDown={(e) => e.stopPropagation()}
+                                        className="w-full text-left px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                                    >
+                                        {isCopied
+                                            ? <Check className="w-3.5 h-3.5 text-emerald-500" />
+                                            : <Link2 className="w-3.5 h-3.5 text-slate-500" />
+                                        }
+                                        {isCopied ? '已複製！' : '複製連結'}
+                                    </button>
+                                )}
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); onDelete(suite.id); }}
+                                    onPointerDown={(e) => e.stopPropagation()}
+                                    className="w-full text-left px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                                >
+                                    <Trash2 className="w-3.5 h-3.5" /> 刪除資料夾
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

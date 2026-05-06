@@ -25,6 +25,7 @@ interface TestCasePreview {
     default_owner_id?: number | null;
     type?: string;
     layer?: string;
+    description?: string;
     steps?: TestStep[];
 }
 
@@ -225,6 +226,16 @@ export default function TestCasePreviewPane({ isOpen, onClose, caseId, onEditCli
                                                 </div>
                                             </div>
                                         )}
+                                    </section>
+                                )}
+
+                                {/* Description */}
+                                {testCase.description && (
+                                    <section>
+                                        <h3 className="text-sm font-bold text-slate-900 mb-3 pb-2 border-b border-slate-100">描述</h3>
+                                        <div className="bg-slate-50/50 p-4 rounded-lg border border-slate-100">
+                                            {renderHtmlOrMarkdown(testCase.description)}
+                                        </div>
                                     </section>
                                 )}
 

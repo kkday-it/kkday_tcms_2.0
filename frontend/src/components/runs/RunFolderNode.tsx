@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import { Folder, ChevronRight, ChevronDown, Plus, Edit2, Trash2, Copy, MoreHorizontal } from 'lucide-react';
+import { Folder, ChevronRight, ChevronDown, Plus, Edit2, Trash2, Copy, MoreHorizontal, Link2, Check } from 'lucide-react';
 
 interface TestRunFolder {
     id: number;
@@ -18,6 +18,8 @@ interface RunFolderNodeProps {
     onEdit?: (folder: TestRunFolder) => void;
     onDelete?: (folderId: number) => void;
     onCopyFolder?: (folderId: number) => void;
+    onShareLink?: (folderId: number) => void;
+    copiedFolderId?: number | null;
     childrenNodes?: React.ReactNode;
     runCount?: number;
 }
@@ -31,6 +33,8 @@ export default function RunFolderNode({
     onEdit,
     onDelete,
     onCopyFolder,
+    onShareLink,
+    copiedFolderId,
     childrenNodes,
     runCount,
 }: RunFolderNodeProps) {
@@ -147,6 +151,19 @@ export default function RunFolderNode({
                                     className="w-full text-left px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
                                 >
                                     <Edit2 className="w-3.5 h-3.5 text-blue-500" /> 編輯資料夾
+                                </button>
+                            )}
+                            {onShareLink && (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); onShareLink(folder.id); }}
+                                    onPointerDown={(e) => e.stopPropagation()}
+                                    className="w-full text-left px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                                >
+                                    {copiedFolderId === folder.id
+                                        ? <Check className="w-3.5 h-3.5 text-emerald-500" />
+                                        : <Link2 className="w-3.5 h-3.5 text-slate-500" />
+                                    }
+                                    {copiedFolderId === folder.id ? '已複製！' : '複製連結'}
                                 </button>
                             )}
                             {onDelete && (

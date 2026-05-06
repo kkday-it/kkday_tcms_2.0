@@ -27,6 +27,7 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
     const [automationStatus, setAutomationStatus] = useState('Manual');
     const [type, setType] = useState('Functional');
     const [layer, setLayer] = useState('E2E');
+    const [description, setDescription] = useState('');
     const [preconditions, setPreconditions] = useState('');
     const [externalId, setExternalId] = useState('');
     const [tags, setTags] = useState('');
@@ -80,6 +81,7 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
                         setAutomationStatus(data.automation_status || 'Manual');
                         setType(data.type || 'Functional');
                         setLayer(data.layer || 'E2E');
+                        setDescription(data.description || '');
                         setPreconditions(cleanHtml(data.preconditions));
                         setExternalId(data.external_id || '');
 
@@ -128,6 +130,7 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
                 setAutomationStatus('Manual');
                 setType('Functional');
                 setLayer('E2E');
+                setDescription('');
                 setPreconditions('');
                 setExternalId('');
                 setTags('');
@@ -215,6 +218,7 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
                 automation_status: automationStatus,
                 type,
                 layer,
+                description: description.trim() || null,
                 preconditions,
                 external_id: externalId || null,
                 tags: tagsJson || null,
@@ -357,6 +361,21 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
                                         </select>
                                     </div>
                                 </div>
+                            </section>
+
+                            {/* Description */}
+                            <section className="border-t border-slate-100 pt-5">
+                                <div className="flex items-center justify-between mb-1.5">
+                                    <label className="block text-sm font-semibold text-slate-900">描述</label>
+                                    <span className="text-xs text-slate-400">支援 Markdown</span>
+                                </div>
+                                <textarea
+                                    rows={4}
+                                    value={description}
+                                    onChange={e => setDescription(e.target.value)}
+                                    className="w-full rounded-md border border-slate-200 py-2 px-3 text-slate-900 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 sm:text-sm font-mono resize-y"
+                                    placeholder="描述此測試案例的目的（支援 **粗體**、*斜體*、- 清單 等 Markdown 語法）"
+                                />
                             </section>
 
                             {/* Zephyr / External Fields */}

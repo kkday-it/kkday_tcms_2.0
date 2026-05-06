@@ -392,10 +392,13 @@ export default function EditPlanModal({ plan, folders, runs, cases, caseFolders,
                                         placeholder="Plan title" />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
-                                    <textarea rows={2} value={description} onChange={e => setDescription(e.target.value)}
-                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm resize-none"
-                                        placeholder="Optional description" />
+                                    <div className="flex items-center justify-between mb-1">
+                                        <label className="block text-sm font-medium text-slate-700">Description</label>
+                                        <span className="text-xs text-slate-400">支援 Markdown</span>
+                                    </div>
+                                    <textarea rows={4} value={description} onChange={e => setDescription(e.target.value)}
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm font-mono resize-y"
+                                        placeholder={"Optional description\n\n支援 **粗體**、*斜體*、- 清單、`code` 等 Markdown 語法"} />
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
