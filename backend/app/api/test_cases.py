@@ -286,6 +286,66 @@ async def export_cases(
         raise HTTPException(status_code=400, detail=f"不支援的格式：{format}。請使用 csv | json | ai_json")
 
 
+# NOTE: Batch endpoints (/batch, /batch-move) MUST be declared before the
+# /{case_id} routes — FastAPI matches in declaration order, and the int-typed
+# {case_id} path otherwise swallows literal segments like "batch-move",
+# producing a 422 with "value is not a valid integer" (see KQT-15197).
+
+@router.delete("/batch")
+async def batch_delete_cases(payload: TestCaseBatchDelete, db: AsyncSession = Depends(get_db)):
+    if not payload.case_ids:
+        return {"message": "No test cases provided"}
+
+    result = await db.execute(select(TestCase).where(TestCase.id.in_(payload.case_ids)))
+    cases = result.scalars().all()
+
+    if not cases:
+        raise HTTPException(status_code=404, detail="No matching TestCases found")
+
+    for case in cases:
+        case.status = "Archived"
+        history = TestCaseHistory(
+            case_id=case.id,
+            user_id=1,
+            action="Archived",
+            changed_fields=json.dumps({"status": "Active -> Archived"}, ensure_ascii=False)
+        )
+        db.add(history)
+
+    await db.commit()
+    return {"message": f"Successfully archived {len(cases)} TestCases"}
+
+
+@router.put("/batch-move")
+async def batch_move_cases(payload: TestCaseBatchMove, db: AsyncSession = Depends(get_db)):
+    if not payload.case_ids:
+        return {"message": "No test cases provided"}
+
+    suite = await db.get(TestSuite, payload.suite_id)
+    if not suite:
+        raise HTTPException(status_code=404, detail="Target folder (TestSuite) not found")
+
+    result = await db.execute(select(TestCase).where(TestCase.id.in_(payload.case_ids)))
+    cases = result.scalars().all()
+
+    if not cases:
+        raise HTTPException(status_code=404, detail="No matching TestCases found")
+
+    for case in cases:
+        if case.suite_id != payload.suite_id:
+            history = TestCaseHistory(
+                case_id=case.id,
+                user_id=1,
+                action="Moved",
+                changed_fields=json.dumps({"suite_id": f"{case.suite_id} -> {payload.suite_id}"}, ensure_ascii=False)
+            )
+            db.add(history)
+            case.suite_id = payload.suite_id
+
+    await db.commit()
+    return {"message": f"Successfully moved {len(cases)} TestCases to folder {payload.suite_id}"}
+
+
 @router.get("/{case_id}", response_model=TestCaseResponse)
 async def get_case(case_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
@@ -381,63 +441,6 @@ async def update_case(case_id: int, case_in: TestCaseUpdate, db: AsyncSession = 
         .where(TestCase.id == case.id)
     )
     return result.scalar_one()
-
-@router.delete("/batch")
-async def batch_delete_cases(payload: TestCaseBatchDelete, db: AsyncSession = Depends(get_db)):
-    if not payload.case_ids:
-        return {"message": "No test cases provided"}
-
-    # Fetch all the cases to ensure they exist and we can delete them
-    result = await db.execute(select(TestCase).where(TestCase.id.in_(payload.case_ids)))
-    cases = result.scalars().all()
-    
-    if not cases:
-        raise HTTPException(status_code=404, detail="No matching TestCases found")
-        
-    for case in cases:
-        case.status = "Archived"
-        # Create history record
-        history = TestCaseHistory(
-            case_id=case.id,
-            user_id=1,
-            action="Archived",
-            changed_fields=json.dumps({"status": "Active -> Archived"}, ensure_ascii=False)
-        )
-        db.add(history)
-        
-    await db.commit()
-    return {"message": f"Successfully archived {len(cases)} TestCases"}
-
-@router.put("/batch-move")
-async def batch_move_cases(payload: TestCaseBatchMove, db: AsyncSession = Depends(get_db)):
-    if not payload.case_ids:
-        return {"message": "No test cases provided"}
-        
-    # Verify the target folder exists
-    suite = await db.get(TestSuite, payload.suite_id)
-    if not suite:
-        raise HTTPException(status_code=404, detail="Target folder (TestSuite) not found")
-
-    result = await db.execute(select(TestCase).where(TestCase.id.in_(payload.case_ids)))
-    cases = result.scalars().all()
-    
-    if not cases:
-        raise HTTPException(status_code=404, detail="No matching TestCases found")
-        
-    for case in cases:
-        if case.suite_id != payload.suite_id:
-            # Create history record
-            history = TestCaseHistory(
-                case_id=case.id,
-                user_id=1,  # Hardcoded User 1
-                action="Moved",
-                changed_fields=json.dumps({"suite_id": f"{case.suite_id} -> {payload.suite_id}"}, ensure_ascii=False)
-            )
-            db.add(history)
-            case.suite_id = payload.suite_id
-            
-    await db.commit()
-    return {"message": f"Successfully moved {len(cases)} TestCases to folder {payload.suite_id}"}
 
 @router.delete("/{case_id}")
 async def delete_case(case_id: int, db: AsyncSession = Depends(get_db)):

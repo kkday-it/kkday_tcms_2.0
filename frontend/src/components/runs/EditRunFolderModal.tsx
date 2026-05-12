@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { X, Loader2 } from 'lucide-react';
 import api from '../../lib/api';
+import SearchableSelect, { SearchableOption } from '../common/SearchableSelect';
 
 interface TestRunFolder {
     id: number;
@@ -50,7 +51,46 @@ export default function EditRunFolderModal({ isOpen, onClose, folder, allFolders
         }
     };
 
-    const availableParents = allFolders.filter(f => f.id !== folder.id);
+    const parentOptions = useMemo<SearchableOption[]>(() => {
+        if (!folder) return [];
+        const blocked = new Set<number>([folder.id]);
+        let grew = true;
+        while (grew) {
+            grew = false;
+            for (const f of allFolders) {
+                if (f.parent_id != null && blocked.has(f.parent_id) && !blocked.has(f.id)) {
+                    blocked.add(f.id);
+                    grew = true;
+                }
+            }
+        }
+        const byId = new Map(allFolders.map(f => [f.id, f]));
+        const pathOf = (id: number) => {
+            const parts: string[] = [];
+            let cur = byId.get(id);
+            const seen = new Set<number>();
+            while (cur && !seen.has(cur.id)) {
+                seen.add(cur.id);
+                parts.unshift(cur.name);
+                cur = cur.parent_id != null ? byId.get(cur.parent_id) : undefined;
+            }
+            return parts;
+        };
+        return allFolders
+            .filter(f => !blocked.has(f.id))
+            .map(f => {
+                const path = pathOf(f.id);
+                return {
+                    value: f.id,
+                    label: f.name,
+                    hint: path.length > 1 ? path.slice(0, -1).join(' / ') : '',
+                } satisfies SearchableOption;
+            })
+            .sort((a, b) => {
+                const c = (a.hint ?? '').localeCompare(b.hint ?? '', 'zh-Hant');
+                return c !== 0 ? c : a.label.localeCompare(b.label, 'zh-Hant');
+            });
+    }, [allFolders, folder]);
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm">
@@ -78,17 +118,14 @@ export default function EditRunFolderModal({ isOpen, onClose, folder, allFolders
 
                         <div>
                             <label className="block text-sm font-medium text-slate-700 mb-1">Parent Folder (Move)</label>
-                            <select
+                            <SearchableSelect
                                 value={parentId}
-                                onChange={(e) => setParentId(e.target.value === '' ? '' : Number(e.target.value))}
-                                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm transition-shadow bg-white text-slate-700"
-                            >
-                                <option value="">None (Top Level)</option>
-                                {availableParents.map(parent => (
-                                    <option key={parent.id} value={parent.id}>{parent.name}</option>
-                                ))}
-                            </select>
-                            <p className="mt-1.5 text-xs text-slate-500">Select a parent folder to nest this folder.</p>
+                                onChange={v => setParentId(v === '' ? '' : Number(v))}
+                                options={parentOptions}
+                                placeholder="搜尋上層資料夾... (留空為頂層)"
+                                ariaLabel="Parent folder"
+                            />
+                            <p className="mt-1.5 text-xs text-slate-500">Select a parent folder to nest this folder. Clear to make it top-level.</p>
                         </div>
                     </div>
 

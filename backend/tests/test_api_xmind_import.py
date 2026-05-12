@@ -422,3 +422,77 @@ class TestXmindImportAPI:
         assert len(steps) == 2
         assert steps[0]["action"] == "Open browser"
         assert steps[1]["expected_result"] == "Redirect to dashboard"
+
+    @pytest.mark.asyncio
+    async def test_priority_node_with_priority_children_keeps_both_in_same_folder(
+        self, client: AsyncClient, project_id: int
+    ):
+        """KQT-15195 regression.
+
+        When a node has a priority marker AND its descendants also have priority
+        markers, previously the descendants were silently consumed as Steps of the
+        parent — so they vanished from the folder tree, or appeared one level above
+        where the mindmap put them. They should now land alongside the parent in a
+        folder named after the parent topic.
+        """
+        grandchild = make_topic("TC-3934", priority="priority-1")
+        parent_case = {
+            "title": "推薦模組定位邏輯",
+            "markers": [{"markerId": "priority-2"}],
+            "children": {"attached": [grandchild]},
+        }
+        phase2 = make_topic("phase2-用戶定位功能", children=[parent_case])
+        xmind = make_xmind_bytes([make_sheet("Sheet1", [phase2])])
+        res = await client.post(
+            "/api/v1/cases/import/xmind",
+            data={"project_id": project_id, "owner": ""},
+            files={"file": ("test.xmind", xmind, "application/octet-stream")},
+        )
+        assert res.status_code == 200, res.text
+
+        # The parent topic's title becomes both a folder AND a case under that folder.
+        suites_res = await client.get(f"/api/v1/suites/project/{project_id}")
+        suites = suites_res.json()
+        suite_by_name = {s["name"]: s for s in suites}
+        assert "推薦模組定位邏輯" in suite_by_name, suite_by_name.keys()
+        phase2_suite = suite_by_name["phase2-用戶定位功能"]
+        recommend_suite = suite_by_name["推薦模組定位邏輯"]
+        assert recommend_suite["parent_suite_id"] == phase2_suite["id"]
+
+        # TC-3934 should sit inside 推薦模組定位邏輯, not float up to phase2.
+        cases_res = await client.get(
+            f"/api/v1/cases/suite/{recommend_suite['id']}"
+        )
+        case_titles = [c["title"] for c in cases_res.json()]
+        assert "TC-3934" in case_titles, case_titles
+        assert "推薦模組定位邏輯" in case_titles, case_titles
+
+        # And TC-3934 must NOT also exist directly under phase2 (the bug symptom).
+        phase2_cases = await client.get(
+            f"/api/v1/cases/suite/{phase2_suite['id']}"
+        )
+        assert "TC-3934" not in [c["title"] for c in phase2_cases.json()]
+
+    @pytest.mark.asyncio
+    async def test_titles_with_whitespace_dedupe(self, client: AsyncClient, project_id: int):
+        """KQT-15195 hardening — leading/trailing whitespace shouldn't fork folders."""
+        tc1 = make_topic("TC A", priority="priority-1")
+        tc2 = make_topic("TC B", priority="priority-1")
+        folder_clean = make_topic("Shared Folder", children=[tc1])
+        folder_padded = {
+            "title": "  Shared Folder  ",
+            "children": {"attached": [tc2]},
+        }
+        xmind = make_xmind_bytes(
+            [make_sheet("Sheet1", [folder_clean, folder_padded])]
+        )
+        res = await client.post(
+            "/api/v1/cases/import/xmind",
+            data={"project_id": project_id, "owner": ""},
+            files={"file": ("test.xmind", xmind, "application/octet-stream")},
+        )
+        assert res.status_code == 200, res.text
+
+        suites_res = await client.get(f"/api/v1/suites/project/{project_id}")
+        names = [s["name"] for s in suites_res.json()]
+        assert names.count("Shared Folder") == 1, names

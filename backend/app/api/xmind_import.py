@@ -124,9 +124,31 @@ def parse_steps(sub_topics: list) -> List[Dict]:
     return steps
 
 
-def parse_test_case_data(topic: dict) -> dict:
-    """從 XMind topic 擷取結構化測試案例資料。"""
-    title = topic.get("title", "Unnamed Test Case")
+def _topic_has_priority(topic: dict) -> bool:
+    """單一節點是否有 priority-1..4 marker。"""
+    return any(m.get("markerId", "") in PRIORITY_MAP for m in topic.get("markers", []))
+
+
+def _clean_title(raw: Optional[str], fallback: str) -> str:
+    """去除前後空白並回 fallback 以避免空字串成為資料夾/案例名稱。
+
+    KQT-15195：複製貼上常帶入零寬字元或前後空白，會讓 cache_key 與 DB 查詢看似不同名而
+    產生重複資料夾，或讓案例落在錯誤層級。
+    """
+    if not raw:
+        return fallback
+    cleaned = raw.replace("​", "").replace("﻿", "").strip()
+    return cleaned or fallback
+
+
+def parse_test_case_data(topic: dict, step_children: Optional[List[Dict]] = None) -> dict:
+    """從 XMind topic 擷取結構化測試案例資料。
+
+    `step_children` 允許呼叫端先把 attached 子節點過濾後再傳入；預設行為相容舊版（把所有
+    attached children 視為步驟）。recursive_create 會在「priority 節點底下還有 priority
+    子節點」的情境下排除那些子節點，避免它們被當成 step 吃掉而失蹤（KQT-15195）。
+    """
+    title = _clean_title(topic.get("title"), "Unnamed Test Case")
 
     # description：第一個 summary 節點（如有）
     summaries = topic.get("children", {}).get("summary", [])
@@ -135,8 +157,8 @@ def parse_test_case_data(topic: dict) -> dict:
     # preconditions：純文字 note
     preconditions = topic.get("notes", {}).get("plain", {}).get("content", "")
 
-    # steps：attached children（有 priority 的節點，其子節點即步驟）
-    steps_raw = topic.get("children", {}).get("attached", [])
+    if step_children is None:
+        step_children = topic.get("children", {}).get("attached", [])
 
     # labels：自由文字，存成 JSON 字串
     labels = topic.get("labels", [])
@@ -149,7 +171,7 @@ def parse_test_case_data(topic: dict) -> dict:
         "preconditions": preconditions or None,
         "priority": parse_priority(topic.get("markers", [])),
         "labels": labels_json,
-        "steps": parse_steps(steps_raw),
+        "steps": parse_steps(step_children),
     }
 
 
@@ -215,6 +237,41 @@ async def resolve_owner_id(db: AsyncSession, email: str) -> Optional[int]:
 # 遞迴建立 Suite / TestCase
 # ──────────────────────────────────────────────
 
+def _create_test_case(
+    db: AsyncSession,
+    topic: dict,
+    suite_id: int,
+    owner_id: Optional[int],
+    step_children: List[Dict],
+    xmind_id_to_case: dict,
+) -> None:
+    """單純的 TestCase 建立邏輯抽出，避免 recursive_create 兩條分支重複。"""
+    data = parse_test_case_data(topic, step_children=step_children)
+    db_case = TestCase(
+        suite_id=suite_id,
+        title=data["title"],
+        description=data["description"],
+        preconditions=data["preconditions"],
+        priority=data["priority"],
+        labels=data["labels"],
+        default_owner_id=owner_id,
+        status="Active",
+        automation_status="Manual",
+    )
+    for s in data["steps"]:
+        db_case.steps.append(
+            TestStep(
+                order=s["order"],
+                action=s["action"],
+                expected_result=s["expected_result"],
+                data=s["data"],
+            )
+        )
+    db.add(db_case)
+    if data["id"]:
+        xmind_id_to_case[data["id"]] = db_case
+
+
 async def recursive_create(
     db: AsyncSession,
     topic: dict,
@@ -225,49 +282,51 @@ async def recursive_create(
     path_prefix: str,
     xmind_id_to_case: dict,
 ) -> None:
-    """
-    帶 priority 標記的節點 → 建立 TestCase（含 TestStep）。
-    無 priority 標記且有 children 的節點 → 建立子 Suite 並遞迴。
-    """
-    has_priority = any(
-        m.get("markerId", "") in PRIORITY_MAP for m in topic.get("markers", [])
-    )
+    """建立 Suite/TestCase 結構，鏡射 XMind 階層。
 
-    if has_priority:
-        data = parse_test_case_data(topic)
-        db_case = TestCase(
-            suite_id=parent_suite_id,
-            title=data["title"],
-            description=data["description"],
-            preconditions=data["preconditions"],
-            priority=data["priority"],
-            labels=data["labels"],
-            default_owner_id=owner_id,
-            status="Active",
-            automation_status="Manual",
-        )
-        for s in data["steps"]:
-            db_case.steps.append(
-                TestStep(
-                    order=s["order"],
-                    action=s["action"],
-                    expected_result=s["expected_result"],
-                    data=s["data"],
-                )
+    規則：
+    1. 沒有 priority marker 且有 children → 視為資料夾，遞迴處理子節點。
+    2. 有 priority marker 但所有子節點都沒有 priority → 視為 TestCase；子節點當成 Step。
+    3. 有 priority marker 且子節點當中有 priority 節點（KQT-15195 的踩雷情境）：
+       - 以本節點標題建立一個資料夾，並把本身的 TestCase 與所有 priority 子節點
+         一併放進該資料夾，避免子節點被當成 Step 吃掉、或意外升級到上一層資料夾。
+       - 非 priority 的子節點仍當成本案例的 Step。
+    """
+    attached = topic.get("children", {}).get("attached", [])
+    priority_children = [c for c in attached if _topic_has_priority(c)]
+    step_children = [c for c in attached if not _topic_has_priority(c)]
+
+    if _topic_has_priority(topic):
+        if priority_children:
+            # 混合節點：自己是 case，子節點裡也有 case → 用本節點標題開資料夾。
+            folder_name = _clean_title(topic.get("title"), "Unknown")
+            cache_key = f"{path_prefix}/{folder_name}"
+            sub_suite_id = await get_or_create_suite(
+                db, project_id, folder_name, parent_suite_id, suite_cache, cache_key
             )
-        db.add(db_case)
-        if data["id"]:
-            xmind_id_to_case[data["id"]] = db_case
+            # 把節點本身的 case 放到新資料夾中，僅取非 priority 子節點當 step。
+            _create_test_case(db, topic, sub_suite_id, owner_id, step_children, xmind_id_to_case)
+            # 子 case 也放在同一個資料夾下，繼續遞迴（它們可能還有更深的階層）。
+            for child in priority_children:
+                await recursive_create(
+                    db, child, sub_suite_id, project_id, owner_id,
+                    suite_cache, cache_key, xmind_id_to_case,
+                )
+        else:
+            # 純粹的 TestCase：children 全是步驟。
+            _create_test_case(db, topic, parent_suite_id, owner_id, attached, xmind_id_to_case)
         return
 
-    # 無 priority marker → 作為資料夾（子 Suite）
+    # 無 priority marker → 作為資料夾（子 Suite）。
+    # 即使 attached 為空但有 summary/detached，仍建立資料夾以保留結構；當 topic 完全是葉節點
+    # （無 children、無 priority）才略過。
     if "children" in topic:
-        folder_name = topic.get("title", "Unknown")
+        folder_name = _clean_title(topic.get("title"), "Unknown")
         cache_key = f"{path_prefix}/{folder_name}"
         suite_id = await get_or_create_suite(
             db, project_id, folder_name, parent_suite_id, suite_cache, cache_key
         )
-        for child in topic.get("children", {}).get("attached", []):
+        for child in attached:
             await recursive_create(
                 db, child, suite_id, project_id, owner_id,
                 suite_cache, cache_key, xmind_id_to_case,
