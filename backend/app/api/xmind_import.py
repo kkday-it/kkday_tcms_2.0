@@ -7,7 +7,11 @@ XMind → TCMS 1.5 匯入
 --------
 * 所有匯入的 Suite / Case 都放在 project 下的 "Xmind_Import" 根 Suite。
 * XMind 中心節點 → Xmind_Import 的子 Suite。
-* 有 priority 標記的節點 → TestCase；其餘節點 → 子 Suite（遞迴）。
+* 節點對應規則 (詳見 recursive_create)：
+  - 有 priority 標記、子節點全是步驟 → TestCase；子節點作 Step。
+  - 無 priority 標記 → 子 Suite（遞迴處理子節點）。
+  - 有 priority 標記、子節點也有 priority 節點 → 以本節點標題建立資料夾，
+    把自己與所有 priority 子節點放在同一個資料夾下（KQT-15195）。
 * owner 使用 email 查詢 TCMS User；查不到則自動設為 Unassigned（null）。
 * 標籤（labels）為自由文字，無白名單限制（Plan B）。
 * XMind relationships → 附加至目標 TestCase 的 preconditions。

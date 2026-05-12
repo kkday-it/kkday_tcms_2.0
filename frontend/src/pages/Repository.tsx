@@ -384,7 +384,10 @@ export default function Repository() {
     const { users } = useUsers();
     const [selectedCases, setSelectedCases] = useState<Set<number>>(new Set());
     const [batchOwnerId, setBatchOwnerId] = useState<string>('');
-    const [batchMoveSuiteId, setBatchMoveSuiteId] = useState<string>('');
+    // Keep this typed as `number | ''` so it matches the numeric `id` values
+    // produced by `suiteOptions` — SearchableSelect uses strict-equality lookup,
+    // so storing a stringified id would prevent the selected option from rendering.
+    const [batchMoveSuiteId, setBatchMoveSuiteId] = useState<number | ''>('');
 
     // KQT-15196: searchable suite picker — show folder path as a hint so users
     // can disambiguate same-named folders (e.g. multiple "推薦模組定位邏輯")
@@ -1334,7 +1337,7 @@ export default function Repository() {
                                     <span className="text-sm text-slate-600 font-medium">Move to:</span>
                                     <SearchableSelect
                                         value={batchMoveSuiteId}
-                                        onChange={v => setBatchMoveSuiteId(v === '' ? '' : String(v))}
+                                        onChange={v => setBatchMoveSuiteId(v === '' ? '' : Number(v))}
                                         options={suiteOptions}
                                         placeholder="搜尋資料夾..."
                                         compact
