@@ -54,12 +54,12 @@
   }
 
   /* KQT-15184: minimal substitute for @tailwindcss/typography that re-enables
-     list markers and images inside `.prose` containers used by ReactMarkdown
-     preview panes and the tiptap editor. Tailwind v4's Preflight strips
-     `list-style` from <ol>/<ul>, so without this rule numbered/bulleted lists
-     render with no markers in preview while the tiptap editor (which renders
-     lists itself) still shows them — the editor-vs-preview mismatch reported
-     in the ticket. */
+     list markers and images inside `.prose` containers used by the ReactMarkdown
+     preview panes. Tailwind v4's Preflight strips `list-style` from <ol>/<ul>,
+     so without this rule numbered/bulleted lists render with no markers in
+     preview. (The tiptap editor wasn't affected because ProseMirror renders
+     lists itself rather than relying on this CSS — but applying these rules
+     under `.prose` is harmless if any future caller wraps tiptap in `.prose`.) */
   .prose ol {
     list-style: decimal outside;
     padding-left: 1.625em;

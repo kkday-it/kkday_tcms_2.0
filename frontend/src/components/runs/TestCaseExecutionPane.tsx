@@ -57,9 +57,9 @@ export default function TestCaseExecutionPane({ resultId, onClose, onUpdated }: 
         return u ? (u.full_name || u.username) : `#${id}`;
     };
 
-    // Basic Markdown Image & Link Renderer (KQT-15184: add remark-gfm so xmind-
-    // imported "1. xxx" plain text becomes a real <ol>, and drop font-mono so
-    // .prose's list-marker rules apply naturally).
+    // KQT-15184: remark-gfm so xmind-imported "1. xxx\n2. yyy" plain text is
+    // parsed as a real <ol>. Actual list markers come from the `.prose ol/ul`
+    // rules in index.css (Tailwind v4 Preflight otherwise strips list-style).
     const renderMarkdown = (text: string | undefined) => {
         if (!text) return null;
         return (

@@ -78,9 +78,11 @@ export default function TestCasePreviewPane({ isOpen, onClose, caseId, onEditCli
         // Convert empty <p></p> (Tiptap blank lines) to <p><br></p> so they render with visible height.
         const normalized = content.replace(/<p><\/p>/gi, '<p><br></p>');
 
-        // Use react-markdown with rehype-raw + remark-gfm to parse both HTML tags
-        // and Markdown syntax (incl. CommonMark ordered/unordered lists, which is
-        // how xmind-imported "1. xxx\n2. yyy" plain text arrives — KQT-15184).
+        // KQT-15184: remark-gfm so xmind-imported "1. xxx\n2. yyy" plain text is
+        // parsed as a real <ol>, plus rehype-raw so user-saved HTML (from the
+        // tiptap editor) still round-trips. The actual list-marker rendering
+        // depends on the `.prose ol/ul {list-style: …}` rules in index.css —
+        // without them Tailwind v4's Preflight strips list markers entirely.
         return (
             <div className="text-sm text-slate-700 leading-relaxed prose prose-sm max-w-none">
                 <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>

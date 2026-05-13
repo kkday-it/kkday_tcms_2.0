@@ -3,13 +3,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 import xml.etree.ElementTree as ET
+import ipaddress
 import json
 import logging
-import mimetypes
 import os
 import re
+import socket
 import uuid
 from typing import Dict, Optional
+from urllib.parse import urlparse
 
 import httpx
 
@@ -36,9 +38,59 @@ logger = logging.getLogger(__name__)
 #   3. Cache per-import so the same Zephyr URL is downloaded once.
 #   4. Any single download failure is logged but doesn't fail the whole import —
 #      the original src is kept as-is so a manual fix is still possible.
+#
+# Security:
+#   * SSRF: each candidate URL's host is resolved via getaddrinfo, and we reject
+#     any host that maps to a private/loopback/link-local/multicast/reserved
+#     range. Without this guard a crafted XML could pivot the backend at
+#     169.254.169.254 (AWS IMDS) or 10.x services.
+#   * Content sniffing: we only trust the remote Content-Type if it matches a
+#     small allowlist of raster image MIME types, and we only persist files
+#     with a matching safe extension. SVG is intentionally excluded because
+#     it can carry inline <script>.
 
 UPLOAD_DIR = "uploads"
 IMG_TAG_RE = re.compile(r'(<img[^>]*\bsrc=["\'])([^"\']+)(["\'][^>]*>)', re.IGNORECASE)
+
+# Raster-only allowlist. Keep in sync with extension allowlist below.
+_SAFE_IMAGE_MIMES = {
+    "image/png": ".png",
+    "image/jpeg": ".jpg",
+    "image/jpg": ".jpg",
+    "image/gif": ".gif",
+    "image/webp": ".webp",
+}
+_SAFE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+
+
+def _is_safe_remote_host(host: str) -> bool:
+    """Reject hostnames that resolve to non-public IPs (loopback, link-local,
+    private, multicast, reserved). Empty host or DNS failure → reject."""
+    if not host:
+        return False
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror:
+        return False
+    if not infos:
+        return False
+    for info in infos:
+        sockaddr = info[4]
+        ip_str = sockaddr[0]
+        try:
+            ip = ipaddress.ip_address(ip_str)
+        except ValueError:
+            return False
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_multicast
+            or ip.is_reserved
+            or ip.is_unspecified
+        ):
+            return False
+    return True
 
 
 async def _download_and_store_image(
@@ -58,27 +110,31 @@ async def _download_and_store_image(
         cache[url] = url
         return url
 
+    parsed = urlparse(url)
+    if not _is_safe_remote_host(parsed.hostname or ""):
+        logger.warning(f"Zephyr image rehome rejected (private/loopback host) for {url}")
+        return None
+
     try:
-        resp = await client.get(url, timeout=30.0, follow_redirects=True)
+        resp = await client.get(url, follow_redirects=True)
         resp.raise_for_status()
     except Exception as exc:
         logger.warning(f"Zephyr image rehome failed for {url}: {exc}")
         return None
 
-    content_type = resp.headers.get("content-type", "").split(";")[0].strip()
-    if not content_type.startswith("image/"):
-        logger.warning(
-            f"Zephyr image rehome skipped (non-image content-type {content_type!r}) for {url}"
-        )
+    # After redirects, the final URL might have ended up at a private host. Re-check.
+    final_host = (resp.url.host if hasattr(resp.url, "host") else urlparse(str(resp.url)).hostname) or ""
+    if final_host and not _is_safe_remote_host(final_host):
+        logger.warning(f"Zephyr image rehome rejected post-redirect (private host {final_host}) for {url}")
         return None
 
-    ext = mimetypes.guess_extension(content_type) or ""
-    if ext == ".jpe":
-        ext = ".jpg"
-    if not ext:
-        # Last-resort guess from the URL path.
-        path_ext = os.path.splitext(url.split("?", 1)[0])[1].lower()
-        ext = path_ext if path_ext in {".png", ".jpg", ".jpeg", ".gif", ".webp"} else ".png"
+    content_type = resp.headers.get("content-type", "").split(";")[0].strip().lower()
+    if content_type not in _SAFE_IMAGE_MIMES:
+        logger.warning(
+            f"Zephyr image rehome skipped (disallowed content-type {content_type!r}) for {url}"
+        )
+        return None
+    ext = _SAFE_IMAGE_MIMES[content_type]
 
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     filename = f"{uuid.uuid4().hex}{ext}"
@@ -214,7 +270,48 @@ async def import_zephyr_xml(
     cases_to_add = []
     suite_cache = {}  # Cache suite IDs to prevent N+1 queries
     image_cache: Dict[str, str] = {}  # Zephyr URL → rewritten /api/v1/uploads/...
-    image_client = httpx.AsyncClient(timeout=30.0)
+
+    # Use a single httpx client across the import so connections to the same
+    # Zephyr host get reused. `async with` guarantees aclose() even if any
+    # downstream await (e.g. db.commit) raises — see PR #693 review.
+    async with httpx.AsyncClient(timeout=30.0) as image_client:
+        rehomed_images, imported_count, skipped_count, skipped_keys, overwritten_count = await _process_zephyr_cases(
+            db=db,
+            root=root,
+            project_id=project_id,
+            strategy=strategy,
+            image_client=image_client,
+            image_cache=image_cache,
+            suite_cache=suite_cache,
+        )
+
+    return {
+        "message": f"Successfully imported {imported_count} test cases",
+        "imported_count": imported_count,
+        "skipped_count": skipped_count,
+        "skipped_keys": skipped_keys,
+        "overwritten_count": overwritten_count,
+        "rehomed_images": rehomed_images,
+    }
+
+
+async def _process_zephyr_cases(
+    db: AsyncSession,
+    root: ET.Element,
+    project_id: int,
+    strategy: str,
+    image_client: httpx.AsyncClient,
+    image_cache: Dict[str, str],
+    suite_cache: dict,
+) -> tuple[int, int, int, list, int]:
+    """Inner loop of import_zephyr_xml. Returns (rehomed_images, imported,
+    skipped, skipped_keys, overwritten). Split out so the caller can manage
+    the httpx client lifetime with `async with`."""
+    imported_count = 0
+    skipped_count = 0
+    skipped_keys: list[str] = []
+    overwritten_count = 0
+    cases_to_add: list[TestCase] = []
 
     # 1. Parse all test case elements into memory first
     tc_elems = root.findall('.//testCase')
@@ -358,17 +455,8 @@ async def import_zephyr_xml(
         db.add_all(cases_to_add)
     await db.commit()
 
-    await image_client.aclose()
-
     rehomed_images = sum(
         1 for v in image_cache.values()
         if v.startswith("/api/v1/uploads/static/")
     )
-    return {
-        "message": f"Successfully imported {imported_count} test cases",
-        "imported_count": imported_count,
-        "skipped_count": skipped_count,
-        "skipped_keys": skipped_keys,
-        "overwritten_count": overwritten_count,
-        "rehomed_images": rehomed_images,
-    }
+    return rehomed_images, imported_count, skipped_count, skipped_keys, overwritten_count

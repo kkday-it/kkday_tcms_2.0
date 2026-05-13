@@ -26,8 +26,9 @@ function RichTextEditor({
     const [isUploading, setIsUploading] = useState(false);
 
     // Upload one image File to /uploads/ and return the resulting public URL,
-    // or null on failure (caller surfaces the error). Used by both the toolbar
-    // button (file picker) and the paste handler (KQT-15185/15186).
+    // or null on failure. Failures are logged here; every caller is responsible
+    // for surfacing a user-visible error (the file picker and the paste handler
+    // both do, via alert()).
     const uploadImage = useCallback(async (file: File): Promise<string | null> => {
         if (!file.type.startsWith('image/')) return null;
         const form = new FormData();
@@ -89,17 +90,33 @@ function RichTextEditor({
                 event.preventDefault();
                 (async () => {
                     setIsUploading(true);
+                    let failures = 0;
                     try {
                         for (const f of imageFiles) {
                             const url = await uploadImage(f);
                             if (url) {
+                                // Guard against the editor having been torn down
+                                // while the upload was in flight (e.g. user
+                                // closed the modal). Dispatching on a destroyed
+                                // ProseMirror view throws.
+                                if (view.isDestroyed) return;
                                 const { state, dispatch } = view;
                                 const node = state.schema.nodes.image.create({ src: url });
                                 dispatch(state.tr.replaceSelectionWith(node).scrollIntoView());
+                            } else {
+                                failures += 1;
                             }
                         }
                     } finally {
                         setIsUploading(false);
+                    }
+                    // Surface upload failures to match the file-picker UX —
+                    // silently dropping a pasted screenshot is the worst kind
+                    // of feedback.
+                    if (failures > 0) {
+                        alert(failures === imageFiles.length
+                            ? 'Image upload failed'
+                            : `${failures} of ${imageFiles.length} image upload(s) failed`);
                     }
                 })();
                 return true;
