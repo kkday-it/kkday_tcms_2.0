@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { X, Edit2, Loader2, History as HistoryIcon, FileText } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
+import remarkGfm from 'remark-gfm';
 import api from '../../lib/api';
 import { useUsers } from '../../lib/useUsers';
 
@@ -77,10 +78,12 @@ export default function TestCasePreviewPane({ isOpen, onClose, caseId, onEditCli
         // Convert empty <p></p> (Tiptap blank lines) to <p><br></p> so they render with visible height.
         const normalized = content.replace(/<p><\/p>/gi, '<p><br></p>');
 
-        // Use react-markdown with rehype-raw to parse both HTML tags and Markdown syntax cleanly.
+        // Use react-markdown with rehype-raw + remark-gfm to parse both HTML tags
+        // and Markdown syntax (incl. CommonMark ordered/unordered lists, which is
+        // how xmind-imported "1. xxx\n2. yyy" plain text arrives — KQT-15184).
         return (
-            <div className="text-sm text-slate-700 leading-relaxed font-mono prose prose-sm max-w-none">
-                <ReactMarkdown rehypePlugins={[rehypeRaw]}>
+            <div className="text-sm text-slate-700 leading-relaxed prose prose-sm max-w-none">
+                <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
                     {normalized}
                 </ReactMarkdown>
             </div>

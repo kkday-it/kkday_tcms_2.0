@@ -4,7 +4,14 @@ from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 import xml.etree.ElementTree as ET
 import json
-from typing import Optional
+import logging
+import mimetypes
+import os
+import re
+import uuid
+from typing import Dict, Optional
+
+import httpx
 
 from app.db.database import get_db
 from app.models.test_case import TestCase
@@ -12,6 +19,108 @@ from app.models.test_suite import TestSuite
 from app.models.test_step import TestStep
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Zephyr image rehoming
+# ──────────────────────────────────────────────────────────────────────────────
+# Zephyr XML exports embed <img src="..."> tags pointing at the source instance
+# (e.g. zephyr.atlassian.com/...). Those URLs require Zephyr authentication and
+# will 401 once accessed from TCMS, so the images would silently break.
+#
+# Rehome strategy:
+#   1. Scan every text field (description, preconditions, step.action, .expected,
+#      .testData) for <img src="..."> tags.
+#   2. Download each external URL via httpx, save under uploads/ with a UUID
+#      filename, and rewrite the src attribute to the TCMS-served path.
+#   3. Cache per-import so the same Zephyr URL is downloaded once.
+#   4. Any single download failure is logged but doesn't fail the whole import —
+#      the original src is kept as-is so a manual fix is still possible.
+
+UPLOAD_DIR = "uploads"
+IMG_TAG_RE = re.compile(r'(<img[^>]*\bsrc=["\'])([^"\']+)(["\'][^>]*>)', re.IGNORECASE)
+
+
+async def _download_and_store_image(
+    client: httpx.AsyncClient,
+    url: str,
+    cache: Dict[str, str],
+) -> Optional[str]:
+    """Download `url` once and return the rewritten TCMS path, or None on error."""
+    if url in cache:
+        return cache[url]
+    # Anything that already lives under our own /uploads path doesn't need rehoming.
+    if url.startswith("/api/v1/uploads/") or url.startswith("/uploads/"):
+        cache[url] = url
+        return url
+    if not (url.startswith("http://") or url.startswith("https://")):
+        # data: URIs and other schemes are kept as-is.
+        cache[url] = url
+        return url
+
+    try:
+        resp = await client.get(url, timeout=30.0, follow_redirects=True)
+        resp.raise_for_status()
+    except Exception as exc:
+        logger.warning(f"Zephyr image rehome failed for {url}: {exc}")
+        return None
+
+    content_type = resp.headers.get("content-type", "").split(";")[0].strip()
+    if not content_type.startswith("image/"):
+        logger.warning(
+            f"Zephyr image rehome skipped (non-image content-type {content_type!r}) for {url}"
+        )
+        return None
+
+    ext = mimetypes.guess_extension(content_type) or ""
+    if ext == ".jpe":
+        ext = ".jpg"
+    if not ext:
+        # Last-resort guess from the URL path.
+        path_ext = os.path.splitext(url.split("?", 1)[0])[1].lower()
+        ext = path_ext if path_ext in {".png", ".jpg", ".jpeg", ".gif", ".webp"} else ".png"
+
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    filename = f"{uuid.uuid4().hex}{ext}"
+    file_path = os.path.join(UPLOAD_DIR, filename)
+    try:
+        with open(file_path, "wb") as f:
+            f.write(resp.content)
+    except OSError as exc:
+        logger.warning(f"Zephyr image rehome write failed for {url}: {exc}")
+        return None
+
+    rewritten = f"/api/v1/uploads/static/{filename}"
+    cache[url] = rewritten
+    return rewritten
+
+
+async def rehome_zephyr_images(
+    text: Optional[str],
+    client: httpx.AsyncClient,
+    cache: Dict[str, str],
+) -> Optional[str]:
+    """Find every <img src="..."> in `text`, download the asset, and rewrite the
+    src to point at the local /uploads/static/... path. If `text` has no img
+    tags it's returned unchanged. Failures fall back to the original src."""
+    if not text or "<img" not in text.lower():
+        return text
+
+    # Collect unique URLs first so we don't kick off duplicate downloads when the
+    # same image appears more than once in a field.
+    seen: set[str] = set()
+    matches = list(IMG_TAG_RE.finditer(text))
+    for m in matches:
+        seen.add(m.group(2))
+    for url in seen:
+        await _download_and_store_image(client, url, cache)
+
+    def _rewrite(match: re.Match) -> str:
+        original = match.group(2)
+        rewritten = cache.get(original, original)
+        return f"{match.group(1)}{rewritten}{match.group(3)}"
+
+    return IMG_TAG_RE.sub(_rewrite, text)
 
 async def get_or_create_suite(db: AsyncSession, project_id: int, folder_path: str, suite_cache: dict) -> int:
     """Helper to convert 'Squad Projects/Trans/高鐵聯票' into a suite ID hierarchy.
@@ -104,6 +213,8 @@ async def import_zephyr_xml(
     overwritten_count = 0
     cases_to_add = []
     suite_cache = {}  # Cache suite IDs to prevent N+1 queries
+    image_cache: Dict[str, str] = {}  # Zephyr URL → rewritten /api/v1/uploads/...
+    image_client = httpx.AsyncClient(timeout=30.0)
 
     # 1. Parse all test case elements into memory first
     tc_elems = root.findall('.//testCase')
@@ -129,9 +240,11 @@ async def import_zephyr_xml(
 
         description_elem = tc_elem.find('objective')
         description = description_elem.text if description_elem is not None else ""
+        description = await rehome_zephyr_images(description, image_client, image_cache) or ""
 
         precond_elem = tc_elem.find('precondition')
         preconditions = precond_elem.text if precond_elem is not None else ""
+        preconditions = await rehome_zephyr_images(preconditions, image_client, image_cache) or ""
 
         priority_elem = tc_elem.find('priority')
         priority = priority_elem.text if priority_elem is not None else "Not Set"
@@ -168,18 +281,24 @@ async def import_zephyr_xml(
                 jira_keys.append(issue.text)
         jira_keys_str = ",".join(jira_keys) if jira_keys else None
 
-        # Parse Steps
+        # Parse Steps (and rehome any embedded Zephyr <img> URLs to local uploads)
         steps_elems = tc_elem.findall('.//step')
         parsed_steps = []
         for i, step_elem in enumerate(steps_elems):
             action = step_elem.find('description')
             expected = step_elem.find('expectedResult')
             test_data = step_elem.find('testData')
+            action_text = action.text if action is not None and action.text else "No action specified"
+            expected_text = expected.text if expected is not None else ""
+            data_text = test_data.text if test_data is not None else ""
+            action_text = await rehome_zephyr_images(action_text, image_client, image_cache) or action_text
+            expected_text = await rehome_zephyr_images(expected_text, image_client, image_cache) or expected_text
+            data_text = await rehome_zephyr_images(data_text, image_client, image_cache) or data_text
             parsed_steps.append(dict(
                 order=i + 1,
-                action=action.text if action is not None and action.text else "No action specified",
-                expected_result=expected.text if expected is not None else "",
-                data=test_data.text if test_data is not None else "",
+                action=action_text,
+                expected_result=expected_text,
+                data=data_text,
             ))
 
         # Duplicate handling using pre-fetched map
@@ -239,10 +358,17 @@ async def import_zephyr_xml(
         db.add_all(cases_to_add)
     await db.commit()
 
+    await image_client.aclose()
+
+    rehomed_images = sum(
+        1 for v in image_cache.values()
+        if v.startswith("/api/v1/uploads/static/")
+    )
     return {
         "message": f"Successfully imported {imported_count} test cases",
         "imported_count": imported_count,
         "skipped_count": skipped_count,
         "skipped_keys": skipped_keys,
         "overwritten_count": overwritten_count,
+        "rehomed_images": rehomed_images,
     }

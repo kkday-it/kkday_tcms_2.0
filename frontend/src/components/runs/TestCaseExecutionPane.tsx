@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { X, CheckCircle2, XCircle, Ban, Clock, FileWarning, Image as ImageIcon, Loader2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
+import remarkGfm from 'remark-gfm';
 import api from '../../lib/api';
 import { useUsers } from '../../lib/useUsers';
 
@@ -56,12 +57,14 @@ export default function TestCaseExecutionPane({ resultId, onClose, onUpdated }: 
         return u ? (u.full_name || u.username) : `#${id}`;
     };
 
-    // Basic Markdown Image & Link Renderer
+    // Basic Markdown Image & Link Renderer (KQT-15184: add remark-gfm so xmind-
+    // imported "1. xxx" plain text becomes a real <ol>, and drop font-mono so
+    // .prose's list-marker rules apply naturally).
     const renderMarkdown = (text: string | undefined) => {
         if (!text) return null;
         return (
-            <div className="text-sm text-slate-700 leading-relaxed font-mono prose prose-sm max-w-none">
-                <ReactMarkdown rehypePlugins={[rehypeRaw]}>
+            <div className="text-sm text-slate-700 leading-relaxed prose prose-sm max-w-none">
+                <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
                     {text}
                 </ReactMarkdown>
             </div>

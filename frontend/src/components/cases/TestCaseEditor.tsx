@@ -52,17 +52,18 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
                     .then(res => {
                         const data = res.data;
 
-                        // HTML cleaner for Zephyr XML import artifacts
-                        // Preserves HTML structure for the rich text editor;
+                        // HTML cleaner for Zephyr XML import artifacts.
+                        // Preserves HTML structure (including <img>) for the rich text editor;
                         // only fixes common Zephyr-specific encoding issues.
+                        // Note: KQT-15186 — <img> is now kept as-is because RichTextEditor
+                        // has the tiptap Image extension; the previous "downgrade to <a>"
+                        // workaround is no longer needed.
                         const cleanHtml = (str: any) => {
                             if (!str) return '';
                             let cleaned = String(str)
                                 .replace(/&nbsp;/gi, ' ')
                                 // Convert legacy <br> to paragraph-friendly breaks
-                                .replace(/<br\s*\/?>/gi, '</p><p>')
-                                // Convert HTML image tags to a visible linked format
-                                .replace(/<img[^>]+src=["']([^"']+)["'][^>]*>/gi, '<a href="$1" target="_blank">📎 Image</a>');
+                                .replace(/<br\s*\/?>/gi, '</p><p>');
                             // Unescape basic HTML entities
                             cleaned = cleaned.replace(/&gt;/g, '>').replace(/&lt;/g, '<').replace(/&amp;/g, '&').replace(/&quot;/g, '"');
                             // Wrap in paragraph if it doesn't start with an HTML tag
