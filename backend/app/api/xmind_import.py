@@ -124,30 +124,9 @@ def parse_steps(sub_topics: list) -> List[Dict]:
     return steps
 
 
-def _topic_has_priority(topic: dict) -> bool:
-    """單一節點是否有 priority-1..4 marker。"""
-    return any(m.get("markerId", "") in PRIORITY_MAP for m in topic.get("markers", []))
-
-
-def _clean_title(raw: Optional[str], fallback: str) -> str:
-    """去除前後空白並回 fallback 以避免空字串成為資料夾/案例名稱。
-
-    KQT-15195：複製貼上常帶入零寬字元或前後空白，會讓 cache_key 與 DB 查詢看似不同名而
-    產生重複資料夾，或讓案例落在錯誤層級。
-    """
-    if not raw:
-        return fallback
-    cleaned = raw.replace("​", "").replace("﻿", "").strip()
-    return cleaned or fallback
-
-
-def parse_test_case_data(topic: dict, step_children: Optional[List[Dict]] = None) -> dict:
-    """從 XMind topic 擷取結構化測試案例資料。
-
-    `step_children` 允許呼叫端先把 attached 子節點過濾後再傳入；預設行為相容舊版（把所有
-    attached children 視為步驟）。
-    """
-    title = _clean_title(topic.get("title"), "Unnamed Test Case")
+def parse_test_case_data(topic: dict) -> dict:
+    """從 XMind topic 擷取結構化測試案例資料。"""
+    title = topic.get("title", "Unnamed Test Case")
 
     # description：第一個 summary 節點（如有）
     summaries = topic.get("children", {}).get("summary", [])
@@ -156,8 +135,8 @@ def parse_test_case_data(topic: dict, step_children: Optional[List[Dict]] = None
     # preconditions：純文字 note
     preconditions = topic.get("notes", {}).get("plain", {}).get("content", "")
 
-    if step_children is None:
-        step_children = topic.get("children", {}).get("attached", [])
+    # steps：attached children（有 priority 的節點，其子節點即步驟）
+    steps_raw = topic.get("children", {}).get("attached", [])
 
     # labels：自由文字，存成 JSON 字串
     labels = topic.get("labels", [])
@@ -170,7 +149,7 @@ def parse_test_case_data(topic: dict, step_children: Optional[List[Dict]] = None
         "preconditions": preconditions or None,
         "priority": parse_priority(topic.get("markers", [])),
         "labels": labels_json,
-        "steps": parse_steps(step_children),
+        "steps": parse_steps(steps_raw),
     }
 
 
@@ -236,41 +215,6 @@ async def resolve_owner_id(db: AsyncSession, email: str) -> Optional[int]:
 # 遞迴建立 Suite / TestCase
 # ──────────────────────────────────────────────
 
-def _create_test_case(
-    db: AsyncSession,
-    topic: dict,
-    suite_id: int,
-    owner_id: Optional[int],
-    step_children: List[Dict],
-    xmind_id_to_case: dict,
-) -> None:
-    """單純的 TestCase 建立邏輯抽出，避免 recursive_create 兩條分支重複。"""
-    data = parse_test_case_data(topic, step_children=step_children)
-    db_case = TestCase(
-        suite_id=suite_id,
-        title=data["title"],
-        description=data["description"],
-        preconditions=data["preconditions"],
-        priority=data["priority"],
-        labels=data["labels"],
-        default_owner_id=owner_id,
-        status="Active",
-        automation_status="Manual",
-    )
-    for s in data["steps"]:
-        db_case.steps.append(
-            TestStep(
-                order=s["order"],
-                action=s["action"],
-                expected_result=s["expected_result"],
-                data=s["data"],
-            )
-        )
-    db.add(db_case)
-    if data["id"]:
-        xmind_id_to_case[data["id"]] = db_case
-
-
 async def recursive_create(
     db: AsyncSession,
     topic: dict,
@@ -285,20 +229,45 @@ async def recursive_create(
     帶 priority 標記的節點 → 建立 TestCase（含 TestStep）。
     無 priority 標記且有 children 的節點 → 建立子 Suite 並遞迴。
     """
-    attached = topic.get("children", {}).get("attached", [])
+    has_priority = any(
+        m.get("markerId", "") in PRIORITY_MAP for m in topic.get("markers", [])
+    )
 
-    if _topic_has_priority(topic):
-        _create_test_case(db, topic, parent_suite_id, owner_id, attached, xmind_id_to_case)
+    if has_priority:
+        data = parse_test_case_data(topic)
+        db_case = TestCase(
+            suite_id=parent_suite_id,
+            title=data["title"],
+            description=data["description"],
+            preconditions=data["preconditions"],
+            priority=data["priority"],
+            labels=data["labels"],
+            default_owner_id=owner_id,
+            status="Active",
+            automation_status="Manual",
+        )
+        for s in data["steps"]:
+            db_case.steps.append(
+                TestStep(
+                    order=s["order"],
+                    action=s["action"],
+                    expected_result=s["expected_result"],
+                    data=s["data"],
+                )
+            )
+        db.add(db_case)
+        if data["id"]:
+            xmind_id_to_case[data["id"]] = db_case
         return
 
     # 無 priority marker → 作為資料夾（子 Suite）
     if "children" in topic:
-        folder_name = _clean_title(topic.get("title"), "Unknown")
+        folder_name = topic.get("title", "Unknown")
         cache_key = f"{path_prefix}/{folder_name}"
         suite_id = await get_or_create_suite(
             db, project_id, folder_name, parent_suite_id, suite_cache, cache_key
         )
-        for child in attached:
+        for child in topic.get("children", {}).get("attached", []):
             await recursive_create(
                 db, child, suite_id, project_id, owner_id,
                 suite_cache, cache_key, xmind_id_to_case,

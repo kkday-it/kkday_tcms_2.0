@@ -422,27 +422,3 @@ class TestXmindImportAPI:
         assert len(steps) == 2
         assert steps[0]["action"] == "Open browser"
         assert steps[1]["expected_result"] == "Redirect to dashboard"
-
-    @pytest.mark.asyncio
-    async def test_titles_with_whitespace_dedupe(self, client: AsyncClient, project_id: int):
-        """Leading/trailing whitespace shouldn't fork folders into duplicates."""
-        tc1 = make_topic("TC A", priority="priority-1")
-        tc2 = make_topic("TC B", priority="priority-1")
-        folder_clean = make_topic("Shared Folder", children=[tc1])
-        folder_padded = {
-            "title": "  Shared Folder  ",
-            "children": {"attached": [tc2]},
-        }
-        xmind = make_xmind_bytes(
-            [make_sheet("Sheet1", [folder_clean, folder_padded])]
-        )
-        res = await client.post(
-            "/api/v1/cases/import/xmind",
-            data={"project_id": project_id, "owner": ""},
-            files={"file": ("test.xmind", xmind, "application/octet-stream")},
-        )
-        assert res.status_code == 200, res.text
-
-        suites_res = await client.get(f"/api/v1/suites/project/{project_id}")
-        names = [s["name"] for s in suites_res.json()]
-        assert names.count("Shared Folder") == 1, names
