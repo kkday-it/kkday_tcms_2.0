@@ -314,6 +314,14 @@ export default function EditPlanModal({ plan, folders, runs, cases, caseFolders,
         .filter(c => !activeSuiteIds || activeSuiteIds.has(String(c.suite_id)))
         .filter(c => c.title.toLowerCase().includes(caseSearch.toLowerCase()));
 
+    // Cases that match the current filter AND aren't already selected.
+    // Memoized so the four call-sites below (count, button visibility, empty
+    // state, list render) don't each re-filter the array on every render.
+    const availableCases = useMemo(() => {
+        const selected = new Set(selectedCaseIds);
+        return filteredCases.filter(c => !selected.has(c.id));
+    }, [filteredCases, selectedCaseIds]);
+
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -755,9 +763,9 @@ export default function EditPlanModal({ plan, folders, runs, cases, caseFolders,
                                                     </div>
                                                     <div className="flex items-center justify-between px-0.5">
                                                         <p className="text-[11px] text-slate-400">
-                                                            {filteredCases.filter(c => !selectedCaseIds.includes(c.id)).length} 筆可選
+                                                            {availableCases.length} 筆可選
                                                         </p>
-                                                        {filteredCases.filter(c => !selectedCaseIds.includes(c.id)).length > 0 && (
+                                                        {availableCases.length > 0 && (
                                                             <button type="button"
                                                                 onClick={() => setSelectedCaseIds(prev => [...new Set([...prev, ...filteredCases.map(c => c.id)])])}
                                                                 className="text-[11px] text-primary-600 hover:text-primary-800 transition-colors font-medium">
@@ -767,10 +775,10 @@ export default function EditPlanModal({ plan, folders, runs, cases, caseFolders,
                                                     </div>
                                                 </div>
                                                 <div className="flex-1 overflow-y-auto divide-y divide-slate-100 bg-white">
-                                                    {filteredCases.filter(c => !selectedCaseIds.includes(c.id)).length === 0 ? (
+                                                    {availableCases.length === 0 ? (
                                                         <p className="text-xs text-slate-400 p-4 text-center">No cases found.</p>
                                                     ) : (
-                                                        filteredCases.filter(c => !selectedCaseIds.includes(c.id)).map(tc => (
+                                                        availableCases.map(tc => (
                                                             <button key={tc.id} type="button" onClick={() => toggleCase(tc.id)}
                                                                 className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-primary-50 text-left transition-colors group">
                                                                 <Plus className="w-3.5 h-3.5 text-slate-300 group-hover:text-primary-500 shrink-0 transition-colors" />
