@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { X, Loader2 } from 'lucide-react';
 import api from '../../lib/api';
+import SearchableSelect, { SearchableOption } from '../common/SearchableSelect';
 
 interface TestSuite {
     id: number;
@@ -50,9 +51,51 @@ export default function EditSuiteModal({ isOpen, onClose, suite, allSuites, onSa
         }
     };
 
-    // Filter out the current suite and its children to prevent circular nesting 
-    // (For simplicity we just filter the current suite itself, deep validation should happen in backend)
-    const availableParents = allSuites.filter(s => s.id !== suite.id);
+    // Filter out the current suite and its descendants to prevent circular nesting.
+    // (Frontend hides obviously-bad targets; backend should still validate.)
+    const availableParents = useMemo(() => {
+        if (!suite) return [];
+        const blocked = new Set<number>([suite.id]);
+        let grew = true;
+        while (grew) {
+            grew = false;
+            for (const s of allSuites) {
+                if (s.parent_suite_id != null && blocked.has(s.parent_suite_id) && !blocked.has(s.id)) {
+                    blocked.add(s.id);
+                    grew = true;
+                }
+            }
+        }
+        return allSuites.filter(s => !blocked.has(s.id));
+    }, [allSuites, suite]);
+
+    const parentOptions = useMemo<SearchableOption[]>(() => {
+        const byId = new Map(allSuites.map(s => [s.id, s]));
+        const pathOf = (id: number) => {
+            const parts: string[] = [];
+            let cur = byId.get(id);
+            const seen = new Set<number>();
+            while (cur && !seen.has(cur.id)) {
+                seen.add(cur.id);
+                parts.unshift(cur.name);
+                cur = cur.parent_suite_id != null ? byId.get(cur.parent_suite_id) : undefined;
+            }
+            return parts;
+        };
+        return availableParents
+            .map(p => {
+                const path = pathOf(p.id);
+                return {
+                    value: p.id,
+                    label: p.name,
+                    hint: path.length > 1 ? path.slice(0, -1).join(' / ') : '',
+                } satisfies SearchableOption;
+            })
+            .sort((a, b) => {
+                const c = (a.hint ?? '').localeCompare(b.hint ?? '', 'zh-Hant');
+                return c !== 0 ? c : a.label.localeCompare(b.label, 'zh-Hant');
+            });
+    }, [availableParents, allSuites]);
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm">
@@ -80,17 +123,14 @@ export default function EditSuiteModal({ isOpen, onClose, suite, allSuites, onSa
 
                         <div>
                             <label className="block text-sm font-medium text-slate-700 mb-1">Parent Suite (Move)</label>
-                            <select
+                            <SearchableSelect
                                 value={parentSuiteId}
-                                onChange={(e) => setParentSuiteId(e.target.value === '' ? '' : Number(e.target.value))}
-                                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm transition-shadow bg-white text-slate-700"
-                            >
-                                <option value="">None (Top Level)</option>
-                                {availableParents.map(parent => (
-                                    <option key={parent.id} value={parent.id}>{parent.name}</option>
-                                ))}
-                            </select>
-                            <p className="mt-1.5 text-xs text-slate-500">Select a parent suite to move this suite underneath it.</p>
+                                onChange={v => setParentSuiteId(v === '' ? '' : Number(v))}
+                                options={parentOptions}
+                                placeholder="搜尋上層資料夾... (留空為頂層)"
+                                ariaLabel="Parent suite"
+                            />
+                            <p className="mt-1.5 text-xs text-slate-500">Select a parent suite to move this suite underneath it. Clear to make it top-level.</p>
                         </div>
                     </div>
 

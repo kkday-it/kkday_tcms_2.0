@@ -7,6 +7,7 @@ import TestCaseEditor from '../components/cases/TestCaseEditor';
 import TestCasePreviewPane from '../components/cases/TestCasePreviewPane';
 import EditSuiteModal from '../components/suites/EditSuiteModal';
 import SuiteNode from '../components/suites/SuiteNode';
+import SearchableSelect, { SearchableOption } from '../components/common/SearchableSelect';
 import api from '../lib/api';
 import { useUsers } from '../lib/useUsers';
 
@@ -383,7 +384,39 @@ export default function Repository() {
     const { users } = useUsers();
     const [selectedCases, setSelectedCases] = useState<Set<number>>(new Set());
     const [batchOwnerId, setBatchOwnerId] = useState<string>('');
-    const [batchMoveSuiteId, setBatchMoveSuiteId] = useState<string>('');
+    // Keep this typed as `number | ''` so it matches the numeric `id` values
+    // produced by `suiteOptions` — SearchableSelect uses strict-equality lookup,
+    // so storing a stringified id would prevent the selected option from rendering.
+    const [batchMoveSuiteId, setBatchMoveSuiteId] = useState<number | ''>('');
+
+    // KQT-15196: searchable suite picker — show folder path as a hint so users
+    // can disambiguate same-named folders (e.g. multiple "推薦模組定位邏輯")
+    // and type Chinese to filter.
+    const suiteOptions = useMemo<SearchableOption[]>(() => {
+        const byId = new Map(suites.map(s => [s.id, s]));
+        const pathOf = (id: number): string[] => {
+            const out: string[] = [];
+            let cur: TestSuite | undefined = byId.get(id);
+            const seen = new Set<number>();
+            while (cur && !seen.has(cur.id)) {
+                seen.add(cur.id);
+                out.unshift(cur.name);
+                cur = cur.parent_suite_id != null ? byId.get(cur.parent_suite_id) : undefined;
+            }
+            return out;
+        };
+        return suites
+            .map(s => {
+                const path = pathOf(s.id);
+                const hint = path.length > 1 ? path.slice(0, -1).join(' / ') : '';
+                return { value: s.id, label: s.name, hint } satisfies SearchableOption;
+            })
+            .sort((a, b) => {
+                // Sort by hint first (groups same-parent folders together), then label.
+                const c = (a.hint ?? '').localeCompare(b.hint ?? '', 'zh-Hant');
+                return c !== 0 ? c : a.label.localeCompare(b.label, 'zh-Hant');
+            });
+    }, [suites]);
 
     // Fetch Suites for Project
     const fetchSuites = async () => {
@@ -1302,14 +1335,15 @@ export default function Repository() {
 
                                     <div className="h-4 w-px bg-primary-200 mx-2" />
                                     <span className="text-sm text-slate-600 font-medium">Move to:</span>
-                                    <select
+                                    <SearchableSelect
                                         value={batchMoveSuiteId}
-                                        onChange={e => setBatchMoveSuiteId(e.target.value)}
-                                        className="text-sm rounded-md border-slate-300 py-1.5 pl-2 pr-8 shadow-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500 max-w-[200px]"
-                                    >
-                                        <option value="">— Select Folder —</option>
-                                        {suites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                                    </select>
+                                        onChange={v => setBatchMoveSuiteId(v === '' ? '' : Number(v))}
+                                        options={suiteOptions}
+                                        placeholder="搜尋資料夾..."
+                                        compact
+                                        ariaLabel="Move to folder"
+                                        className="w-64"
+                                    />
                                     <button
                                         onClick={handleBatchMoveCases}
                                         disabled={!batchMoveSuiteId}
