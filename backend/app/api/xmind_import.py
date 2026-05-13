@@ -7,11 +7,7 @@ XMind → TCMS 1.5 匯入
 --------
 * 所有匯入的 Suite / Case 都放在 project 下的 "Xmind_Import" 根 Suite。
 * XMind 中心節點 → Xmind_Import 的子 Suite。
-* 節點對應規則 (詳見 recursive_create)：
-  - 有 priority 標記、子節點全是步驟 → TestCase；子節點作 Step。
-  - 無 priority 標記 → 子 Suite（遞迴處理子節點）。
-  - 有 priority 標記、子節點也有 priority 節點 → 以本節點標題建立資料夾，
-    把自己與所有 priority 子節點放在同一個資料夾下（KQT-15195）。
+* 有 priority 標記的節點 → TestCase；其餘節點 → 子 Suite（遞迴）。
 * owner 使用 email 查詢 TCMS User；查不到則自動設為 Unassigned（null）。
 * 標籤（labels）為自由文字，無白名單限制（Plan B）。
 * XMind relationships → 附加至目標 TestCase 的 preconditions。
@@ -149,8 +145,7 @@ def parse_test_case_data(topic: dict, step_children: Optional[List[Dict]] = None
     """從 XMind topic 擷取結構化測試案例資料。
 
     `step_children` 允許呼叫端先把 attached 子節點過濾後再傳入；預設行為相容舊版（把所有
-    attached children 視為步驟）。recursive_create 會在「priority 節點底下還有 priority
-    子節點」的情境下排除那些子節點，避免它們被當成 step 吃掉而失蹤（KQT-15195）。
+    attached children 視為步驟）。
     """
     title = _clean_title(topic.get("title"), "Unnamed Test Case")
 
@@ -286,44 +281,17 @@ async def recursive_create(
     path_prefix: str,
     xmind_id_to_case: dict,
 ) -> None:
-    """建立 Suite/TestCase 結構，鏡射 XMind 階層。
-
-    規則：
-    1. 沒有 priority marker 且有 children → 視為資料夾，遞迴處理子節點。
-    2. 有 priority marker 但所有子節點都沒有 priority → 視為 TestCase；子節點當成 Step。
-    3. 有 priority marker 且子節點當中有 priority 節點（KQT-15195 的踩雷情境）：
-       - 以本節點標題建立一個資料夾，並把本身的 TestCase 與所有 priority 子節點
-         一併放進該資料夾，避免子節點被當成 Step 吃掉、或意外升級到上一層資料夾。
-       - 非 priority 的子節點仍當成本案例的 Step。
+    """
+    帶 priority 標記的節點 → 建立 TestCase（含 TestStep）。
+    無 priority 標記且有 children 的節點 → 建立子 Suite 並遞迴。
     """
     attached = topic.get("children", {}).get("attached", [])
-    priority_children = [c for c in attached if _topic_has_priority(c)]
-    step_children = [c for c in attached if not _topic_has_priority(c)]
 
     if _topic_has_priority(topic):
-        if priority_children:
-            # 混合節點：自己是 case，子節點裡也有 case → 用本節點標題開資料夾。
-            folder_name = _clean_title(topic.get("title"), "Unknown")
-            cache_key = f"{path_prefix}/{folder_name}"
-            sub_suite_id = await get_or_create_suite(
-                db, project_id, folder_name, parent_suite_id, suite_cache, cache_key
-            )
-            # 把節點本身的 case 放到新資料夾中，僅取非 priority 子節點當 step。
-            _create_test_case(db, topic, sub_suite_id, owner_id, step_children, xmind_id_to_case)
-            # 子 case 也放在同一個資料夾下，繼續遞迴（它們可能還有更深的階層）。
-            for child in priority_children:
-                await recursive_create(
-                    db, child, sub_suite_id, project_id, owner_id,
-                    suite_cache, cache_key, xmind_id_to_case,
-                )
-        else:
-            # 純粹的 TestCase：children 全是步驟。
-            _create_test_case(db, topic, parent_suite_id, owner_id, attached, xmind_id_to_case)
+        _create_test_case(db, topic, parent_suite_id, owner_id, attached, xmind_id_to_case)
         return
 
-    # 無 priority marker → 作為資料夾（子 Suite）。
-    # 即使 attached 為空但有 summary/detached，仍建立資料夾以保留結構；當 topic 完全是葉節點
-    # （無 children、無 priority）才略過。
+    # 無 priority marker → 作為資料夾（子 Suite）
     if "children" in topic:
         folder_name = _clean_title(topic.get("title"), "Unknown")
         cache_key = f"{path_prefix}/{folder_name}"
