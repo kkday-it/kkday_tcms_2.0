@@ -55,15 +55,48 @@ class ImportResponse(BaseModel):
 # ──────────────────────────────────────────────
 
 def extract_xmind_content(xmind_file: str) -> list:
-    """解壓 .xmind 並回傳 content.json 的 parsed 結果。"""
+    """解壓 .xmind 並回傳 content.json 的 parsed 結果。
+
+    XMind 不同版本內部佈局不一致：
+      * XMind 2020/Zen+ ：根目錄就有 `content.json`（首選格式）
+      * XMind 2024 Pro  ：有時把 `content.json` 放在子資料夾（例如 `Resources/`）
+      * XMind 8 / 舊版   ：**只有** `content.xml`，沒有 JSON
+    我們先嘗試遞迴找 `content.json`；找不到時回傳的錯誤會列出 zip 實際內容，
+    避免使用者只看到「找不到 content.json」無法判斷該如何匯出。
+    """
     temp_dir = f"{xmind_file}_extracted"
     with zipfile.ZipFile(xmind_file, "r") as zf:
+        members = zf.namelist()
         zf.extractall(temp_dir)
+
+    # 1. Root-level content.json (fast path)
     content_path = os.path.join(temp_dir, "content.json")
-    if not os.path.exists(content_path):
-        raise ValueError("XMind 檔案中找不到 content.json")
-    with open(content_path, "r", encoding="utf-8") as f:
-        return json.load(f)
+    if os.path.exists(content_path):
+        with open(content_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+
+    # 2. Any nested content.json
+    for member in members:
+        if member.endswith("/content.json") or member == "content.json":
+            candidate = os.path.join(temp_dir, member)
+            if os.path.exists(candidate):
+                with open(candidate, "r", encoding="utf-8") as f:
+                    return json.load(f)
+
+    # 3. Surrender — surface what the file actually contained so the user can
+    #    decide whether to re-export from XMind in the JSON-based format
+    #    ("File → Save as → XMind 2020 (.xmind)") or convert from XMind 8.
+    sample = ", ".join(sorted(members)[:8])
+    has_xml = any(m.endswith("content.xml") or m == "content.xml" for m in members)
+    hint = (
+        " (檔案內含 content.xml — 看起來是 XMind 8 舊版格式，"
+        "請在 XMind 中用『另存新檔』選 XMind 2020 以上版本再匯入)"
+        if has_xml else ""
+    )
+    raise ValueError(
+        f"XMind 檔案中找不到 content.json{hint}。"
+        f"檔案實際包含：{sample}{'…' if len(members) > 8 else ''}"
+    )
 
 
 def has_valid_test_cases(topics: List[Dict]) -> Tuple[bool, List[str]]:
