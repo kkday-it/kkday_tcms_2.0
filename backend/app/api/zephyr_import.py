@@ -62,6 +62,12 @@ _SAFE_IMAGE_MIMES = {
 }
 _SAFE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 
+# Cap on a single downloaded image. Without this, an attacker-controlled (or
+# accidentally huge) URL could let a Zephyr XML import balloon TCMS's memory
+# and disk usage. 10 MB is generous for a screenshot — anything larger is
+# almost certainly not a UI artefact.
+MAX_IMAGE_BYTES = 10 * 1024 * 1024
+
 
 def _is_safe_remote_host(host: str) -> bool:
     """Reject hostnames that resolve to non-public IPs (loopback, link-local,
@@ -115,33 +121,67 @@ async def _download_and_store_image(
         logger.warning(f"Zephyr image rehome rejected (private/loopback host) for {url}")
         return None
 
+    # Stream the response so we can (a) check Content-Length early and (b)
+    # enforce MAX_IMAGE_BYTES even when the server omits or lies about the
+    # header — otherwise an attacker could serve an unbounded "image" and
+    # exhaust memory before our size check ran.
     try:
-        resp = await client.get(url, follow_redirects=True)
-        resp.raise_for_status()
+        async with client.stream("GET", url, follow_redirects=True) as resp:
+            resp.raise_for_status()
+
+            # After redirects, the final URL might have landed on a private
+            # host (`follow_redirects=True` would otherwise be an SSRF bypass).
+            final_host = (
+                resp.url.host if hasattr(resp.url, "host")
+                else urlparse(str(resp.url)).hostname
+            ) or ""
+            if final_host and not _is_safe_remote_host(final_host):
+                logger.warning(
+                    f"Zephyr image rehome rejected post-redirect (private host {final_host}) for {url}"
+                )
+                return None
+
+            content_type = resp.headers.get("content-type", "").split(";")[0].strip().lower()
+            if content_type not in _SAFE_IMAGE_MIMES:
+                logger.warning(
+                    f"Zephyr image rehome skipped (disallowed content-type {content_type!r}) for {url}"
+                )
+                return None
+            ext = _SAFE_IMAGE_MIMES[content_type]
+
+            content_length = resp.headers.get("content-length")
+            if content_length:
+                try:
+                    declared = int(content_length)
+                except ValueError:
+                    declared = -1
+                if declared > MAX_IMAGE_BYTES:
+                    logger.warning(
+                        f"Zephyr image rehome skipped (Content-Length {declared} > {MAX_IMAGE_BYTES}) for {url}"
+                    )
+                    return None
+
+            chunks: list[bytes] = []
+            total = 0
+            async for chunk in resp.aiter_bytes():
+                total += len(chunk)
+                if total > MAX_IMAGE_BYTES:
+                    logger.warning(
+                        f"Zephyr image rehome aborted (downloaded > {MAX_IMAGE_BYTES} bytes) for {url}"
+                    )
+                    return None
+                chunks.append(chunk)
+            body = b"".join(chunks)
     except Exception as exc:
         logger.warning(f"Zephyr image rehome failed for {url}: {exc}")
         return None
-
-    # After redirects, the final URL might have ended up at a private host. Re-check.
-    final_host = (resp.url.host if hasattr(resp.url, "host") else urlparse(str(resp.url)).hostname) or ""
-    if final_host and not _is_safe_remote_host(final_host):
-        logger.warning(f"Zephyr image rehome rejected post-redirect (private host {final_host}) for {url}")
-        return None
-
-    content_type = resp.headers.get("content-type", "").split(";")[0].strip().lower()
-    if content_type not in _SAFE_IMAGE_MIMES:
-        logger.warning(
-            f"Zephyr image rehome skipped (disallowed content-type {content_type!r}) for {url}"
-        )
-        return None
-    ext = _SAFE_IMAGE_MIMES[content_type]
 
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     filename = f"{uuid.uuid4().hex}{ext}"
     file_path = os.path.join(UPLOAD_DIR, filename)
     try:
         with open(file_path, "wb") as f:
-            f.write(resp.content)
+            f.write(body)
     except OSError as exc:
         logger.warning(f"Zephyr image rehome write failed for {url}: {exc}")
         return None
