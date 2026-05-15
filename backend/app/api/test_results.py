@@ -59,10 +59,27 @@ async def get_result_details(result_id: int, db: AsyncSession = Depends(get_db))
     # Fetch case
     test_case = await db.get(TestCase, result.case_id)
     
-    # Fetch steps and their existing results
-    steps_query = select(TestStep).where(TestStep.test_case_id == test_case.id, TestStep.status == 'Active').order_by(TestStep.order)
+    # KQT-15246: Fetch active steps for this case. Older bugs (frontend
+    # stripping step.id on edit + update_case re-inserting all rows on save)
+    # could leave the DB with multiple Active rows sharing the same
+    # (test_case_id, order). The query above happily returned both, which
+    # showed up as a doubled step list in the test cycle view while the case
+    # library — which loads steps via the TestCase.steps relationship and
+    # only de-dupes for "Archived" — sometimes hid it. De-dupe by order
+    # here, keeping the newest row (max id) so the displayed step matches
+    # the most recent edit and old rows behave like soft-archived.
+    steps_query = (
+        select(TestStep)
+        .where(TestStep.test_case_id == test_case.id, TestStep.status == 'Active')
+        .order_by(TestStep.order, TestStep.id)
+    )
     steps_res = await db.execute(steps_query)
-    steps = steps_res.scalars().all()
+    raw_steps = steps_res.scalars().all()
+    seen_orders: dict[int, TestStep] = {}
+    for s in raw_steps:
+        # Later rows (higher id) override earlier ones at the same order.
+        seen_orders[s.order] = s
+    steps = sorted(seen_orders.values(), key=lambda s: s.order)
     
     step_results_query = select(TestStepResult).where(TestStepResult.test_result_id == result_id)
     step_results_res = await db.execute(step_results_query)

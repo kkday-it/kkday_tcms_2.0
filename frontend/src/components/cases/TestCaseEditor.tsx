@@ -6,6 +6,11 @@ import TagInput from '../common/TagInput';
 import RichTextEditor from '../common/RichTextEditor';
 
 interface TestStep {
+    // KQT-15246: keep the backend-assigned id when loading an existing case
+    // so PUT /cases/{id} can hit update_case's "update existing" branch
+    // instead of insert-then-archive (which leaked Active rows and doubled
+    // the step list in the test cycle view).
+    id?: number;
     action: string;
     data?: string;
     expected_result: string;
@@ -111,6 +116,7 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
 
                         if (data.steps && data.steps.length > 0) {
                             setSteps(data.steps.map((s: any) => ({
+                                id: s.id,  // KQT-15246: round-trip id so update_case can UPDATE not INSERT
                                 action: cleanHtml(s.action),
                                 data: cleanHtml(s.data),
                                 expected_result: cleanHtml(s.expected_result)
