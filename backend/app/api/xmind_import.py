@@ -17,6 +17,7 @@ import json
 import os
 import traceback
 import zipfile
+import xml.etree.ElementTree as ET
 from typing import Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -53,31 +54,123 @@ class ImportResponse(BaseModel):
 # XMind 解析（純 CPU，不含 I/O）
 # ──────────────────────────────────────────────
 
+# XMind 8 / Pro legacy content.xml uses this namespace on every element.
+_XMIND8_NS = "{urn:xmind:xmap:xmlns:content:2.0}"
+# Some hyperlinks/href attributes live on a different namespace.
+_XLINK_HREF = "{http://www.w3.org/1999/xlink}href"
+
+
+def _xml_topic_to_dict(elem: ET.Element) -> Dict:
+    """Convert a single XMind 8 <topic> element into the same dict shape the
+    JSON-format parser already consumes (see parse_test_case_data /
+    recursive_create). Only the fields we actually read downstream are
+    populated:
+
+      - id, title, href  (latter for parse_steps' expected_result link hint)
+      - markers          → list of {"markerId": ...}
+      - notes.plain.content
+      - labels           → list[str]
+      - children.attached / children.detached
+
+    Anything else from the XML (boundaries, summaries, styles, positions) is
+    ignored, mirroring what the JSON parser already does.
+    """
+    ns = _XMIND8_NS
+    title_elem = elem.find(f"{ns}title")
+    title = (title_elem.text or "") if title_elem is not None else ""
+
+    markers: List[Dict[str, str]] = []
+    for ref in elem.findall(f"{ns}marker-refs/{ns}marker-ref"):
+        mid = ref.get("marker-id")
+        if mid:
+            markers.append({"markerId": mid})
+
+    notes_plain = elem.find(f"{ns}notes/{ns}plain")
+    notes_block: Dict[str, Dict[str, str]] = {}
+    if notes_plain is not None and (notes_plain.text or "").strip():
+        notes_block = {"plain": {"content": notes_plain.text}}
+
+    labels = [l.text for l in elem.findall(f"{ns}labels/{ns}label") if l.text]
+
+    children_attached: List[Dict] = []
+    children_detached: List[Dict] = []
+    for topics_elem in elem.findall(f"{ns}children/{ns}topics"):
+        ttype = topics_elem.get("type", "attached")
+        for sub in topics_elem.findall(f"{ns}topic"):
+            sub_dict = _xml_topic_to_dict(sub)
+            (children_detached if ttype == "detached" else children_attached).append(sub_dict)
+
+    result: Dict = {
+        "id": elem.get("id", ""),
+        "title": title,
+    }
+    href = elem.get(_XLINK_HREF) or elem.get("href")
+    if href:
+        result["href"] = href
+    if markers:
+        result["markers"] = markers
+    if notes_block:
+        result["notes"] = notes_block
+    if labels:
+        result["labels"] = labels
+    if children_attached or children_detached:
+        result["children"] = {}
+        if children_attached:
+            result["children"]["attached"] = children_attached
+        if children_detached:
+            result["children"]["detached"] = children_detached
+    return result
+
+
+def _xmind8_xml_to_sheets(xml_bytes: bytes) -> list:
+    """Convert an XMind 8 content.xml byte stream into the JSON-shaped sheet
+    list our existing pipeline expects: [{"rootTopic": {…}, "relationships": []}, …].
+    """
+    root = ET.fromstring(xml_bytes)
+    ns = _XMIND8_NS
+    sheets = []
+    for sheet in root.findall(f"{ns}sheet"):
+        topic_elem = sheet.find(f"{ns}topic")
+        if topic_elem is None:
+            continue
+        title_elem = sheet.find(f"{ns}title")
+        sheet_title = (title_elem.text or "") if title_elem is not None else "Sheet"
+        sheets.append({
+            "title": sheet_title,
+            "rootTopic": _xml_topic_to_dict(topic_elem),
+            "relationships": [],
+        })
+    if not sheets:
+        raise ValueError(
+            "XMind 檔案的 content.xml 無法解析出任何 sheet — 檔案可能損毀或格式不被支援"
+        )
+    return sheets
+
+
 def extract_xmind_content(xmind_file: str) -> list:
-    """從 .xmind 壓縮檔讀出 content.json 並回傳 parsed 結果。
+    """從 .xmind 壓縮檔讀出 sheets，回傳 parsed 結果。
 
     XMind 不同版本內部佈局不一致：
       * XMind 2020/Zen+ ：根目錄就有 `content.json`（首選格式）
       * XMind 2024 Pro  ：有時把 `content.json` 放在子資料夾（例如 `Resources/`）
       * XMind 8 / 舊版   ：**只有** `content.xml`，沒有 JSON
 
-    Implementation note: previously we `extractall()`'d the whole archive to
-    a temp dir and read `content.json` off disk. That had two problems —
-    Zip Slip (a member named `../../etc/passwd` escapes the temp dir on
-    extraction), and wasted I/O writing files we never read. The new flow
-    looks up the entry name in the zip's member list and streams just that
-    one entry through `zf.open(member)`. Nothing else hits disk, and
-    because the path comes from `namelist()` and is only fed back to
-    `zf.open()` (not to `os.path.join` with our filesystem), Zip Slip
-    can't apply here.
+    優先讀 `content.json`（fast path），找不到時 fall back 到 XMind 8 的
+    `content.xml`，轉成跟 JSON 同一份 dict shape 後讓後續 parser 不用知道
+    格式差異。
+
+    Security note: we never `extractall()` — both code paths stream the
+    target entry directly out of the zip via `zf.open()`/`zf.read()`,
+    so Zip Slip can't apply (no path joining with the filesystem).
     """
     with zipfile.ZipFile(xmind_file, "r") as zf:
         members = zf.namelist()
 
-        # 1. Root-level content.json (fast path)
+        # 1. content.json at the root (XMind 2020/Zen+ — fast path)
         target: Optional[str] = "content.json" if "content.json" in members else None
 
-        # 2. Any nested content.json
+        # 2. Any nested content.json (XMind 2024 Pro sometimes puts it under
+        #    a sub-dir).
         if target is None:
             for member in members:
                 if member.endswith("/content.json"):
@@ -88,19 +181,20 @@ def extract_xmind_content(xmind_file: str) -> list:
             with zf.open(target) as f:
                 return json.load(f)
 
-        # 3. Surrender — surface what the file actually contained so the user
-        #    can decide whether to re-export from XMind in the JSON-based
-        #    format ("File → Save as → XMind 2020 (.xmind)") or convert from
-        #    XMind 8.
+        # 3. XMind 8 / pre-2020 fall-back: parse content.xml.
+        xml_target = "content.xml" if "content.xml" in members else None
+        if xml_target is None:
+            for member in members:
+                if member.endswith("/content.xml"):
+                    xml_target = member
+                    break
+        if xml_target is not None:
+            return _xmind8_xml_to_sheets(zf.read(xml_target))
+
+        # 4. Surrender — show what the file actually contained.
         sample = ", ".join(sorted(members)[:8])
-        has_xml = any(m.endswith("content.xml") or m == "content.xml" for m in members)
-        hint = (
-            " (檔案內含 content.xml — 看起來是 XMind 8 舊版格式，"
-            "請在 XMind 中用『另存新檔』選 XMind 2020 以上版本再匯入)"
-            if has_xml else ""
-        )
         raise ValueError(
-            f"XMind 檔案中找不到 content.json{hint}。"
+            f"XMind 檔案中找不到 content.json 或 content.xml。"
             f"檔案實際包含：{sample}{'…' if len(members) > 8 else ''}"
         )
 
