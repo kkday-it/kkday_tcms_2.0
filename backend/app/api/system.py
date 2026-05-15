@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Depends
-from sqlalchemy import text
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import bindparam, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db
@@ -95,8 +95,6 @@ async def diagnose_lost_steps(
     }
 
     if include_details and summary:
-        from sqlalchemy import bindparam
-
         case_ids = [c["test_case_id"] for c in summary]
         # `expanding=True` lets the same SQL run against PostgreSQL (prod) and
         # SQLite (dev) without dialect-specific ANY()/array syntax.
@@ -138,3 +136,242 @@ async def diagnose_lost_steps(
             case["archived_steps"] = details_by_case.get(case["test_case_id"], [])
 
     return response
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Recovery for steps lost to the PR #708 dedupe migration
+# ──────────────────────────────────────────────────────────────────────────
+#
+# Background: pre-PR #706 frontend stripped step.id AND step.order on
+# round-trip. Pydantic's TestStepUpdate has `order: int = 1` default, so
+# every saved step collapsed onto order=1. PR #708's dedupe migration then
+# kept MAX(id) per (case, order) and archived the rest — that's where the
+# user's "原本 3 step → 剩 1" data loss comes from.
+#
+# Strategy: for each affected case, find archived siblings that look like
+# they came from the SAME edit batch as the surviving step. Edit batches
+# show up as tight clusters in `surviving_id - archived_id` gap space —
+# update_case INSERTs N new TestSteps in one go, so their ids are tightly
+# consecutive. Older edit cycles sit in a much higher gap range.
+#
+# Heuristic:
+#   1. Sort archived candidates by gap ascending (closest to surviving = newest).
+#   2. The "last batch" is a prefix of that list where consecutive gaps differ
+#      by ≤ JUMP_THRESHOLD. Stop at the first big jump.
+#   3. Bail entirely on the case if even the smallest gap is > MAX_FIRST_GAP —
+#      that means the latest batch has no dedupe-victims (e.g. only 1 step
+#      survived after a NEW single-step edit; older archived ones are real
+#      history we don't want to revive).
+#
+# Both thresholds are query parameters so PM can tune per inspection.
+
+
+def _build_recovery_plan(
+    rows: list[tuple[int, int, int, int]],
+    jump_threshold: int,
+    max_first_gap: int,
+) -> list[dict]:
+    """Group rows by (case_id, surviving_id) and decide which archived siblings
+    to restore for each group.
+
+    `rows` shape: (test_case_id, archived_id, surviving_id, surviving_order)
+    """
+    # Group: { (case_id, surviving_id, surviving_order): [archived_id, …] }
+    from collections import defaultdict
+    groups: dict[tuple[int, int, int], list[int]] = defaultdict(list)
+    for case_id, archived_id, surviving_id, surviving_order in rows:
+        groups[(case_id, surviving_id, surviving_order)].append(archived_id)
+
+    plan: list[dict] = []
+    for (case_id, surviving_id, surviving_order), archived_ids in groups.items():
+        # gap ascending = newest first
+        gaps_with_ids = sorted(
+            ((surviving_id - aid, aid) for aid in archived_ids),
+            key=lambda t: t[0],
+        )
+        gaps = [g for g, _ in gaps_with_ids]
+        ids_by_gap = [aid for _, aid in gaps_with_ids]
+
+        if not gaps or gaps[0] > max_first_gap:
+            plan.append({
+                "test_case_id": case_id,
+                "surviving_step_id": surviving_id,
+                "action": "skip",
+                "reason": (
+                    f"min gap {gaps[0]} exceeds max_first_gap={max_first_gap}"
+                    if gaps else "no archived candidates"
+                ),
+                "archived_candidate_count": len(archived_ids),
+            })
+            continue
+
+        # Walk forward, stop at first jump
+        cluster_size = 1
+        for i in range(1, len(gaps)):
+            if gaps[i] - gaps[i - 1] > jump_threshold:
+                break
+            cluster_size += 1
+
+        restore_ids = sorted(ids_by_gap[:cluster_size])  # id ascending
+        skipped_ids = sorted(ids_by_gap[cluster_size:])
+
+        plan.append({
+            "test_case_id": case_id,
+            "surviving_step_id": surviving_id,
+            "surviving_order": surviving_order,
+            "action": "restore",
+            # ids in the order they'll be applied (asc). New step orders will
+            # be 1..N for these, with surviving_id last at order N+1.
+            "restore_archived_ids": restore_ids,
+            "new_total_step_count": len(restore_ids) + 1,
+            "kept_archived_ids": skipped_ids,
+            "kept_archived_reason": (
+                "outside jump_threshold cluster" if skipped_ids else None
+            ),
+        })
+
+    return plan
+
+
+async def _fetch_recovery_rows(db: AsyncSession):
+    sql = text(
+        """
+        SELECT
+            archived.test_case_id,
+            archived.id          AS archived_id,
+            kept.id              AS surviving_id,
+            kept."order"         AS surviving_order
+        FROM tcms_test_steps archived
+        JOIN tcms_test_steps kept
+          ON archived.test_case_id = kept.test_case_id
+         AND archived."order"      = kept."order"
+        WHERE archived.status = 'Archived'
+          AND kept.status     = 'Active'
+          AND archived.id     < kept.id
+          AND (archived.action != kept.action
+               OR COALESCE(archived.expected_result, '') != COALESCE(kept.expected_result, ''))
+        """
+    )
+    result = await db.execute(sql)
+    return [(row[0], row[1], row[2], row[3]) for row in result.all()]
+
+
+@router.get("/recover-lost-steps")
+async def preview_lost_steps_recovery(
+    jump_threshold: int = 20,
+    max_first_gap: int = 100,
+    db: AsyncSession = Depends(get_db),
+):
+    """Dry-run preview of the recovery plan. Always read-only.
+
+    See the comment block above `_build_recovery_plan` for the heuristic.
+    Tune `jump_threshold` / `max_first_gap` via query params to see how the
+    plan changes before committing to a POST.
+    """
+    rows = await _fetch_recovery_rows(db)
+    plan = _build_recovery_plan(rows, jump_threshold, max_first_gap)
+    restore_entries = [e for e in plan if e["action"] == "restore"]
+    skip_entries = [e for e in plan if e["action"] == "skip"]
+    return {
+        "dry_run": True,
+        "jump_threshold": jump_threshold,
+        "max_first_gap": max_first_gap,
+        "summary": {
+            "cases_to_restore": len(restore_entries),
+            "cases_to_skip": len(skip_entries),
+            "total_steps_to_restore": sum(
+                len(e["restore_archived_ids"]) for e in restore_entries
+            ),
+            "total_archived_to_keep": sum(
+                len(e["kept_archived_ids"]) for e in restore_entries
+            ) + sum(
+                e["archived_candidate_count"] for e in skip_entries
+            ),
+        },
+        "plan": plan,
+    }
+
+
+@router.post("/recover-lost-steps")
+async def apply_lost_steps_recovery(
+    jump_threshold: int = 20,
+    max_first_gap: int = 100,
+    confirm: bool = False,
+    db: AsyncSession = Depends(get_db),
+):
+    """Apply the recovery plan computed by the GET variant.
+
+    Requires `confirm=true` to actually write — guards against typo'd calls.
+    Process per case in three phases to dodge the partial unique index from
+    PR #708:
+      1. Mark every involved row (kept + to-be-restored) `status='Archived'` —
+         lifts the (test_case_id, order) WHERE status='Active' constraint.
+      2. Re-stamp `order` to 1..N+1 by id ascending.
+      3. Flip `status='Active'` on all of them.
+    Each case's three phases run inside the surrounding request transaction;
+    one bad case rolls everything back.
+    """
+    if not confirm:
+        raise HTTPException(
+            status_code=400,
+            detail="recovery is destructive; resend with ?confirm=true to apply",
+        )
+
+    rows = await _fetch_recovery_rows(db)
+    plan = _build_recovery_plan(rows, jump_threshold, max_first_gap)
+
+    restore_entries = [e for e in plan if e["action"] == "restore"]
+    applied: list[dict] = []
+    failed: list[dict] = []
+
+    for entry in restore_entries:
+        case_id = entry["test_case_id"]
+        surviving_id = entry["surviving_step_id"]
+        all_ids: list[int] = entry["restore_archived_ids"] + [surviving_id]
+        try:
+            # Phase 1: archive all involved rows
+            await db.execute(
+                text(
+                    "UPDATE tcms_test_steps SET status='Archived' WHERE id IN :ids"
+                ).bindparams(bindparam("ids", expanding=True)),
+                {"ids": all_ids},
+            )
+            # Phase 2: assign new orders. Bind a separate row per id to avoid
+            # any cross-row constraint check fireworks during the UPDATE.
+            for new_order, sid in enumerate(all_ids, start=1):
+                await db.execute(
+                    text(
+                        "UPDATE tcms_test_steps SET \"order\" = :o WHERE id = :id"
+                    ),
+                    {"o": new_order, "id": sid},
+                )
+            # Phase 3: bring everyone back as Active
+            await db.execute(
+                text(
+                    "UPDATE tcms_test_steps SET status='Active' WHERE id IN :ids"
+                ).bindparams(bindparam("ids", expanding=True)),
+                {"ids": all_ids},
+            )
+            applied.append({
+                "test_case_id": case_id,
+                "surviving_step_id": surviving_id,
+                "restored_ids": entry["restore_archived_ids"],
+                "new_total_step_count": entry["new_total_step_count"],
+            })
+        except Exception as exc:
+            failed.append({
+                "test_case_id": case_id,
+                "surviving_step_id": surviving_id,
+                "error": f"{type(exc).__name__}: {exc}",
+            })
+
+    await db.commit()
+    return {
+        "dry_run": False,
+        "jump_threshold": jump_threshold,
+        "max_first_gap": max_first_gap,
+        "applied_count": len(applied),
+        "failed_count": len(failed),
+        "applied": applied,
+        "failed": failed,
+    }
