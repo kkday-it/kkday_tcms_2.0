@@ -365,7 +365,20 @@ async def get_case(case_id: int, db: AsyncSession = Depends(get_db)):
 
 @router.put("/{case_id}", response_model=TestCaseResponse)
 async def update_case(case_id: int, case_in: TestCaseUpdate, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(TestCase).options(selectinload(TestCase.steps)).where(TestCase.id == case_id))
+    # KQT-15246: only load active step rows. Without this filter every
+    # archived row from prior edits would land in `existing_steps` and the
+    # soft-delete loop below would redundantly re-stamp `status = "Archived"`
+    # on already-archived rows. Combined with the frontend now sending
+    # step.id back to us, this means a routine edit no longer creates a new
+    # row + archives the old one (the previous flow was producing a fresh
+    # archived twin on every save, which made the test cycle view double
+    # up the step list once duplicates crept into the active set).
+    result = await db.execute(
+        select(TestCase)
+        .options(selectinload(TestCase.steps))
+        .options(with_loader_criteria(TestStep, TestStep.status != "Archived"))
+        .where(TestCase.id == case_id)
+    )
     case = result.scalar_one_or_none()
     
     if not case:
