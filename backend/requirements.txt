@@ -12,5 +12,8 @@ apscheduler==3.10.4
 asyncpg==0.29.0
 psycopg2-binary==2.9.9
 
+# XML hardening for user-uploaded XMind 8 content.xml (PR #709 review)
+defusedxml==0.7.1
+
 # Testing
 allure-pytest==2.15.3
