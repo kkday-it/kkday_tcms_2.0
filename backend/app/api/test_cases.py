@@ -74,7 +74,10 @@ async def list_cases_by_project(
             query = query.where((TestCase.labels.is_(None)) | (~TestCase.labels.ilike(f"%{label}%")))
     query = query.where(TestCase.status != "Archived")
     query = query.options(with_loader_criteria(TestStep, TestStep.status != "Archived"))
-    
+    # Stable creation-order: xmind/zephyr import inserts cases depth-first
+    # following the source tree, so ordering by id preserves the mindmap order.
+    query = query.order_by(TestCase.id)
+
     result = await db.execute(query)
     return result.scalars().all()
 
@@ -86,7 +89,7 @@ async def list_cases_by_suite(suite_id: int, db: AsyncSession = Depends(get_db))
         .where(TestSuite.id == suite_id)
         .cte(name="suite_hierarchy", recursive=True)
     )
-    
+
     hierarchy = hierarchy.union_all(
         select(TestSuite.id)
         .where(TestSuite.parent_suite_id == hierarchy.c.id)
@@ -98,6 +101,7 @@ async def list_cases_by_suite(suite_id: int, db: AsyncSession = Depends(get_db))
         .options(with_loader_criteria(TestStep, TestStep.status != "Archived"))
         .where(TestCase.suite_id.in_(select(hierarchy.c.id)))
         .where(TestCase.status != "Archived")
+        .order_by(TestCase.id)
     )
     return result.scalars().all()
 

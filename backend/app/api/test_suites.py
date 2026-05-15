@@ -13,7 +13,10 @@ router = APIRouter()
 
 @router.get("/project/{project_id}", response_model=List[TestSuiteResponse])
 async def list_suites_by_project(project_id: int, db: AsyncSession = Depends(get_db)):
-    # We need to join with TestCase to get the direct count first
+    # Order by id so suites come back in creation order — i.e. the order they
+    # were inserted by xmind_import / zephyr_import, which matches the source
+    # mindmap/XML traversal order. Without this PostgreSQL returns an
+    # unspecified order and the suite tree in the UI reshuffles every refresh.
     stmt = (
         select(
             TestSuite,
@@ -22,6 +25,7 @@ async def list_suites_by_project(project_id: int, db: AsyncSession = Depends(get
         .outerjoin(TestCase, TestCase.suite_id == TestSuite.id)
         .where(TestSuite.project_id == project_id)
         .group_by(TestSuite.id)
+        .order_by(TestSuite.id)
     )
     result = await db.execute(stmt)
     
