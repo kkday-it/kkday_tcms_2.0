@@ -19,6 +19,7 @@ from app.db.database import get_db
 from app.models.test_case import TestCase
 from app.models.test_suite import TestSuite
 from app.models.test_step import TestStep
+from app.services.priority_normalizer import normalize_priority
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -384,7 +385,7 @@ async def _process_zephyr_cases(
         preconditions = await rehome_zephyr_images(preconditions, image_client, image_cache) or ""
 
         priority_elem = tc_elem.find('priority')
-        priority = priority_elem.text if priority_elem is not None else "Not Set"
+        priority = normalize_priority(priority_elem.text if priority_elem is not None else None)
 
         status_elem = tc_elem.find('status')
         status = status_elem.text if status_elem is not None else "Draft"

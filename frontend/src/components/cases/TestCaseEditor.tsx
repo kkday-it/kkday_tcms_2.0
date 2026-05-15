@@ -11,6 +11,11 @@ interface TestStep {
     // instead of insert-then-archive (which leaked Active rows and doubled
     // the step list in the test cycle view).
     id?: number;
+    // KQT-TC-4055 follow-up: also round-trip the step's `order`. Stripping
+    // it caused Pydantic to default every step to order=1 on save, which
+    // collided with the partial unique index `(test_case_id, order) WHERE
+    // status='Active'` introduced by PR #708 and surfaced as a 500.
+    order?: number;
     action: string;
     data?: string;
     expected_result: string;
@@ -117,7 +122,8 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
 
                         if (data.steps && data.steps.length > 0) {
                             setSteps(data.steps.map((s: any) => ({
-                                id: s.id,  // KQT-15246: round-trip id so update_case can UPDATE not INSERT
+                                id: s.id,        // KQT-15246: round-trip id so update_case UPDATEs, doesn't INSERT
+                                order: s.order,  // TC-4055 follow-up: round-trip order; missing order made Pydantic default every step to 1, hitting the partial unique index
                                 action: cleanHtml(s.action),
                                 data: cleanHtml(s.data),
                                 expected_result: cleanHtml(s.expected_result)
@@ -217,7 +223,20 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
                 labelsJson = '';
             }
 
-            const payload = {
+            // Re-stamp `order` so steps always serialise with a monotonically
+            // increasing index. The backend Pydantic default is 1, so without
+            // this any new step we added (or a load that didn't bring `order`
+            // back, see TC-4055 follow-up) would collapse onto order=1 and
+            // collide with the partial unique index from PR #708.
+            const stepsPayload = steps
+                .filter(s => s.action.trim() || s.expected_result.trim())
+                .map((s, idx) => ({ ...s, order: s.order ?? idx + 1 }));
+
+            // Common fields that exist on both create and update. We split the
+            // payloads so we don't accidentally clobber a case's existing
+            // `suite_id` (which is NOT NULL) when the editor is opened from a
+            // context where `suiteId` is null — that produced a 500 on TC-4055.
+            const basePayload = {
                 title,
                 lifecycle_status: lifecycleStatus,
                 default_owner_id: defaultOwnerId ? Number(defaultOwnerId) : null,
@@ -227,24 +246,27 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
                 layer,
                 description: description.trim() || null,
                 preconditions,
-                external_id: externalId || null,
                 tags: tagsJson || null,
                 labels: labelsJson || null,
                 jira_keys: jiraKeys || null,
-                suite_id: suiteId,
-                steps: steps.filter(s => s.action.trim() || s.expected_result.trim()) // filter out empty steps
+                steps: stepsPayload,
             };
 
             if (caseId) {
-                // Update
-                await api.put(`/cases/${caseId}`, payload);
+                // Update: don't send `suite_id` (moves are a separate flow) and
+                // don't send `external_id` (immutable, backend ignores anyway).
+                await api.put(`/cases/${caseId}`, basePayload);
             } else {
-                // Create
+                // Create: needs suite_id + may carry an explicit external_id.
                 if (!suiteId) {
                     alert("缺少 Suite ID");
                     return;
                 }
-                await api.post(`/cases/`, payload);
+                await api.post(`/cases/`, {
+                    ...basePayload,
+                    suite_id: suiteId,
+                    external_id: externalId || null,
+                });
             }
             if (onSaved) onSaved();
             onClose();
@@ -321,10 +343,13 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
                                             onChange={(e) => setPriority(e.target.value)}
                                             className="w-full rounded-md border border-slate-200 py-2 px-3 text-slate-900 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 sm:text-sm bg-white"
                                         >
-                                            <option value="Highest">Highest</option>
+                                            {/* Canonical 4-level priority — backend normalises legacy values
+                                                (FAST / Highest / Normal / priority-N / …) onto this set. */}
+                                            <option value="Critical">Critical</option>
                                             <option value="High">High</option>
                                             <option value="Medium">Medium</option>
                                             <option value="Low">Low</option>
+                                            <option value="Not Set">Not Set</option>
                                         </select>
                                     </div>
                                     <div>

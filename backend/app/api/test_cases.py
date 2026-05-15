@@ -19,6 +19,7 @@ from app.models.test_suite import TestSuite
 from app.schemas.test_case import TestCaseCreate, TestCaseResponse, TestCaseUpdate, TestCaseBatchDelete, TestCaseBatchMove
 from app.schemas.test_case_history import TestCaseHistoryResponse
 from app.services.dify_sync import build_case_metadata, build_case_text
+from app.services.priority_normalizer import normalize_priority
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +111,11 @@ async def create_case(case_in: TestCaseCreate, db: AsyncSession = Depends(get_db
     provided_ext_id = case_in.external_id and case_in.external_id.strip()
 
     case_data = case_in.model_dump(exclude={"steps"})
+    # KQT TCMS hardening: collapse legacy priority vocab (FAST / Highest /
+    # Normal / Priority-N …) onto the canonical Critical/High/Medium/Low set
+    # at the write boundary, so the dropdown never sees a value it can't render.
+    if "priority" in case_data:
+        case_data["priority"] = normalize_priority(case_data.get("priority"))
     case = TestCase(**case_data)
 
     try:
@@ -397,6 +403,11 @@ async def update_case(case_id: int, case_in: TestCaseUpdate, db: AsyncSession = 
         )
 
     update_data = case_in.model_dump(exclude={"steps", "version", "external_id"}, exclude_unset=True)
+    # KQT TCMS hardening: same priority normalisation as create_case, applied
+    # here so editing a legacy "FAST" / "Highest" case through the editor
+    # silently rewrites the column to a canonical value the dropdown can render.
+    if "priority" in update_data:
+        update_data["priority"] = normalize_priority(update_data.get("priority"))
 
     # Track changed fields
     changes = {}
