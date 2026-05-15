@@ -20,6 +20,13 @@ import zipfile
 import xml.etree.ElementTree as ET
 from typing import Dict, List, Optional, Tuple
 
+# Use defusedxml for the actual parsing call when reading user-supplied
+# content.xml — the stdlib `ET.fromstring` is documented as not safe for
+# untrusted input (entity expansion bombs, billion laughs, etc). We still
+# reference `ET.Element` for typing/lookups because defusedxml returns the
+# same Element objects under the hood.
+from defusedxml.ElementTree import fromstring as _safe_xml_fromstring
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -58,6 +65,13 @@ class ImportResponse(BaseModel):
 _XMIND8_NS = "{urn:xmind:xmap:xmlns:content:2.0}"
 # Some hyperlinks/href attributes live on a different namespace.
 _XLINK_HREF = "{http://www.w3.org/1999/xlink}href"
+
+# Hard cap on the content.xml we'll try to parse. A real-world XMind 8 file
+# weighs in around 100KB–1MB even for sizeable mindmaps; anything past 20MB
+# is almost certainly malicious (an XML bomb is small on disk but explodes
+# in memory) or corrupt. We bail with a clear error rather than letting
+# defusedxml/ET exhaust the worker.
+_MAX_XML_BYTES = 20 * 1024 * 1024
 
 
 def _xml_topic_to_dict(elem: ET.Element) -> Dict:
@@ -125,8 +139,16 @@ def _xml_topic_to_dict(elem: ET.Element) -> Dict:
 def _xmind8_xml_to_sheets(xml_bytes: bytes) -> list:
     """Convert an XMind 8 content.xml byte stream into the JSON-shaped sheet
     list our existing pipeline expects: [{"rootTopic": {…}, "relationships": []}, …].
+
+    Parsing goes through `defusedxml` to neutralise entity-expansion attacks,
+    and we reject content.xml streams larger than `_MAX_XML_BYTES` (20MB) so
+    that a small-on-disk XML bomb can't explode in memory.
     """
-    root = ET.fromstring(xml_bytes)
+    if len(xml_bytes) > _MAX_XML_BYTES:
+        raise ValueError(
+            f"XMind 檔案中的 content.xml 過大（{len(xml_bytes):,} bytes，上限 {_MAX_XML_BYTES:,} bytes）"
+        )
+    root = _safe_xml_fromstring(xml_bytes)
     ns = _XMIND8_NS
     sheets = []
     for sheet in root.findall(f"{ns}sheet"):
