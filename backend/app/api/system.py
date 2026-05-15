@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import bindparam, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -6,6 +8,7 @@ from app.db.database import get_db
 from app.db.health import check_schema_health
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get("/status")
@@ -168,15 +171,30 @@ async def diagnose_lost_steps(
 
 def _parse_case_id_csv(raw: str | None) -> set[int]:
     """Parse a `1,2,3` comma-separated query param into a set of ints.
-    Empty / None → empty set. Silently drops non-numeric tokens so PM
-    typing accidents (e.g. trailing comma) don't 500."""
+
+    Empty / None → empty set. Tolerates trailing commas and stray whitespace
+    so an accidental `4055,` doesn't 500 the request. Non-numeric tokens
+    (e.g. `abc`) are dropped but logged at WARNING — silent drops would make
+    a fat-fingered query param look like it succeeded, which is the wrong
+    failure mode for a one-shot recovery tool.
+    """
     if not raw:
         return set()
     out: set[int] = set()
+    dropped: list[str] = []
     for tok in raw.split(","):
         tok = tok.strip()
+        if not tok:
+            continue
         if tok.isdigit():
             out.add(int(tok))
+        else:
+            dropped.append(tok)
+    if dropped:
+        logger.warning(
+            "_parse_case_id_csv: ignored non-numeric tokens %s from raw=%r",
+            dropped, raw,
+        )
     return out
 
 
@@ -295,10 +313,10 @@ async def preview_lost_steps_recovery(
     plan — useful when a case has already been hand-fixed and the recovery
     would over-restore on top of the fix.
     """
+    excluded = _parse_case_id_csv(exclude_case_ids)
     rows = await _fetch_recovery_rows(db)
     plan = _build_recovery_plan(
-        rows, jump_threshold, max_first_gap,
-        exclude_case_ids=_parse_case_id_csv(exclude_case_ids),
+        rows, jump_threshold, max_first_gap, exclude_case_ids=excluded,
     )
     restore_entries = [e for e in plan if e["action"] == "restore"]
     skip_entries = [e for e in plan if e["action"] == "skip"]
@@ -306,7 +324,7 @@ async def preview_lost_steps_recovery(
         "dry_run": True,
         "jump_threshold": jump_threshold,
         "max_first_gap": max_first_gap,
-        "excluded_case_ids": sorted(_parse_case_id_csv(exclude_case_ids)),
+        "excluded_case_ids": sorted(excluded),
         "summary": {
             "cases_to_restore": len(restore_entries),
             "cases_to_skip": len(skip_entries),
