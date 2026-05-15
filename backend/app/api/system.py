@@ -308,8 +308,12 @@ async def apply_lost_steps_recovery(
          lifts the (test_case_id, order) WHERE status='Active' constraint.
       2. Re-stamp `order` to 1..N+1 by id ascending.
       3. Flip `status='Active'` on all of them.
-    Each case's three phases run inside the surrounding request transaction;
-    one bad case rolls everything back.
+
+    Per-case isolation: each case runs inside its own SAVEPOINT (`begin_nested`)
+    so if a phase fails — e.g. rowcount mismatch from a concurrent write — only
+    that case's three phases roll back, the other cases stay applied. This is
+    a deliberate **partial-success policy**: PM can re-run with the same query
+    params to retry just the failed entries after fixing the cause.
     """
     if not confirm:
         raise HTTPException(
@@ -328,37 +332,60 @@ async def apply_lost_steps_recovery(
         case_id = entry["test_case_id"]
         surviving_id = entry["surviving_step_id"]
         all_ids: list[int] = entry["restore_archived_ids"] + [surviving_id]
+        expected = len(all_ids)
         try:
-            # Phase 1: archive all involved rows
-            await db.execute(
-                text(
-                    "UPDATE tcms_test_steps SET status='Archived' WHERE id IN :ids"
-                ).bindparams(bindparam("ids", expanding=True)),
-                {"ids": all_ids},
-            )
-            # Phase 2: assign new orders. Bind a separate row per id to avoid
-            # any cross-row constraint check fireworks during the UPDATE.
-            for new_order, sid in enumerate(all_ids, start=1):
-                await db.execute(
+            # SAVEPOINT per case so a bad row doesn't corrupt the rest.
+            async with db.begin_nested():
+                # Phase 1: archive all involved rows.
+                r1 = await db.execute(
                     text(
-                        "UPDATE tcms_test_steps SET \"order\" = :o WHERE id = :id"
-                    ),
-                    {"o": new_order, "id": sid},
+                        "UPDATE tcms_test_steps SET status='Archived' WHERE id IN :ids"
+                    ).bindparams(bindparam("ids", expanding=True)),
+                    {"ids": all_ids},
                 )
-            # Phase 3: bring everyone back as Active
-            await db.execute(
-                text(
-                    "UPDATE tcms_test_steps SET status='Active' WHERE id IN :ids"
-                ).bindparams(bindparam("ids", expanding=True)),
-                {"ids": all_ids},
-            )
+                if r1.rowcount != expected:
+                    raise RuntimeError(
+                        f"phase1 rowcount {r1.rowcount} != expected {expected}"
+                    )
+
+                # Phase 2: assign new orders. One UPDATE per id so we don't
+                # need DBMS-specific tricks for batch reorder under the
+                # partial unique index (status='Archived' makes the index
+                # inactive on these rows during this phase anyway, but the
+                # serial per-id form is also easier to reason about).
+                for new_order, sid in enumerate(all_ids, start=1):
+                    r2 = await db.execute(
+                        text(
+                            "UPDATE tcms_test_steps SET \"order\" = :o WHERE id = :id"
+                        ),
+                        {"o": new_order, "id": sid},
+                    )
+                    if r2.rowcount != 1:
+                        raise RuntimeError(
+                            f"phase2 rowcount {r2.rowcount} != 1 for id={sid}"
+                        )
+
+                # Phase 3: bring everyone back as Active.
+                r3 = await db.execute(
+                    text(
+                        "UPDATE tcms_test_steps SET status='Active' WHERE id IN :ids"
+                    ).bindparams(bindparam("ids", expanding=True)),
+                    {"ids": all_ids},
+                )
+                if r3.rowcount != expected:
+                    raise RuntimeError(
+                        f"phase3 rowcount {r3.rowcount} != expected {expected}"
+                    )
+
             applied.append({
                 "test_case_id": case_id,
                 "surviving_step_id": surviving_id,
                 "restored_ids": entry["restore_archived_ids"],
                 "new_total_step_count": entry["new_total_step_count"],
+                "phase_rowcounts": {"p1": r1.rowcount, "p2_each": 1, "p3": r3.rowcount},
             })
         except Exception as exc:
+            # SAVEPOINT auto-rollback on context exit; only THIS case is undone.
             failed.append({
                 "test_case_id": case_id,
                 "surviving_step_id": surviving_id,
