@@ -15,7 +15,6 @@ XMind → TCMS 1.5 匯入
 
 import json
 import os
-import shutil
 import traceback
 import zipfile
 from typing import Dict, List, Optional, Tuple
@@ -55,48 +54,55 @@ class ImportResponse(BaseModel):
 # ──────────────────────────────────────────────
 
 def extract_xmind_content(xmind_file: str) -> list:
-    """解壓 .xmind 並回傳 content.json 的 parsed 結果。
+    """從 .xmind 壓縮檔讀出 content.json 並回傳 parsed 結果。
 
     XMind 不同版本內部佈局不一致：
       * XMind 2020/Zen+ ：根目錄就有 `content.json`（首選格式）
       * XMind 2024 Pro  ：有時把 `content.json` 放在子資料夾（例如 `Resources/`）
       * XMind 8 / 舊版   ：**只有** `content.xml`，沒有 JSON
-    我們先嘗試遞迴找 `content.json`；找不到時回傳的錯誤會列出 zip 實際內容，
-    避免使用者只看到「找不到 content.json」無法判斷該如何匯出。
+
+    Implementation note: previously we `extractall()`'d the whole archive to
+    a temp dir and read `content.json` off disk. That had two problems —
+    Zip Slip (a member named `../../etc/passwd` escapes the temp dir on
+    extraction), and wasted I/O writing files we never read. The new flow
+    looks up the entry name in the zip's member list and streams just that
+    one entry through `zf.open(member)`. Nothing else hits disk, and
+    because the path comes from `namelist()` and is only fed back to
+    `zf.open()` (not to `os.path.join` with our filesystem), Zip Slip
+    can't apply here.
     """
-    temp_dir = f"{xmind_file}_extracted"
     with zipfile.ZipFile(xmind_file, "r") as zf:
         members = zf.namelist()
-        zf.extractall(temp_dir)
 
-    # 1. Root-level content.json (fast path)
-    content_path = os.path.join(temp_dir, "content.json")
-    if os.path.exists(content_path):
-        with open(content_path, "r", encoding="utf-8") as f:
-            return json.load(f)
+        # 1. Root-level content.json (fast path)
+        target: Optional[str] = "content.json" if "content.json" in members else None
 
-    # 2. Any nested content.json
-    for member in members:
-        if member.endswith("/content.json") or member == "content.json":
-            candidate = os.path.join(temp_dir, member)
-            if os.path.exists(candidate):
-                with open(candidate, "r", encoding="utf-8") as f:
-                    return json.load(f)
+        # 2. Any nested content.json
+        if target is None:
+            for member in members:
+                if member.endswith("/content.json"):
+                    target = member
+                    break
 
-    # 3. Surrender — surface what the file actually contained so the user can
-    #    decide whether to re-export from XMind in the JSON-based format
-    #    ("File → Save as → XMind 2020 (.xmind)") or convert from XMind 8.
-    sample = ", ".join(sorted(members)[:8])
-    has_xml = any(m.endswith("content.xml") or m == "content.xml" for m in members)
-    hint = (
-        " (檔案內含 content.xml — 看起來是 XMind 8 舊版格式，"
-        "請在 XMind 中用『另存新檔』選 XMind 2020 以上版本再匯入)"
-        if has_xml else ""
-    )
-    raise ValueError(
-        f"XMind 檔案中找不到 content.json{hint}。"
-        f"檔案實際包含：{sample}{'…' if len(members) > 8 else ''}"
-    )
+        if target is not None:
+            with zf.open(target) as f:
+                return json.load(f)
+
+        # 3. Surrender — surface what the file actually contained so the user
+        #    can decide whether to re-export from XMind in the JSON-based
+        #    format ("File → Save as → XMind 2020 (.xmind)") or convert from
+        #    XMind 8.
+        sample = ", ".join(sorted(members)[:8])
+        has_xml = any(m.endswith("content.xml") or m == "content.xml" for m in members)
+        hint = (
+            " (檔案內含 content.xml — 看起來是 XMind 8 舊版格式，"
+            "請在 XMind 中用『另存新檔』選 XMind 2020 以上版本再匯入)"
+            if has_xml else ""
+        )
+        raise ValueError(
+            f"XMind 檔案中找不到 content.json{hint}。"
+            f"檔案實際包含：{sample}{'…' if len(members) > 8 else ''}"
+        )
 
 
 def has_valid_test_cases(topics: List[Dict]) -> Tuple[bool, List[str]]:
@@ -440,6 +446,3 @@ async def import_xmind(
     finally:
         if os.path.exists(temp_file):
             os.remove(temp_file)
-        temp_dir = f"{temp_file}_extracted"
-        if os.path.exists(temp_dir):
-            shutil.rmtree(temp_dir)
