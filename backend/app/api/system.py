@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import bindparam, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -6,6 +8,7 @@ from app.db.database import get_db
 from app.db.health import check_schema_health
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get("/status")
@@ -166,20 +169,57 @@ async def diagnose_lost_steps(
 # Both thresholds are query parameters so PM can tune per inspection.
 
 
+def _parse_case_id_csv(raw: str | None) -> set[int]:
+    """Parse a `1,2,3` comma-separated query param into a set of ints.
+
+    Empty / None → empty set. Tolerates trailing commas and stray whitespace
+    so an accidental `4055,` doesn't 500 the request. Non-numeric tokens
+    (e.g. `abc`) are dropped but logged at WARNING — silent drops would make
+    a fat-fingered query param look like it succeeded, which is the wrong
+    failure mode for a one-shot recovery tool.
+    """
+    if not raw:
+        return set()
+    out: set[int] = set()
+    dropped: list[str] = []
+    for tok in raw.split(","):
+        tok = tok.strip()
+        if not tok:
+            continue
+        if tok.isdigit():
+            out.add(int(tok))
+        else:
+            dropped.append(tok)
+    if dropped:
+        logger.warning(
+            "_parse_case_id_csv: ignored non-numeric tokens %s from raw=%r",
+            dropped, raw,
+        )
+    return out
+
+
 def _build_recovery_plan(
     rows: list[tuple[int, int, int, int]],
     jump_threshold: int,
     max_first_gap: int,
+    exclude_case_ids: set[int] | None = None,
 ) -> list[dict]:
     """Group rows by (case_id, surviving_id) and decide which archived siblings
     to restore for each group.
 
     `rows` shape: (test_case_id, archived_id, surviving_id, surviving_order)
+
+    `exclude_case_ids` lets PM peel off specific cases that have already been
+    manually fixed (e.g. TC-4055 was edited by PM after the diagnostic ran,
+    so the recovery would over-restore on top of the manual fix).
     """
+    excluded = exclude_case_ids or set()
     # Group: { (case_id, surviving_id, surviving_order): [archived_id, …] }
     from collections import defaultdict
     groups: dict[tuple[int, int, int], list[int]] = defaultdict(list)
     for case_id, archived_id, surviving_id, surviving_order in rows:
+        if case_id in excluded:
+            continue
         groups[(case_id, surviving_id, surviving_order)].append(archived_id)
 
     plan: list[dict] = []
@@ -260,6 +300,7 @@ async def _fetch_recovery_rows(db: AsyncSession):
 async def preview_lost_steps_recovery(
     jump_threshold: int = 20,
     max_first_gap: int = 100,
+    exclude_case_ids: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
     """Dry-run preview of the recovery plan. Always read-only.
@@ -267,15 +308,23 @@ async def preview_lost_steps_recovery(
     See the comment block above `_build_recovery_plan` for the heuristic.
     Tune `jump_threshold` / `max_first_gap` via query params to see how the
     plan changes before committing to a POST.
+
+    `exclude_case_ids` (CSV, e.g. `4055,4060`) drops specific cases from the
+    plan — useful when a case has already been hand-fixed and the recovery
+    would over-restore on top of the fix.
     """
+    excluded = _parse_case_id_csv(exclude_case_ids)
     rows = await _fetch_recovery_rows(db)
-    plan = _build_recovery_plan(rows, jump_threshold, max_first_gap)
+    plan = _build_recovery_plan(
+        rows, jump_threshold, max_first_gap, exclude_case_ids=excluded,
+    )
     restore_entries = [e for e in plan if e["action"] == "restore"]
     skip_entries = [e for e in plan if e["action"] == "skip"]
     return {
         "dry_run": True,
         "jump_threshold": jump_threshold,
         "max_first_gap": max_first_gap,
+        "excluded_case_ids": sorted(excluded),
         "summary": {
             "cases_to_restore": len(restore_entries),
             "cases_to_skip": len(skip_entries),
@@ -296,6 +345,7 @@ async def preview_lost_steps_recovery(
 async def apply_lost_steps_recovery(
     jump_threshold: int = 20,
     max_first_gap: int = 100,
+    exclude_case_ids: str | None = None,
     confirm: bool = False,
     db: AsyncSession = Depends(get_db),
 ):
@@ -314,6 +364,9 @@ async def apply_lost_steps_recovery(
     that case's three phases roll back, the other cases stay applied. This is
     a deliberate **partial-success policy**: PM can re-run with the same query
     params to retry just the failed entries after fixing the cause.
+
+    `exclude_case_ids` (CSV, e.g. `4055,4060`) skips specific cases — same
+    semantics as the GET variant.
     """
     if not confirm:
         raise HTTPException(
@@ -321,8 +374,11 @@ async def apply_lost_steps_recovery(
             detail="recovery is destructive; resend with ?confirm=true to apply",
         )
 
+    excluded = _parse_case_id_csv(exclude_case_ids)
     rows = await _fetch_recovery_rows(db)
-    plan = _build_recovery_plan(rows, jump_threshold, max_first_gap)
+    plan = _build_recovery_plan(
+        rows, jump_threshold, max_first_gap, exclude_case_ids=excluded,
+    )
 
     restore_entries = [e for e in plan if e["action"] == "restore"]
     applied: list[dict] = []
@@ -397,6 +453,7 @@ async def apply_lost_steps_recovery(
         "dry_run": False,
         "jump_threshold": jump_threshold,
         "max_first_gap": max_first_gap,
+        "excluded_case_ids": sorted(excluded),
         "applied_count": len(applied),
         "failed_count": len(failed),
         "applied": applied,
