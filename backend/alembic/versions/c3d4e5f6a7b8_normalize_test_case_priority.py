@@ -41,38 +41,51 @@ _ALIAS_TO_CANONICAL: list[tuple[list[str], str]] = [
 
 
 def upgrade() -> None:
-    # 1. Apply each alias bucket. LOWER() + TRIM() so we catch any casing /
-    #    whitespace variant. Use a NOT IN guard so the migration is idempotent
-    #    and we don't keep rewriting already-canonical rows (e.g. on re-run).
-    for aliases, canonical in _ALIAS_TO_CANONICAL:
-        # quote each alias for SQL
-        quoted = ", ".join(f"'{a}'" for a in aliases)
-        op.execute(
-            f"""
-            UPDATE tcms_test_cases
-            SET priority = '{canonical}'
-            WHERE LOWER(TRIM(COALESCE(priority, ''))) IN ({quoted})
-              AND priority IS DISTINCT FROM '{canonical}'
-            """ if op.get_bind().dialect.name == "postgresql" else
-            f"""
-            UPDATE tcms_test_cases
-            SET priority = '{canonical}'
-            WHERE LOWER(TRIM(COALESCE(priority, ''))) IN ({quoted})
-              AND (priority IS NULL OR priority != '{canonical}')
-            """
+    # Build a single UPDATE ... CASE WHEN ... END that does ONE full table
+    # scan instead of six. Anything not matched by an alias bucket and not
+    # already canonical falls through to "Not Set". The aliases come in
+    # via SQL bind parameters (one per bucket) so the migration body is
+    # plain SQL strings — no f-string interpolation of values.
+    when_clauses: list[str] = []
+    bind_params: dict[str, str | list[str]] = {}
+    canonical_list: list[str] = []
+    for idx, (aliases, canonical) in enumerate(_ALIAS_TO_CANONICAL):
+        # SQL doesn't take a list directly; expand to (:p0, :p1, …) per bucket.
+        placeholders: list[str] = []
+        for j, alias in enumerate(aliases):
+            key = f"a{idx}_{j}"
+            placeholders.append(f":{key}")
+            bind_params[key] = alias
+        canonical_key = f"c{idx}"
+        bind_params[canonical_key] = canonical
+        when_clauses.append(
+            f"WHEN LOWER(TRIM(COALESCE(priority, ''))) IN ({', '.join(placeholders)}) THEN :{canonical_key}"
         )
+        canonical_list.append(canonical)
 
-    # 2. Anything not matched above — i.e. an unknown legacy tag we didn't
-    #    list — collapses to "Not Set". We catch by elimination: any row
-    #    whose priority isn't already canonical.
-    op.execute(
-        """
-        UPDATE tcms_test_cases
-        SET priority = 'Not Set'
-        WHERE priority NOT IN ('Critical', 'High', 'Medium', 'Low', 'Not Set')
-           OR priority IS NULL
-        """
+    # All currently-canonical values keep themselves — without this branch,
+    # rows already at, say, 'Critical' but whose lowercased form happens to
+    # be in the "critical" alias bucket would still match, but rows at
+    # canonical values not covered by any bucket alias would fall through
+    # and become 'Not Set'. Add an explicit pass-through for each canonical.
+    canonical_passthrough_keys: list[str] = []
+    for idx, canon in enumerate(("Critical", "High", "Medium", "Low", "Not Set")):
+        key = f"k{idx}"
+        bind_params[key] = canon
+        canonical_passthrough_keys.append(f":{key}")
+    when_clauses.append(
+        f"WHEN priority IN ({', '.join(canonical_passthrough_keys)}) THEN priority"
     )
+
+    sql = f"""
+        UPDATE tcms_test_cases
+        SET priority = CASE
+            {' '.join(when_clauses)}
+            ELSE 'Not Set'
+        END
+    """
+    from sqlalchemy import text
+    op.execute(text(sql).bindparams(**bind_params))
 
 
 def downgrade() -> None:
