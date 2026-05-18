@@ -114,6 +114,7 @@ async def get_result_details(result_id: int, db: AsyncSession = Depends(get_db))
         "assignee_id": result.assignee_id,
         "test_case": {
             "title": test_case.title,
+            "external_id": test_case.external_id,
             "description": test_case.description,
             "preconditions": test_case.preconditions,
             "priority": test_case.priority,

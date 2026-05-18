@@ -141,6 +141,8 @@ interface TestCase {
     default_owner_id?: number;
     type?: string;
     layer?: string;
+    description?: string;
+    preconditions?: string;
 }
 
 // ─── XMind Import Modal ──────────────────────────────────────────────────────
@@ -764,11 +766,17 @@ export default function Repository() {
         const q = searchQuery.trim().toLowerCase();
         // KQT-15250: also match TCMS id (rendered as `TC-{id}`) so users can
         // search by "TC-443" / "tc-443" / "443" instead of only Jira external_id.
+        // Search scope also covers description / preconditions / labels / tags so the
+        // input behaves as a true free-form keyword search.
         const tcLabel = `tc-${tc.id}`;
         const matchesSearch = !q
             || tc.title.toLowerCase().includes(q)
             || (tc.external_id && tc.external_id.toLowerCase().includes(q))
-            || tcLabel.includes(q);
+            || tcLabel.includes(q)
+            || (tc.description && tc.description.toLowerCase().includes(q))
+            || (tc.preconditions && tc.preconditions.toLowerCase().includes(q))
+            || (tc.labels && tc.labels.toLowerCase().includes(q))
+            || (tc.tags && tc.tags.toLowerCase().includes(q));
 
         if (!matchesSearch) return false;
 
@@ -1192,7 +1200,7 @@ export default function Repository() {
                                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                                     <input
                                         type="text"
-                                        placeholder="Search test cases or Zephyr IDs..."
+                                        placeholder="搜尋案例（標題、TC-id、Jira id、描述、前置條件、labels、tags）"
                                         className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
                                         value={searchQuery}
                                         onChange={(e) => setSearchQuery(e.target.value)}

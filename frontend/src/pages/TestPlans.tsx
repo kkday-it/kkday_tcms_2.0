@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ClipboardList, Plus, Loader2, Trash2, Pencil, Folder as FolderIcon, Download, ChevronDown, Copy } from 'lucide-react';
+import { ClipboardList, Plus, Loader2, Trash2, Pencil, Folder as FolderIcon, Download, ChevronDown, Copy, Search, X } from 'lucide-react';
 import { DndContext, DragEndEvent, closestCenter, useDroppable, useSensor, useSensors, PointerSensor, useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import api from '../lib/api';
@@ -116,6 +116,7 @@ export default function TestPlans() {
     const projectId = 1;
 
     const [plans, setPlans] = useState<TestPlan[]>([]);
+    const [planSearchQuery, setPlanSearchQuery] = useState('');
     const [folders, setFolders] = useState<PlanFolder[]>([]);
     const [runs, setRuns] = useState<TestRun[]>([]);
     const [cases, setCases] = useState<TestCase[]>([]);
@@ -172,12 +173,11 @@ export default function TestPlans() {
     const fetchPlans = async () => {
         setIsLoading(true);
         try {
+            // Always fetch the project's full plan list; folder & keyword filters are applied
+            // client-side via `displayedPlans` so the sidebar counts stay accurate and keyword
+            // search can span every folder.
             const res = await api.get(`/plans/project/${projectId}`);
-            let data: TestPlan[] = res.data;
-            if (activeFolderId !== null) {
-                data = data.filter(p => p.folder_id === activeFolderId);
-            }
-            setPlans(data);
+            setPlans(res.data);
         } catch (e) {
             console.error('Failed to load plans', e);
         } finally {
@@ -203,7 +203,24 @@ export default function TestPlans() {
     };
 
     useEffect(() => { fetchFolders(); }, []);
-    useEffect(() => { fetchPlans(); }, [activeFolderId]);
+    useEffect(() => { fetchPlans(); }, []);
+
+    // Apply folder + keyword filters client-side. Empty query: show plans in the active
+    // folder (or all when at root). Non-empty query: search globally so users can find a
+    // plan without knowing its folder.
+    const displayedPlans = useMemo(() => {
+        const q = planSearchQuery.trim().toLowerCase();
+        const scope = q || activeFolderId === null
+            ? plans
+            : plans.filter(p => p.folder_id === activeFolderId);
+        if (!q) return scope;
+        return scope.filter(p =>
+            p.title.toLowerCase().includes(q) ||
+            (p.description && p.description.toLowerCase().includes(q)) ||
+            String(p.id).includes(q) ||
+            p.status.toLowerCase().includes(q)
+        );
+    }, [plans, activeFolderId, planSearchQuery]);
 
     // ── Export ─────────────────────────────────────────────────────────────────
     const [isExportOpen, setIsExportOpen] = useState(false);
@@ -402,20 +419,52 @@ export default function TestPlans() {
                                 </div>
                             </div>
 
+                            {/* Search bar */}
+                            <div className="relative mb-4">
+                                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                                <input
+                                    type="text"
+                                    value={planSearchQuery}
+                                    onChange={(e) => setPlanSearchQuery(e.target.value)}
+                                    placeholder="搜尋計畫（標題、描述、ID、狀態）"
+                                    className="w-full pl-9 pr-8 py-2 bg-white border border-slate-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500 transition-all placeholder:text-slate-400"
+                                />
+                                {planSearchQuery && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setPlanSearchQuery('')}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded"
+                                        aria-label="清除搜尋"
+                                    >
+                                        <X className="w-3.5 h-3.5" />
+                                    </button>
+                                )}
+                            </div>
+
                             {isLoading ? (
                                 <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-primary-500" /></div>
-                            ) : plans.length === 0 ? (
-                                <div className="flex flex-col items-center justify-center py-20 text-slate-500 bg-white rounded-xl border border-dashed border-slate-200">
-                                    <ClipboardList className="w-12 h-12 text-slate-300 mb-4" />
-                                    <p className="text-lg font-medium text-slate-700 mb-1">No test plans here</p>
-                                    <p className="text-sm mb-6">Create a plan to group test runs and cases.</p>
-                                    <button onClick={() => { fetchEditData(); setEditingPlan(null); }} className="btn-primary flex items-center gap-2">
-                                        <Plus className="w-4 h-4" /> New Plan
-                                    </button>
-                                </div>
+                            ) : displayedPlans.length === 0 ? (
+                                planSearchQuery.trim() ? (
+                                    <div className="flex flex-col items-center justify-center py-20 text-slate-500 bg-white rounded-xl border border-dashed border-slate-200">
+                                        <Search className="w-12 h-12 text-slate-300 mb-4" />
+                                        <p className="text-lg font-medium text-slate-700 mb-1">找不到符合「{planSearchQuery}」的計畫</p>
+                                        <button onClick={() => setPlanSearchQuery('')} className="text-sm text-primary-600 hover:underline">
+                                            清除搜尋
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col items-center justify-center py-20 text-slate-500 bg-white rounded-xl border border-dashed border-slate-200">
+                                        <ClipboardList className="w-12 h-12 text-slate-300 mb-4" />
+                                        <p className="text-lg font-medium text-slate-700 mb-1">No test plans here</p>
+                                        <p className="text-sm mb-6">Create a plan to group test runs and cases.</p>
+                                        <button onClick={() => { fetchEditData(); setEditingPlan(null); }} className="btn-primary flex items-center gap-2">
+                                            <Plus className="w-4 h-4" /> New Plan
+                                        </button>
+                                    </div>
+                                )
                             ) : (
                                 <div className="grid grid-cols-1 gap-4">
-                                    {plans.map(plan => (
+                                    {displayedPlans.map(plan => (
                                         <DraggablePlanCard
                                             key={`plan-${plan.id}`}
                                             plan={plan}
