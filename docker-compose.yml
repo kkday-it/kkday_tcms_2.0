@@ -1,6 +1,6 @@
 # EC2 / 生產環境：使用 remote DB（get_secret key=qa_database）
 # 部署前：cp backend/.env.example backend/.env，填入 SECRET_SERVICE_URL、AUTOMATION_TOKEN
-# 本機開發：在 .env 設 USE_QA_DATABASE_SECRET=false 並提供 DATABASE_URL
+# 本機開發：在 .env 設 USE_LOCAL_DB=true 並提供 DATABASE_URL（即 .env.example 預設）
 
 services:
   backend:
@@ -12,7 +12,7 @@ services:
     env_file:
       - backend/.env
     environment:
-      - USE_QA_DATABASE_SECRET=true
+      - USE_LOCAL_DB=false
       # Google OAuth 2.0 - override in backend/.env for local; defaults work for EC2
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-268197566244-5ckrn0agou350fqajumm8oi6etpipvi5.apps.googleusercontent.com}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-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}

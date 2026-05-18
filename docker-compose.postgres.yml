@@ -27,7 +27,7 @@ services:
 
   backend:
     environment:
-      - USE_QA_DATABASE_SECRET=false
+      - USE_LOCAL_DB=true
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-tcms}:${POSTGRES_PASSWORD:-tcms_password}@db:5432/${POSTGRES_DB:-tcms}
     depends_on:
       db:

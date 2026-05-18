@@ -14,7 +14,7 @@
 | `backend/entrypoint.sh` 執行 alembic + uvicorn | 通過 |
 | `frontend/Dockerfile` 多階段建置、VITE_API_URL 可覆寫 | 通過 |
 | `frontend/nginx.conf` 正確 proxy /api/v1 至 backend | 通過 |
-| `backend/app/core/config.py` 支援 USE_QA_DATABASE_SECRET | 通過 |
+| `backend/app/core/config.py` 支援 USE_LOCAL_DB（舊 USE_QA_DATABASE_SECRET 仍 backwards-compat） | 通過 |
 | `backend/app/core/secrets.py` 與 autotest-service 相容 | 通過 |
 | `backend/alembic/env.py` 支援 remote DB 與 PostgreSQL | 通過 |
 | Volumes `tcms_data`、`tcms_uploads` 正確掛載 | 通過 |
@@ -24,7 +24,7 @@
 
 | 項目 | 修正內容 |
 |------|----------|
-| `docker-compose.postgres.yml` | 補充 `USE_QA_DATABASE_SECRET=false`，確保 PostgreSQL 模式使用 local DB |
+| `docker-compose.postgres.yml` | 補充 `USE_LOCAL_DB=true`，確保 PostgreSQL 模式使用 local DB |
 | `version: '3.8'` | 已移除（Docker Compose v2+ 不再需要，避免 obsolete 警告） |
 | `.gitignore` | 新增 `*.db`，避免 DB 檔案被 commit |
 

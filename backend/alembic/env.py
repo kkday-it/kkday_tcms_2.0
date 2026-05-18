@@ -15,11 +15,14 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# 優先從環境變數讀取 DATABASE_URL，或 USE_QA_DATABASE_SECRET=true 時從 qa_database 取得
+# 優先從環境變數讀取 DATABASE_URL，或 USE_LOCAL_DB=false 時從 qa_database 取得
+# 舊 USE_QA_DATABASE_SECRET 仍 honor，process 起來會印 DeprecationWarning
 # SQLite:     sqlite+aiosqlite:///./data/tcms_1_5.db
 # PostgreSQL: postgresql+asyncpg://user:pass@host:5432/dbname
+from app.core.config import env_use_local_db
+
 _db_url: str | None = os.environ.get("DATABASE_URL")
-if os.environ.get("USE_QA_DATABASE_SECRET", "").lower() in ("true", "1", "yes"):
+if not env_use_local_db():
     from app.core.secrets import get_secret
     from urllib.parse import quote_plus
     try:
@@ -28,7 +31,7 @@ if os.environ.get("USE_QA_DATABASE_SECRET", "").lower() in ("true", "1", "yes"):
         raise ValueError(f"get_secret failed: {e}")
 
     if not data or not isinstance(data, dict):
-        raise ValueError("get_secret failed: USE_QA_DATABASE_SECRET=true 但 qa_database 無資料")
+        raise ValueError("get_secret failed: USE_LOCAL_DB=false 但 qa_database 無資料")
 
     user = data.get("user", "")
     pw = data.get("password", "") or data.get("pass", "")

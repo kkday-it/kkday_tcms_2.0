@@ -91,8 +91,8 @@ Vite 啟動後已設定 proxy：`/api` → `http://localhost:19425`，不需要�
 
 ```bash
 cp backend/.env.example backend/.env
-# 編輯填入 SECRET_SERVICE_URL、AUTOMATION_TOKEN（EC2 用 remote DB）
-# 本機開發可改 USE_QA_DATABASE_SECRET=false 並設定 DATABASE_URL
+# .env.example 預設 USE_LOCAL_DB=true，本機 SQLite 直接可跑。
+# 要改成 EC2 / docker prod 模式：USE_LOCAL_DB=false 並填 SECRET_SERVICE_URL、AUTOMATION_TOKEN。
 ```
 
 ```bash

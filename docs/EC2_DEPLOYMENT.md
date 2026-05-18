@@ -12,7 +12,7 @@
 cd kk_tcms_1.5
 cp backend/.env.example backend/.env
 # 編輯 backend/.env，填入：
-# - USE_QA_DATABASE_SECRET=true
+# - USE_LOCAL_DB=false                        # ← 從 secret service 拿 qa_database 連線
 # - SECRET_SERVICE_URL=http://autotest-service.sit.kkday.com
 # - AUTOMATION_TOKEN=<從 QA-automation 或 autotest-service 取得>
 ```

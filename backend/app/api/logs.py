@@ -10,7 +10,17 @@ from fastapi.responses import StreamingResponse
 
 router = APIRouter()
 
-LOG_DIR = os.environ.get("TCMS_LOG_DIR", "/app/logs" if os.environ.get("USE_QA_DATABASE_SECRET") == "true" else os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../logs")))
+# LOG_DIR：container/prod path 與 local dev path 二選一。判斷依據是「是否使用 remote DB」—
+# USE_LOCAL_DB=false 代表 prod / docker 部署，log 放在 /app/logs；否則放在 project-relative。
+# USE_QA_DATABASE_SECRET 為已棄用的舊名，仍 honor 以避免突然斷掉既有部署。
+from app.core.config import env_use_local_db
+
+LOG_DIR = os.environ.get(
+    "TCMS_LOG_DIR",
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../logs"))
+    if env_use_local_db()
+    else "/app/logs",
+)
 BE_LOG = os.path.join(LOG_DIR, "backend.log")
 # Docker: Nginx writes access.log to /var/log/nginx/ (mounted via docker-compose volume)
 # Local:  Vite plugin writes to frontend.log in the local logs/ dir
