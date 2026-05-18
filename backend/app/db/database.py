@@ -34,6 +34,22 @@ AsyncSessionLocal = async_sessionmaker(
     engine, class_=AsyncSession, expire_on_commit=False
 )
 
+# Local-dev workaround: legacy alembic DDL stores `DEFAULT (now())` (a PostgreSQL
+# convention) on many tcms_* timestamp columns. SQLite has no built-in `now()`
+# function so any INSERT that relies on those defaults blows up. Register a UDF
+# on every sqlite3 connection so existing schemas still resolve. Postgres path
+# is untouched.
+if engine.dialect.name == "sqlite":
+    from sqlalchemy import event
+    from datetime import datetime, timezone
+
+    @event.listens_for(engine.sync_engine, "connect")
+    def _register_sqlite_now(dbapi_connection, _):
+        dbapi_connection.create_function(
+            "now", 0,
+            lambda: datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        )
+
 Base = declarative_base()
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
