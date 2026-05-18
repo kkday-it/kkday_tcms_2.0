@@ -761,8 +761,14 @@ export default function Repository() {
 
     // Filter cases based on search query and filters
     const filteredCases = cases.filter(tc => {
-        const matchesSearch = tc.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            (tc.external_id && tc.external_id.toLowerCase().includes(searchQuery.toLowerCase()));
+        const q = searchQuery.trim().toLowerCase();
+        // KQT-15250: also match TCMS id (rendered as `TC-{id}`) so users can
+        // search by "TC-443" / "tc-443" / "443" instead of only Jira external_id.
+        const tcLabel = `tc-${tc.id}`;
+        const matchesSearch = !q
+            || tc.title.toLowerCase().includes(q)
+            || (tc.external_id && tc.external_id.toLowerCase().includes(q))
+            || tcLabel.includes(q);
 
         if (!matchesSearch) return false;
 
