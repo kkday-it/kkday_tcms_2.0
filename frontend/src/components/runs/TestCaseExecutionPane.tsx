@@ -29,6 +29,7 @@ interface TestResultDetail {
     assignee_id?: number;
     test_case: {
         title: string;
+        external_id?: string;
         description?: string;
         preconditions?: string;
         priority: string;
@@ -261,6 +262,11 @@ export default function TestCaseExecutionPane({ resultId, onClose, onUpdated }: 
                                     <span className="px-2.5 py-1 bg-primary-50 text-primary-700 text-xs font-semibold rounded uppercase tracking-wider">
                                         TC-{detail.case_id}
                                     </span>
+                                    {detail.test_case.external_id && (
+                                        <span className="px-2.5 py-1 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-100 rounded">
+                                            {detail.test_case.external_id}
+                                        </span>
+                                    )}
                                     <span className={`px-2.5 py-1 text-xs font-semibold rounded uppercase tracking-wider ${detail.test_case.priority === 'High' ? 'bg-orange-50 text-orange-700' : 'bg-slate-100 text-slate-700'}`}>
                                         {detail.test_case.priority} priority
                                     </span>

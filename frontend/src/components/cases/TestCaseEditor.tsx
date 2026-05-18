@@ -283,7 +283,12 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
             <div className="relative w-full h-full bg-white flex flex-col overflow-hidden max-w-7xl mx-auto xl:shadow-2xl xl:my-4 xl:rounded-xl xl:h-[calc(100vh-2rem)] border border-slate-200">
                 {/* Header */}
                 <div className="flex items-center justify-between px-8 py-5 border-b border-slate-200 bg-white">
-                    <h2 className="text-xl font-bold text-slate-900">{caseId ? `編輯 TC-${caseId}` : '建立測試案例'}</h2>
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-xl font-bold text-slate-900">{caseId ? `編輯 TC-${caseId}` : '建立測試案例'}</h2>
+                        {caseId && externalId && (
+                            <span className="text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-100 px-2 py-1 rounded">{externalId}</span>
+                        )}
+                    </div>
                     <button onClick={onClose} disabled={isSaving} className="p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 rounded-md transition-colors disabled:opacity-50">
                         <X className="w-5 h-5" />
                     </button>

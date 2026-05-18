@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Play, CheckCircle2, XCircle, SkipForward, Clock, Loader2, Trash2, Copy, Search, Plus, Folder as FolderIcon, Pencil, Ban, Download, ChevronDown, CalendarDays, Link2, Check } from 'lucide-react';
+import { Play, CheckCircle2, XCircle, SkipForward, Clock, Loader2, Trash2, Copy, Search, Plus, Folder as FolderIcon, Pencil, Ban, Download, ChevronDown, CalendarDays, Link2, Check, X } from 'lucide-react';
 import { DndContext, DragEndEvent, closestCenter, useDroppable, useSensor, useSensors, PointerSensor, useDraggable } from '@dnd-kit/core';
 import api from '../lib/api';
 import CreateRunModal from '../components/runs/CreateRunModal';
@@ -167,6 +167,7 @@ export default function TestRuns() {
     // Test Runs state
     const [runs, setRuns] = useState<TestRun[]>([]);
     const [isLoadingRuns, setIsLoadingRuns] = useState(true);
+    const [runSearchQuery, setRunSearchQuery] = useState('');
 
     // Folders state
     const [folders, setFolders] = useState<TestRunFolder[]>([]);
@@ -299,12 +300,32 @@ export default function TestRuns() {
         fetchRuns();
     }, [projectId]);
 
-    /** 根據選取資料夾（含所有子孫）過濾要顯示的 runs */
+    /** 根據選取資料夾（含所有子孫）+ keyword 搜尋過濾要顯示的 runs。
+     *  當 searchQuery 非空時忽略 folder 限制做全域搜尋，方便「忘記在哪個 folder」的情境。
+     */
     const displayedRuns = useMemo(() => {
-        if (activeFolderId === null) return runs;
-        const folderIds = getDescendantFolderIds(activeFolderId, folders);
-        return runs.filter(r => r.folder_id !== null && r.folder_id !== undefined && folderIds.has(r.folder_id as number));
-    }, [runs, activeFolderId, folders, getDescendantFolderIds]);
+        const q = runSearchQuery.trim().toLowerCase();
+        let scope: TestRun[];
+        if (q) {
+            scope = runs;
+        } else if (activeFolderId === null) {
+            scope = runs;
+        } else {
+            const folderIds = getDescendantFolderIds(activeFolderId, folders);
+            scope = runs.filter(r => r.folder_id !== null && r.folder_id !== undefined && folderIds.has(r.folder_id as number));
+        }
+        if (!q) return scope;
+        return scope.filter(r =>
+            r.title.toLowerCase().includes(q) ||
+            (r.description && r.description.toLowerCase().includes(q)) ||
+            String(r.id).includes(q) ||
+            (r.run_type && r.run_type.toLowerCase().includes(q)) ||
+            (r.assignees && r.assignees.some(a =>
+                (a.full_name && a.full_name.toLowerCase().includes(q)) ||
+                a.username.toLowerCase().includes(q)
+            ))
+        );
+    }, [runs, activeFolderId, folders, getDescendantFolderIds, runSearchQuery]);
 
     /** Pre-compute run count per folder (including descendants).
      *  Single pass over runs → O(R + F*D) instead of O(F*R). */
@@ -589,9 +610,21 @@ export default function TestRuns() {
                                 <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                                 <input
                                     type="text"
-                                    placeholder="搜尋資料夾..."
-                                    className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500 transition-all placeholder:text-slate-400"
+                                    value={runSearchQuery}
+                                    onChange={(e) => setRunSearchQuery(e.target.value)}
+                                    placeholder="搜尋 Run（標題、描述、ID、負責人）"
+                                    className="w-full pl-9 pr-8 py-1.5 bg-white border border-slate-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500 transition-all placeholder:text-slate-400"
                                 />
+                                {runSearchQuery && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setRunSearchQuery('')}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded"
+                                        aria-label="清除搜尋"
+                                    >
+                                        <X className="w-3.5 h-3.5" />
+                                    </button>
+                                )}
                             </div>
                         </div>
 
@@ -662,17 +695,30 @@ export default function TestRuns() {
                             />
 
                             {displayedRuns.length === 0 && !isLoading ? (
-                                <div className="flex flex-col items-center justify-center p-12 bg-white rounded-xl border border-slate-200 border-dashed text-slate-500">
-                                    <Play className="w-12 h-12 text-slate-300 mb-4" />
-                                    <p className="mb-2 text-lg font-medium text-slate-900">尚無測試執行</p>
-                                    <p className="mb-6 text-sm">開始新的測試執行以追蹤案例結果。</p>
-                                    <button
-                                        onClick={() => { setDuplicateData(null); setIsCreatingRun(true); }}
-                                        className="btn-primary flex items-center gap-2"
-                                    >
-                                        <Play className="w-4 h-4" fill="currentColor" /> 開始新執行
-                                    </button>
-                                </div>
+                                runSearchQuery.trim() ? (
+                                    <div className="flex flex-col items-center justify-center p-12 bg-white rounded-xl border border-slate-200 border-dashed text-slate-500">
+                                        <Search className="w-12 h-12 text-slate-300 mb-4" />
+                                        <p className="mb-2 text-lg font-medium text-slate-900">找不到符合「{runSearchQuery}」的執行</p>
+                                        <button
+                                            onClick={() => setRunSearchQuery('')}
+                                            className="text-sm text-primary-600 hover:underline"
+                                        >
+                                            清除搜尋
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col items-center justify-center p-12 bg-white rounded-xl border border-slate-200 border-dashed text-slate-500">
+                                        <Play className="w-12 h-12 text-slate-300 mb-4" />
+                                        <p className="mb-2 text-lg font-medium text-slate-900">尚無測試執行</p>
+                                        <p className="mb-6 text-sm">開始新的測試執行以追蹤案例結果。</p>
+                                        <button
+                                            onClick={() => { setDuplicateData(null); setIsCreatingRun(true); }}
+                                            className="btn-primary flex items-center gap-2"
+                                        >
+                                            <Play className="w-4 h-4" fill="currentColor" /> 開始新執行
+                                        </button>
+                                    </div>
+                                )
                             ) : isLoading ? (
                                 <div className="flex items-center justify-center py-12">
                                     <Loader2 className="w-8 h-8 animate-spin text-primary-500" />

@@ -141,6 +141,8 @@ interface TestCase {
     default_owner_id?: number;
     type?: string;
     layer?: string;
+    description?: string;
+    preconditions?: string;
 }
 
 // ─── XMind Import Modal ──────────────────────────────────────────────────────
@@ -759,35 +761,50 @@ export default function Repository() {
         setFilterLayer('');
     };
 
-    // Filter cases based on search query and filters
-    const filteredCases = cases.filter(tc => {
-        const matchesSearch = tc.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            (tc.external_id && tc.external_id.toLowerCase().includes(searchQuery.toLowerCase()));
+    // Filter cases based on search query and filters.
+    // Memoized so the expanded keyword search (title + external_id + TC-{id} +
+    // description + preconditions + labels + tags) doesn't re-scan every case
+    // on every unrelated re-render.
+    const filteredCases = useMemo(() => {
+        const q = searchQuery.trim().toLowerCase();
+        return cases.filter(tc => {
+            // KQT-15250: also match TCMS id (rendered as `TC-{id}`) so users can
+            // search by "TC-443" / "tc-443" / "443" instead of only Jira external_id.
+            const tcLabel = `tc-${tc.id}`;
+            const matchesSearch = !q
+                || tc.title.toLowerCase().includes(q)
+                || (tc.external_id && tc.external_id.toLowerCase().includes(q))
+                || tcLabel.includes(q)
+                || (tc.description && tc.description.toLowerCase().includes(q))
+                || (tc.preconditions && tc.preconditions.toLowerCase().includes(q))
+                || (tc.labels && tc.labels.toLowerCase().includes(q))
+                || (tc.tags && tc.tags.toLowerCase().includes(q));
 
-        if (!matchesSearch) return false;
+            if (!matchesSearch) return false;
 
-        if (filterStatus && tc.status !== filterStatus) return false;
-        if (filterPriority && tc.priority !== filterPriority) return false;
-        if (filterAutomation && tc.automation_status !== filterAutomation) return false;
-        if (filterAssignee) {
-            if (filterAssignee === 'unassigned' && tc.default_owner_id != null) return false;
-            if (filterAssignee !== 'unassigned' && String(tc.default_owner_id) !== filterAssignee) return false;
-        }
-        if (filterTags) {
-            const tcTags = tc.tags ? tc.tags.toLowerCase() : '';
-            const searchTags = filterTags.toLowerCase().split(',').map(t => t.trim()).filter(Boolean);
-            if (searchTags.length > 0 && !searchTags.some(st => tcTags.includes(st))) return false;
-        }
-        if (filterLabels) {
-            const tcLabels = tc.labels ? tc.labels.toLowerCase() : '';
-            const searchLabels = filterLabels.toLowerCase().split(',').map(l => l.trim()).filter(Boolean);
-            if (searchLabels.length > 0 && !searchLabels.some(sl => tcLabels.includes(sl))) return false;
-        }
-        if (filterType && tc.type !== filterType) return false;
-        if (filterLayer && tc.layer !== filterLayer) return false;
+            if (filterStatus && tc.status !== filterStatus) return false;
+            if (filterPriority && tc.priority !== filterPriority) return false;
+            if (filterAutomation && tc.automation_status !== filterAutomation) return false;
+            if (filterAssignee) {
+                if (filterAssignee === 'unassigned' && tc.default_owner_id != null) return false;
+                if (filterAssignee !== 'unassigned' && String(tc.default_owner_id) !== filterAssignee) return false;
+            }
+            if (filterTags) {
+                const tcTags = tc.tags ? tc.tags.toLowerCase() : '';
+                const searchTags = filterTags.toLowerCase().split(',').map(t => t.trim()).filter(Boolean);
+                if (searchTags.length > 0 && !searchTags.some(st => tcTags.includes(st))) return false;
+            }
+            if (filterLabels) {
+                const tcLabels = tc.labels ? tc.labels.toLowerCase() : '';
+                const searchLabels = filterLabels.toLowerCase().split(',').map(l => l.trim()).filter(Boolean);
+                if (searchLabels.length > 0 && !searchLabels.some(sl => tcLabels.includes(sl))) return false;
+            }
+            if (filterType && tc.type !== filterType) return false;
+            if (filterLayer && tc.layer !== filterLayer) return false;
 
-        return true;
-    });
+            return true;
+        });
+    }, [cases, searchQuery, filterStatus, filterPriority, filterAutomation, filterAssignee, filterTags, filterLabels, filterType, filterLayer]);
 
     const sensors = useSensors(
         useSensor(PointerSensor, {
@@ -1186,7 +1203,7 @@ export default function Repository() {
                                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                                     <input
                                         type="text"
-                                        placeholder="Search test cases or Zephyr IDs..."
+                                        placeholder="搜尋案例（標題、TC-id、Jira id、描述、前置條件、labels、tags）"
                                         className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
                                         value={searchQuery}
                                         onChange={(e) => setSearchQuery(e.target.value)}

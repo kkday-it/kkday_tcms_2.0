@@ -105,7 +105,7 @@ export default function TestRunDetails() {
 
     // ── FILTERED RESULTS ─────────────────────────────────────────────────────
     const filteredResults = useMemo(() => {
-        return results.filter(r => {
+        const filtered = results.filter(r => {
             if (filterSearch) {
                 const q = filterSearch.toLowerCase();
                 const titleMatch = r.test_case?.title?.toLowerCase().includes(q);
@@ -132,6 +132,8 @@ export default function TestRunDetails() {
             }
             return true;
         });
+        // KQT-15251: sort by case_id ascending so TC-5514 appears above TC-5594.
+        return [...filtered].sort((a, b) => a.case_id - b.case_id);
     }, [results, filterSearch, filterAssignToMe, filterUnassigned, filterStatus, filterLabel, filterTag, currentUserId]);
 
     const activeFilterCount = [
