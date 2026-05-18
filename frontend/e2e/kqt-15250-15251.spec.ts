@@ -29,6 +29,12 @@ test('KQT-15250: 案例庫輸入 "TC-{id}" 可命中對應 case', async ({ page 
     await page.goto('/repository');
     await page.waitForLoadState('networkidle');
 
+    // Repository hides the search input until a suite is active. Click the
+    // first suite in the sidebar to load that suite's cases.
+    const suiteBtn = page.locator('aside button, [role="button"]').filter({ hasText: /Suite/i }).first();
+    await expect(suiteBtn).toBeVisible({ timeout: 5000 });
+    await suiteBtn.click();
+
     const searchInput = page.locator('input[placeholder*="搜尋案例"]').first();
     await expect(searchInput).toBeVisible();
     await searchInput.fill(`TC-${targetId}`);
@@ -59,6 +65,12 @@ test('KQT-15250 extended: 用 labels 內容能搜到 case', async ({ page }) => 
 
     await page.goto('/repository');
     await page.waitForLoadState('networkidle');
+
+    // Repository hides the search input until a suite is active. Click the
+    // first suite in the sidebar to load that suite's cases.
+    const suiteBtn = page.locator('aside button, [role="button"]').filter({ hasText: /Suite/i }).first();
+    await expect(suiteBtn).toBeVisible({ timeout: 5000 });
+    await suiteBtn.click();
 
     const searchInput = page.locator('input[placeholder*="搜尋案例"]').first();
     await expect(searchInput).toBeVisible();
@@ -150,6 +162,11 @@ test('external_id badge: 編輯 case 時 modal header 顯示 external_id', async
     await page.goto('/repository');
     await page.waitForLoadState('networkidle');
 
+    // Activate a suite first so the case list & search input render.
+    const suiteBtn = page.locator('aside button, [role="button"]').filter({ hasText: /Suite/i }).first();
+    await expect(suiteBtn).toBeVisible({ timeout: 5000 });
+    await suiteBtn.click();
+
     // Use the search input we just verified to scope to the target case.
     const searchInput = page.locator('input[placeholder*="搜尋案例"]').first();
     await expect(searchInput).toBeVisible();
@@ -158,6 +175,12 @@ test('external_id badge: 編輯 case 時 modal header 顯示 external_id', async
     const row = page.locator('tbody tr, [class*="cursor-pointer"]').filter({ hasText: `TC-${target!.id}` }).first();
     await expect(row).toBeVisible();
     await row.click();
+
+    // Clicking the row opens the preview pane; we need the 編輯 button to
+    // launch the editor modal whose header is under test.
+    const editBtn = page.locator('button:has-text("編輯")').first();
+    await expect(editBtn).toBeVisible({ timeout: 5000 });
+    await editBtn.click();
 
     // Editor opens — header now shows "編輯 TC-{id}" plus the external_id badge.
     const heading = page.locator(`h2:has-text("編輯 TC-${target!.id}")`);
