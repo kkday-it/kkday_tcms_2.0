@@ -85,11 +85,12 @@ def get_schedule() -> dict:
 
 async def run_backup_job():
     """定期備份任務主體，由 APScheduler 呼叫"""
-    from app.db.database import DATABASE_URL
+    from app.db.database import _resolve_database_url
     from app.api.backup import (
         _export_suites, _export_cases_full, _export_cases_ai,
         _export_runs, _export_plans, _export_dashboard,
     )
+    DATABASE_URL = _resolve_database_url()
 
     cfg = load_schedule()
     project_id = cfg.get("project_id", 1)
