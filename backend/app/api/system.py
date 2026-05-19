@@ -4,7 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import bindparam, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.database import get_db
+from app.core.config import use_local_db
+from app.db.database import engine, get_db
 from app.db.health import check_schema_health
 
 router = APIRouter()
@@ -15,13 +16,22 @@ logger = logging.getLogger(__name__)
 async def get_system_status():
     is_healthy, missing_tables, missing_columns = await check_schema_health()
 
+    # `render_as_string(hide_password=True)` masks passwords in postgres URLs.
+    # For sqlite there's no password — output is the raw path.
+    url_redacted = engine.url.render_as_string(hide_password=True)
+
     return {
         "database": {
             "healthy": is_healthy,
             "missing_tables": missing_tables,
             "missing_columns": missing_columns,
             "message": "Schema is up to date" if is_healthy else "Database schema is outdated. Manual synchronization required."
-        }
+        },
+        "db_mode": {
+            "mode": "local" if use_local_db() else "remote",
+            "dialect": engine.dialect.name,
+            "url_redacted": url_redacted,
+        },
     }
 
 

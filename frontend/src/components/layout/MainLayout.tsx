@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { Presentation, Layers, Activity, Settings as SettingsIcon, User, ClipboardList, LogOut, ChevronLeft, ChevronRight } from 'lucide-react';
 import DatabaseHealthAlert from './DatabaseHealthAlert';
+import LocalDbBadge from './LocalDbBadge';
 
 export default function MainLayout() {
     const location = useLocation();
@@ -121,6 +122,7 @@ export default function MainLayout() {
 
             {/* Main Content Area */}
             <main className="flex-1 flex flex-col overflow-hidden bg-white">
+                <LocalDbBadge />
                 <DatabaseHealthAlert />
                 <Outlet />
             </main>
