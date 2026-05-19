@@ -275,7 +275,7 @@ async def create_backup(
             zf.write(os.path.join(uploads_dir, fname), arcname=f"uploads/{fname}")
     buf.seek(0)
 
-    filename = f"tcms_backup_manual_project{project_id}_{timestamp}.zip"
+    filename = f"tcms_backup_project{project_id}_{timestamp}.zip"
     return StreamingResponse(
         iter([buf.read()]),
         media_type="application/zip",

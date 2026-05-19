@@ -417,7 +417,7 @@ function SystemTab() {
                                 : <><Upload className="w-4 h-4" /> Select Backup File</>
                             }
                         </button>
-                        <p className="text-xs text-slate-400">接受 .zip 備份檔(manual / auto 皆可)</p>
+                        <p className="text-xs text-slate-400">接受 .zip 備份檔</p>
                     </div>
 
                     {/* Restore Result */}
