@@ -287,7 +287,10 @@ function SystemTab() {
             a.href = url;
             const disposition = (response.headers as Record<string, string>)['content-disposition'] || '';
             const match = disposition.match(/filename\*?=(?:UTF-8'')?(?:"([^"]+)"|([^;]+))/i);
-            a.download = (match?.[1] || match?.[2] || '').trim() || 'tcms_backup.zip';
+            const raw = (match?.[1] || match?.[2] || '').trim();
+            let parsed = raw;
+            try { parsed = decodeURIComponent(raw); } catch { /* fall back to raw if percent-decode fails */ }
+            a.download = parsed || 'tcms_backup.zip';
             a.click();
             URL.revokeObjectURL(url);
             const timeStr = new Date().toLocaleString();

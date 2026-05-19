@@ -34,13 +34,11 @@ _ALL_SCHEDULED_PREFIXES = (SCHEDULED_BACKUP_PREFIX, "auto_backup_")
 
 
 def is_scheduled_backup_filename(name: str) -> bool:
-    return any(name.startswith(p) for p in _ALL_SCHEDULED_PREFIXES)
+    return name.endswith(".zip") and any(name.startswith(p) for p in _ALL_SCHEDULED_PREFIXES)
 
 
 def _scheduled_backup_files() -> list[Path]:
-    files: list[Path] = []
-    for prefix in _ALL_SCHEDULED_PREFIXES:
-        files.extend(BACKUP_DIR.glob(f"{prefix}*.zip"))
+    files = [f for f in BACKUP_DIR.glob("*.zip") if is_scheduled_backup_filename(f.name)]
     return sorted(files, key=lambda f: f.stat().st_mtime, reverse=True)
 
 # ── 預設設定 ───────────────────────────────────────────────────────────────────
