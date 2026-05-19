@@ -275,7 +275,7 @@ async def create_backup(
             zf.write(os.path.join(uploads_dir, fname), arcname=f"uploads/{fname}")
     buf.seek(0)
 
-    filename = f"tcms_backup_project{project_id}_{timestamp}.zip"
+    filename = f"tcms_backup_manual_project{project_id}_{timestamp}.zip"
     return StreamingResponse(
         iter([buf.read()]),
         media_type="application/zip",
@@ -326,10 +326,10 @@ async def run_backup_now():
 @router.get("/schedule/files/{filename}")
 async def download_scheduled_backup(filename: str):
     """下載指定的排程備份檔案"""
-    from app.services.backup_scheduler import BACKUP_DIR
+    from app.services.backup_scheduler import BACKUP_DIR, is_scheduled_backup_filename
     from fastapi.responses import FileResponse
     filepath = BACKUP_DIR / filename
-    if not filepath.exists() or not filename.startswith("auto_backup_"):
+    if not filepath.exists() or not is_scheduled_backup_filename(filename):
         raise HTTPException(status_code=404, detail="備份檔案不存在")
     return FileResponse(
         path=str(filepath),

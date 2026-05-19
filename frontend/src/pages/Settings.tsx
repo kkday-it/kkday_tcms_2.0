@@ -285,12 +285,12 @@ function SystemTab() {
             const url = URL.createObjectURL(response.data);
             const a = document.createElement('a');
             a.href = url;
-            const now = new Date();
-            const ts = now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
-            a.download = `tcms_backup_${ts}.zip`;
+            const disposition = (response.headers as Record<string, string>)['content-disposition'] || '';
+            const match = disposition.match(/filename\*?=(?:UTF-8'')?(?:"([^"]+)"|([^;]+))/i);
+            a.download = (match?.[1] || match?.[2] || '').trim() || 'tcms_backup.zip';
             a.click();
             URL.revokeObjectURL(url);
-            const timeStr = now.toLocaleString();
+            const timeStr = new Date().toLocaleString();
             setLastBackup(timeStr);
             localStorage.setItem('tcms_last_backup', timeStr);
         } catch (err) {
@@ -414,7 +414,7 @@ function SystemTab() {
                                 : <><Upload className="w-4 h-4" /> Select Backup File</>
                             }
                         </button>
-                        <p className="text-xs text-slate-400">僅接受 tcms_backup_*.zip 格式</p>
+                        <p className="text-xs text-slate-400">接受 .zip 備份檔(manual / auto 皆可)</p>
                     </div>
 
                     {/* Restore Result */}

@@ -28,6 +28,21 @@ SCHEDULE_FILE = DATA_DIR / "backup_schedule.json"
 DATA_DIR.mkdir(exist_ok=True)
 BACKUP_DIR.mkdir(exist_ok=True)
 
+# 排程備份檔名前綴。`auto_backup_` 是統一命名前留下的舊檔名,讀取/清理時仍接受;寫入一律新前綴。
+SCHEDULED_BACKUP_PREFIX = "tcms_backup_auto_"
+_ALL_SCHEDULED_PREFIXES = (SCHEDULED_BACKUP_PREFIX, "auto_backup_")
+
+
+def is_scheduled_backup_filename(name: str) -> bool:
+    return any(name.startswith(p) for p in _ALL_SCHEDULED_PREFIXES)
+
+
+def _scheduled_backup_files() -> list[Path]:
+    files: list[Path] = []
+    for prefix in _ALL_SCHEDULED_PREFIXES:
+        files.extend(BACKUP_DIR.glob(f"{prefix}*.zip"))
+    return sorted(files, key=lambda f: f.stat().st_mtime, reverse=True)
+
 # ── 預設設定 ───────────────────────────────────────────────────────────────────
 DEFAULT_SCHEDULE = {
     "enabled": False,
@@ -116,7 +131,7 @@ async def run_backup_job():
 
         # 打包 ZIP
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        filename = f"auto_backup_project{project_id}_{timestamp}.zip"
+        filename = f"{SCHEDULED_BACKUP_PREFIX}project{project_id}_{timestamp}.zip"
         filepath = BACKUP_DIR / filename
 
         buf = io.BytesIO()
@@ -163,9 +178,8 @@ async def run_backup_job():
 
 
 def _cleanup_old_backups(keep_last_n: int):
-    """保留最近 N 份 auto_backup_*.zip，刪除舊的"""
-    files = sorted(BACKUP_DIR.glob("auto_backup_*.zip"), key=lambda f: f.stat().st_mtime, reverse=True)
-    for old in files[keep_last_n:]:
+    """保留最近 N 份排程備份，刪除舊的（含舊 auto_backup_* 命名）"""
+    for old in _scheduled_backup_files()[keep_last_n:]:
         try:
             old.unlink()
             logger.info(f"[Scheduler] 刪除舊備份：{old.name}")
@@ -242,12 +256,11 @@ def update_schedule(new_config: dict) -> dict:
 
 def list_backup_files() -> list:
     """回傳 backups/ 資料夾內的備份檔案清單"""
-    files = sorted(BACKUP_DIR.glob("auto_backup_*.zip"), key=lambda f: f.stat().st_mtime, reverse=True)
     return [
         {
             "filename": f.name,
             "size_kb": round(f.stat().st_size / 1024, 1),
             "created_at": datetime.fromtimestamp(f.stat().st_mtime, tz=timezone.utc).isoformat(),
         }
-        for f in files
+        for f in _scheduled_backup_files()
     ]
