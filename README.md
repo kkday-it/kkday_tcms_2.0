@@ -95,6 +95,18 @@ cp backend/.env.example backend/.env
 # 要改成 EC2 / docker prod 模式：USE_LOCAL_DB=false 並填 SECRET_SERVICE_URL、AUTOMATION_TOKEN。
 ```
 
+> **DB 連線開關優先順序** (`USE_LOCAL_DB` vs 已棄用的 `USE_QA_DATABASE_SECRET`)：
+>
+> | `USE_LOCAL_DB` | 已棄用的 `USE_QA_DATABASE_SECRET` | 實際模式 |
+> |---|---|---|
+> | unset / `true` | unset | **local**(用 `DATABASE_URL`) |
+> | `false` | unset | **remote**(走 `get_secret`) |
+> | (任意值) | `true` | **remote**(舊名優先,印 `DeprecationWarning`) |
+> | (任意值) | `false` | **local**(舊名優先,印 `DeprecationWarning`) |
+>
+> 兩者並存時舊名優先,reflect 既有部署現況;新環境請改用 `USE_LOCAL_DB`。
+> backend 啟動 log 會印一次最終解析結果(`[Config] DB mode=...`)以利除錯。
+
 ```bash
 docker compose up -d
 ```

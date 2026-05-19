@@ -45,49 +45,55 @@ class Settings(BaseSettings):
 settings = Settings()
 
 
-def use_local_db() -> bool:
-    """
-    決定本次 process 要用本機 DATABASE_URL 還是去 secret service 拿 qa_database。
+_TRUTHY = ("true", "1", "yes")
+_FALSY = ("false", "0", "no")
 
-    USE_LOCAL_DB 為主來源；USE_QA_DATABASE_SECRET 為已棄用的舊名，仍 honor 但
-    印 DeprecationWarning。兩者皆指定時舊名優先（reflect 既有部署現況），方便
-    逐步 migration。
+
+def _parse_db_flag(legacy: Optional[bool], current: Optional[bool]) -> bool:
+    """
+    Pure function. 把「舊 flag USE_QA_DATABASE_SECRET」與「新 flag USE_LOCAL_DB」
+    兩個值收斂為單一的「是否使用本機 DATABASE_URL」布林。
+
+    規則：
+      1. 若舊名有值（非 None）→ 印 DeprecationWarning，回傳 `not legacy`
+         （兩者並存時舊名優先，reflect 既有部署現況，方便逐步 migration）。
+      2. 否則回傳新名值；新名也沒值就預設 True（本機友善）。
 
     返回 True → 用 settings.DATABASE_URL（local / 自帶 host）。
     返回 False → 透過 get_secret("qa_database") 組 postgres 連線。
     """
-    if settings.USE_QA_DATABASE_SECRET is not None:
+    if legacy is not None:
         warnings.warn(
             "USE_QA_DATABASE_SECRET is deprecated; rename to USE_LOCAL_DB "
             "(USE_LOCAL_DB = not USE_QA_DATABASE_SECRET).",
             DeprecationWarning,
-            stacklevel=2,
+            stacklevel=3,
         )
-        return not settings.USE_QA_DATABASE_SECRET
-    return settings.USE_LOCAL_DB
+        return not legacy
+    return True if current is None else current
+
+
+def _parse_env_bool(name: str) -> Optional[bool]:
+    """讀環境變數並 normalise 為 Optional[bool]；無法判讀 / 未設定皆回 None。"""
+    raw = os.environ.get(name, "").lower()
+    if raw in _TRUTHY:
+        return True
+    if raw in _FALSY:
+        return False
+    return None
+
+
+def use_local_db() -> bool:
+    """
+    給 runtime / 一般 caller 用：透過 pydantic Settings 取值並交由 _parse_db_flag 收斂。
+    語意對等 env_use_local_db。
+    """
+    return _parse_db_flag(settings.USE_QA_DATABASE_SECRET, settings.USE_LOCAL_DB)
 
 
 def env_use_local_db() -> bool:
     """
-    僅讀 os.environ 而不依賴 pydantic Settings 的版本 — 給 alembic env.py 與
-    log dir 解析這類在 settings 載入之前/之外的 caller 使用。語意同 use_local_db()。
+    給 alembic env.py、log dir 等不依賴 pydantic Settings 的 caller 用：純讀
+    os.environ。語意對等 use_local_db。
     """
-    legacy = os.environ.get("USE_QA_DATABASE_SECRET", "").lower()
-    if legacy in ("true", "1", "yes"):
-        warnings.warn(
-            "USE_QA_DATABASE_SECRET=true is deprecated; set USE_LOCAL_DB=false instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return False
-    if legacy in ("false", "0", "no"):
-        warnings.warn(
-            "USE_QA_DATABASE_SECRET=false is deprecated; set USE_LOCAL_DB=true instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return True
-    current = os.environ.get("USE_LOCAL_DB", "").lower()
-    if current in ("false", "0", "no"):
-        return False
-    return True  # default → local
+    return _parse_db_flag(_parse_env_bool("USE_QA_DATABASE_SECRET"), _parse_env_bool("USE_LOCAL_DB"))

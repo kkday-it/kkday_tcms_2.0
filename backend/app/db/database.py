@@ -1,10 +1,29 @@
-from urllib.parse import quote_plus
+import logging
+from urllib.parse import quote_plus, urlsplit, urlunsplit
 from typing import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import declarative_base
 
 from app.core.config import settings, use_local_db
+
+logger = logging.getLogger(__name__)
+
+
+def _redact_db_url(url: str) -> str:
+    """Strip password before logging — keep dialect/host/dbname only."""
+    try:
+        parts = urlsplit(url)
+        if parts.password:
+            netloc = parts.hostname or ""
+            if parts.username:
+                netloc = f"{parts.username}:***@{netloc}"
+            if parts.port:
+                netloc = f"{netloc}:{parts.port}"
+            return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
+        return url
+    except Exception:
+        return "<unparseable>"
 
 
 def _resolve_database_url() -> str:
@@ -30,7 +49,14 @@ def _resolve_database_url() -> str:
     return f"postgresql+asyncpg://{user}:{quote_plus(str(pw))}@{host}:{port}/{db}"
 
 
-engine = create_async_engine(_resolve_database_url(), echo=True)
+_db_url = _resolve_database_url()
+logger.info(
+    "[Config] DB mode=%s URL=%s",
+    "local (DATABASE_URL)" if use_local_db() else "remote (get_secret qa_database)",
+    _redact_db_url(_db_url),
+)
+
+engine = create_async_engine(_db_url, echo=True)
 AsyncSessionLocal = async_sessionmaker(
     engine, class_=AsyncSession, expire_on_commit=False
 )
