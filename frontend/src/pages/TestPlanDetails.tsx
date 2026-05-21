@@ -387,9 +387,9 @@ export default function TestPlanDetails() {
                     Promise.all(unfixIds.map(id => api.get(`/plans/jira/filter/${id}/issues`).catch(() => null))),
                     Promise.all(totalIds.map(id => api.get(`/plans/jira/filter/${id}/issues`).catch(() => null))),
                 ]);
-                const buildBlocks = (ids: number[], results: any[]) =>
+                const buildBlocks = (ids: number[], results: any[]): JiraFilterBlock[] =>
                     results
-                        .map((res, idx) => res ? {
+                        .map((res, idx): JiraFilterBlock | null => res ? {
                             filter_id: ids[idx],
                             filter_name: res.data.filter_name || String(ids[idx]),
                             issues: res.data.issues ?? [],
@@ -866,7 +866,7 @@ export default function TestPlanDetails() {
                                                                 <tr>
                                                                     <td colSpan={5} className="px-5 py-8 text-center text-sm text-slate-400">此 filter 目前無匹配 issue</td>
                                                                 </tr>
-                                                            ) : pageItems.map((issue, i) => (
+                                                            ) : pageItems.map((issue) => (
                                                                 <tr key={issue.key} className="border-b border-slate-100 hover:bg-slate-50">
                                                                     <td className="px-5 py-4"><a href={issue.url} target="_blank" rel="noreferrer" className="text-base text-primary-600 hover:underline font-mono">{issue.key}</a></td>
                                                                     <td className="px-5 py-4 text-base text-slate-800 truncate max-w-[180px]" title={issue.summary}>{issue.summary ?? '—'}</td>
@@ -931,7 +931,7 @@ export default function TestPlanDetails() {
                                                                 <tr>
                                                                     <td colSpan={5} className="px-5 py-8 text-center text-sm text-slate-400">此 filter 目前無匹配 issue</td>
                                                                 </tr>
-                                                            ) : pageItems.map((issue, i) => (
+                                                            ) : pageItems.map((issue) => (
                                                                 <tr key={issue.key} className="border-b border-slate-100 hover:bg-slate-50">
                                                                     <td className="px-5 py-4"><a href={issue.url} target="_blank" rel="noreferrer" className="text-base text-primary-600 hover:underline font-mono">{issue.key}</a></td>
                                                                     <td className="px-5 py-4 text-base text-slate-800 truncate max-w-[180px]" title={issue.summary}>{issue.summary ?? '—'}</td>
