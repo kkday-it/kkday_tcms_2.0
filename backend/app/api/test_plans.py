@@ -334,6 +334,7 @@ async def get_plan_runs(plan_id: int, db: AsyncSession = Depends(get_db)):
             "status": run_obj.status,
             "passed": passed,
             "failed": failed,
+            "blocked": blocked,
             "untested": total - passed - failed - blocked,
         })
     return result

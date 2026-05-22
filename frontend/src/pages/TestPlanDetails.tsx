@@ -227,6 +227,7 @@ interface RunResult {
     status: string;
     passed: number;
     failed: number;
+    blocked: number;
     untested: number;
 }
 
@@ -751,8 +752,8 @@ export default function TestPlanDetails() {
                                         {sortedRuns.length === 0 ? (
                                             <tr><td colSpan={3} className="px-6 py-10 text-center text-sm text-slate-400">尚無連結的測試執行。</td></tr>
                                         ) : sortedRuns.map(run => {
-                                            const total = run.passed + run.failed + run.untested;
-                                            const pct = total > 0 ? Math.round((run.passed / total) * 100) : 0;
+                                            const total = run.passed + run.failed + run.blocked + run.untested;
+                                            const pct = total > 0 ? Math.round(((run.passed + run.failed + run.blocked) / total) * 100) : 0;
                                             return (
                                                 <tr key={run.id} className="hover:bg-slate-50 transition-colors">
                                                     <td className="px-6 py-4">
