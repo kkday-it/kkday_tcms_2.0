@@ -614,7 +614,16 @@ export default function TestRunDetails() {
                                         <td className="py-3.5 px-6 font-medium text-slate-900">
                                             <div className="flex flex-col gap-0.5">
                                                 <span className="text-xs font-mono text-slate-400">
-                                                    TC-{res.case_id}
+                                                    {/* KQT-15330: TC-{id} deep-links to the case in Repository so testers can review the spec without leaving the run. */}
+                                                    <Link
+                                                        to={`/repository?case=${res.case_id}`}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        onClick={e => e.stopPropagation()}
+                                                        className="text-primary-600 hover:underline"
+                                                    >
+                                                        TC-{res.case_id}
+                                                    </Link>
                                                     {res.test_case?.external_id && (
                                                         <span className="ml-1 px-1.5 py-0.5 bg-primary-50 text-primary-600 rounded whitespace-nowrap">
                                                             {res.test_case.external_id}

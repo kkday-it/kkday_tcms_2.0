@@ -382,6 +382,16 @@ export default function Repository() {
     const [previewingCaseId, setPreviewingCaseId] = useState<number | null>(null);
     const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
 
+    // KQT-15330: ?case=<id> opens the preview directly — used by TC-{id} links from test runs.
+    useEffect(() => {
+        const raw = searchParams.get('case');
+        if (!raw) return;
+        const id = Number(raw);
+        if (!Number.isFinite(id) || id <= 0) return;
+        setPreviewingCaseId(id);
+        setIsPreviewOpen(true);
+    }, [searchParams]);
+
     // Users for batch owner (cached via useUsers)
     const { users } = useUsers();
     const [selectedCases, setSelectedCases] = useState<Set<number>>(new Set());
@@ -969,7 +979,14 @@ export default function Repository() {
 
             <TestCasePreviewPane
                 isOpen={isPreviewOpen}
-                onClose={() => setIsPreviewOpen(false)}
+                onClose={() => {
+                    setIsPreviewOpen(false);
+                    if (searchParams.has('case')) {
+                        const next = new URLSearchParams(searchParams);
+                        next.delete('case');
+                        setSearchParams(next, { replace: true });
+                    }
+                }}
                 caseId={previewingCaseId}
                 onEditClick={handleEditFromPreview}
                 refreshKey={previewRefreshKey}
