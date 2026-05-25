@@ -383,14 +383,15 @@ export default function Repository() {
     const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
 
     // KQT-15330: ?case=<id> opens the preview directly — used by TC-{id} links from test runs.
+    // Depend on the parsed string value (not searchParams identity) so unrelated query updates don't re-trigger.
+    const caseParam = searchParams.get('case');
     useEffect(() => {
-        const raw = searchParams.get('case');
-        if (!raw) return;
-        const id = Number(raw);
+        if (!caseParam) return;
+        const id = Number(caseParam);
         if (!Number.isFinite(id) || id <= 0) return;
         setPreviewingCaseId(id);
         setIsPreviewOpen(true);
-    }, [searchParams]);
+    }, [caseParam]);
 
     // Users for batch owner (cached via useUsers)
     const { users } = useUsers();

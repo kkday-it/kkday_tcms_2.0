@@ -614,7 +614,7 @@ export default function TestRunDetails() {
                                         <td className="py-3.5 px-6 font-medium text-slate-900">
                                             <div className="flex flex-col gap-0.5">
                                                 <span className="text-xs font-mono text-slate-400">
-                                                    {/* KQT-15330: TC-{id} deep-links to the case in Repository so testers can review the spec without leaving the run. */}
+                                                    {/* KQT-15330: TC-{id} and external_id (e.g. KQT-xxxx) both deep-link to the case in Repository. */}
                                                     <Link
                                                         to={`/repository?case=${res.case_id}`}
                                                         target="_blank"
@@ -625,9 +625,15 @@ export default function TestRunDetails() {
                                                         TC-{res.case_id}
                                                     </Link>
                                                     {res.test_case?.external_id && (
-                                                        <span className="ml-1 px-1.5 py-0.5 bg-primary-50 text-primary-600 rounded whitespace-nowrap">
+                                                        <Link
+                                                            to={`/repository?case=${res.case_id}`}
+                                                            target="_blank"
+                                                            rel="noreferrer"
+                                                            onClick={e => e.stopPropagation()}
+                                                            className="ml-1 px-1.5 py-0.5 bg-primary-50 text-primary-600 rounded whitespace-nowrap hover:bg-primary-100"
+                                                        >
                                                             {res.test_case.external_id}
-                                                        </span>
+                                                        </Link>
                                                     )}
                                                 </span>
                                                 <span>{res.test_case?.title || 'Unknown Case'}</span>
