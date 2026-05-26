@@ -3,14 +3,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from typing import List
 
+from app.api.deps import issue_web_session_token
+from app.core.security import hash_password, is_legacy_sha256, verify_password
 from app.db.database import get_db
 from app.models.user import User
 from app.schemas.user import UserCreate, UserUpdate, UserResponse
 from app.schemas.auth import UserLogin, UserPasswordReset, UserChangePassword
-import hashlib
 
-def hash_password(password: str) -> str:
-    return hashlib.sha256(password.encode()).hexdigest()
 
 router = APIRouter()
 
@@ -24,11 +23,15 @@ async def create_user(user: UserCreate, db: AsyncSession = Depends(get_db)):
     user_data = user.model_dump(exclude={"password"})
     db_user = User(**user_data)
     
+    # Frontend pre-hashes with SHA-256; we wrap that with bcrypt for storage.
+    # For the default-password branch we hash the same constant the frontend would have
+    # produced for "1234", so verify_password works either way.
+    SHA256_OF_1234 = "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4"
     if user.password:
         db_user.hashed_password = hash_password(user.password)
         db_user.force_change_password = False
     else:
-        db_user.hashed_password = hash_password("1234")
+        db_user.hashed_password = hash_password(SHA256_OF_1234)
         db_user.force_change_password = True
 
     db.add(db_user)
@@ -44,23 +47,31 @@ async def create_user(user: UserCreate, db: AsyncSession = Depends(get_db)):
 async def login(login_data: UserLogin, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == login_data.email))
     user = result.scalars().first()
-    
-    if not user:
+
+    if not user or not verify_password(login_data.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    
-    # Frontend pre-hashes password using SHA-256, compare directly
-    if not user.hashed_password or user.hashed_password != login_data.password:
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-        
+
     if not user.is_active:
         raise HTTPException(status_code=401, detail="User account is disabled")
-        
+
+    # Transparent password migration: re-hash legacy SHA-256 rows with bcrypt on first
+    # successful login. login_data.password is the SHA-256 from the frontend pre-hash;
+    # wrapping it with bcrypt keeps verify_password working without changing the client.
+    if is_legacy_sha256(user.hashed_password):
+        user.hashed_password = hash_password(login_data.password)
+        await db.commit()
+
+    # Issue a real bearer token (7-day web-session). Replaces the old hardcoded
+    # "mock-jwt-token-for-now" — clients should send `Authorization: Bearer <token>`
+    # on subsequent requests once the dependency rollout (PR-3) enforces it.
+    access_token = await issue_web_session_token(db, user.id, label="web-session")
+
     return {
-        "access_token": "mock-jwt-token-for-now",
+        "access_token": access_token,
         "token_type": "bearer",
         "user_id": user.id,
         "role": user.role,
-        "require_password_change": user.force_change_password
+        "require_password_change": user.force_change_password,
     }
 
 @router.post("/reset-password")
@@ -71,11 +82,11 @@ async def reset_password(reset_data: UserPasswordReset, db: AsyncSession = Depen
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
         
-    # new_password is already SHA-256 hashed by the client
-    user.hashed_password = reset_data.new_password
+    # Client sends SHA-256; bcrypt-wrap before storage.
+    user.hashed_password = hash_password(reset_data.new_password)
     user.force_change_password = False
     await db.commit()
-    
+
     return {"message": "Password updated successfully"}
 
 @router.post("/change-password")
@@ -84,8 +95,8 @@ async def change_password(change_data: UserChangePassword, db: AsyncSession = De
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
         
-    # new_password is already SHA-256 hashed by the client
-    user.hashed_password = change_data.new_password
+    # Client sends SHA-256; bcrypt-wrap before storage.
+    user.hashed_password = hash_password(change_data.new_password)
     user.force_change_password = False
     await db.commit()
     return {"message": "Password changed successfully"}
@@ -96,9 +107,9 @@ async def reset_default_password(user_id: int, db: AsyncSession = Depends(get_db
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
         
-    # SHA-256 of '1234'
-    DEFAULT_HASH = '03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4'
-    user.hashed_password = DEFAULT_HASH
+    # SHA-256 of '1234', then bcrypt-wrapped (matches the frontend pre-hash flow).
+    SHA256_OF_1234 = "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4"
+    user.hashed_password = hash_password(SHA256_OF_1234)
     user.force_change_password = True
     await db.commit()
     return {"message": "Password reset to default (1234)"}
@@ -109,11 +120,12 @@ async def migrate_all_passwords(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User))
     users = result.scalars().all()
     
-    DEFAULT_HASH = '03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4'
+    SHA256_OF_1234 = "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4"
+    default_hash = hash_password(SHA256_OF_1234)
     for u in users:
-        u.hashed_password = DEFAULT_HASH
+        u.hashed_password = default_hash
         u.force_change_password = True
-        
+
     await db.commit()
     return {"message": f"Migrated {len(users)} users"}
 

@@ -48,3 +48,6 @@ router.include_router(google_auth_router, prefix="/users/google-oauth", tags=["G
 
 from app.api.system import router as system_router
 router.include_router(system_router, prefix="/system", tags=["System"])
+
+from app.api.api_tokens import router as api_tokens_router
+router.include_router(api_tokens_router, prefix="/api-tokens", tags=["API Tokens"])
