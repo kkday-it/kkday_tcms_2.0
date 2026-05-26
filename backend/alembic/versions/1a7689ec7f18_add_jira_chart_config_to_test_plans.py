@@ -56,22 +56,17 @@ def upgrade() -> None:
         except Exception:
             pass
 
-    op.alter_column('tcms_test_plans', 'sa_docs',
-               existing_type=postgresql.JSONB(astext_type=sa.Text()),
-               type_=sa.JSON(),
-               existing_nullable=True)
-    op.alter_column('tcms_test_plans', 'sd_docs',
-               existing_type=postgresql.JSONB(astext_type=sa.Text()),
-               type_=sa.JSON(),
-               existing_nullable=True)
-    op.alter_column('tcms_test_plans', 'timeline',
-               existing_type=postgresql.JSONB(astext_type=sa.Text()),
-               type_=sa.JSON(),
-               existing_nullable=True)
-    op.alter_column('tcms_test_plans', 'jira_display_fields',
-               existing_type=postgresql.JSONB(astext_type=sa.Text()),
-               type_=sa.JSON(),
-               existing_nullable=True)
+    # SQLite has no `ALTER COLUMN TYPE`, and on SQLite the columns are already created
+    # as JSON by the (now dialect-aware) `b2c3d4e5f6g7` migration, so the conversion is
+    # a no-op there. Only run on PostgreSQL where JSONB → JSON is a real schema change.
+    if bind.engine.name == 'postgresql':
+        for col in ('sa_docs', 'sd_docs', 'timeline', 'jira_display_fields'):
+            op.alter_column(
+                'tcms_test_plans', col,
+                existing_type=postgresql.JSONB(astext_type=sa.Text()),
+                type_=sa.JSON(),
+                existing_nullable=True,
+            )
     bind = op.get_bind()
     if bind.engine.name == 'postgresql':
         op.execute('DROP INDEX IF EXISTS ix_tcms_test_results_run_id')
