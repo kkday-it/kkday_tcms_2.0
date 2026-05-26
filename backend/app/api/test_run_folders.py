@@ -15,6 +15,7 @@ async def list_folders_by_project(project_id: int, db: AsyncSession = Depends(ge
     result = await db.execute(
         select(TestRunFolder)
         .where(TestRunFolder.project_id == project_id)
+        .where(TestRunFolder.status != "Archived")
         .order_by(TestRunFolder.id)
     )
     return result.scalars().all()
@@ -43,10 +44,10 @@ async def update_folder(folder_id: int, folder_in: TestRunFolderUpdate, db: Asyn
 
 @router.delete("/{folder_id}")
 async def delete_folder(folder_id: int, db: AsyncSession = Depends(get_db)):
-    """KQT-15346: cascade-delete the folder, all descendant folders, and every TestRun inside them.
+    """KQT-15346: soft-archive the folder, all descendant folders, and every TestRun inside.
 
-    `TestRun.results` already cascades to TestResult / TestStepResult, so deleting each run
-    via the ORM is sufficient to clean up the entire subtree.
+    Matches the existing `status="Archived"` pattern used by tcms_test_runs / tcms_test_plans /
+    tcms_test_cases — rows stay in the DB and can be restored later.
     """
     db_folder = await db.get(TestRunFolder, folder_id)
     if not db_folder:
@@ -61,7 +62,7 @@ async def delete_folder(folder_id: int, db: AsyncSession = Depends(get_db)):
     for fid, pid in rows.all():
         children_by_parent.setdefault(pid, []).append(fid)
 
-    folder_ids_in_order: list[int] = []
+    folder_ids_in_scope: list[int] = []
     seen: set[int] = set()
     queue: list[int] = [folder_id]
     while queue:
@@ -69,28 +70,32 @@ async def delete_folder(folder_id: int, db: AsyncSession = Depends(get_db)):
         if cur in seen:  # defensive — parent_id has no DB-side cycle guard
             continue
         seen.add(cur)
-        folder_ids_in_order.append(cur)
+        folder_ids_in_scope.append(cur)
         queue.extend(children_by_parent.get(cur, []))
 
-    # Delete runs first so SQLAlchemy fires the results/step_results cascade.
+    # Archive runs in scope (skip already-archived; the count below is "newly archived").
     runs_result = await db.execute(
-        select(TestRun).where(TestRun.folder_id.in_(folder_ids_in_order))
+        select(TestRun)
+        .where(TestRun.folder_id.in_(folder_ids_in_scope))
+        .where(TestRun.status != "Archived")
     )
     runs = runs_result.scalars().all()
     for run in runs:
-        await db.delete(run)
-    # Flush so the run deletes are issued before folder deletes (FK order matters).
-    await db.flush()
+        run.status = "Archived"
 
-    # Delete folders bottom-up: BFS order is parent-first, so reverse for delete.
-    for fid in reversed(folder_ids_in_order):
-        folder_obj = await db.get(TestRunFolder, fid)
-        if folder_obj is not None:
-            await db.delete(folder_obj)
+    # Archive the folders themselves.
+    folders_result = await db.execute(
+        select(TestRunFolder)
+        .where(TestRunFolder.id.in_(folder_ids_in_scope))
+        .where(TestRunFolder.status != "Archived")
+    )
+    folders_to_archive = folders_result.scalars().all()
+    for f in folders_to_archive:
+        f.status = "Archived"
 
     await db.commit()
     return {
-        "message": "Folder deleted successfully",
-        "deleted_folders": len(folder_ids_in_order),
-        "deleted_runs": len(runs),
+        "message": "Folder archived successfully",
+        "archived_folders": len(folders_to_archive),
+        "archived_runs": len(runs),
     }
