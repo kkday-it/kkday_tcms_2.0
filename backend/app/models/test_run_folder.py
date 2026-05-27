@@ -10,6 +10,9 @@ class TestRunFolder(Base):
     project_id = Column(Integer, ForeignKey("tcms_projects.id"), nullable=False)
     name = Column(String, index=True, nullable=False)
     parent_id = Column(Integer, ForeignKey("tcms_test_run_folders.id"), nullable=True)
+    # KQT-15346: Active / Archived. Matches the soft-archive pattern used by
+    # tcms_test_runs / tcms_test_plans / tcms_test_cases.
+    status = Column(String, nullable=False, default="Active", server_default="Active")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
