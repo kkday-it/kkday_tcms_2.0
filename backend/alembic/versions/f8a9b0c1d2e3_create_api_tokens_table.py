@@ -1,7 +1,7 @@
 """create tcms_api_tokens table
 
 Revision ID: f8a9b0c1d2e3
-Revises: c3d4e5f6a7b8
+Revises: e4f7a9b1c2d3
 Create Date: 2026-05-26
 
 """
@@ -12,7 +12,9 @@ from alembic import op
 
 
 revision: str = "f8a9b0c1d2e3"
-down_revision: Union[str, Sequence[str], None] = "c3d4e5f6a7b8"
+# Chains after e4f7a9b1c2d3 (KQT-15346, merged via #787). Originally c3d4e5f6a7b8, but
+# #787 landed another migration on that same parent — re-parent here to keep a single head.
+down_revision: Union[str, Sequence[str], None] = "e4f7a9b1c2d3"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
