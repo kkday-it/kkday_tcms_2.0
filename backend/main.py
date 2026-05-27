@@ -130,26 +130,10 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # X-Auto-Issued-Token is set directly by get_current_user via the injected Response;
+    # expose it so the browser (PR-2 axios interceptor) can read it cross-origin.
     expose_headers=["Content-Disposition", "X-Auto-Issued-Token"],
 )
-
-
-@app.middleware("http")
-async def attach_auto_issued_token(request, call_next):
-    """Stamps `X-Auto-Issued-Token` onto the response when `get_current_user` minted a
-    fresh token for a legacy mock-token client (grace-period flow). The frontend axios
-    interceptor (added in PR-2) picks this up and stores it in localStorage."""
-    from app.api.deps import auto_issued_token
-
-    token_var = auto_issued_token.set(None)
-    try:
-        response = await call_next(request)
-        new_token = auto_issued_token.get()
-        if new_token:
-            response.headers["X-Auto-Issued-Token"] = new_token
-        return response
-    finally:
-        auto_issued_token.reset(token_var)
 
 @app.get("/api/v1/health")
 async def health_check():

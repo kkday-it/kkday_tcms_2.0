@@ -8,14 +8,13 @@ response header so frontends migrate without forcing a re-login.
 """
 from __future__ import annotations
 
-import contextvars
 import datetime as _dt
 import json
 import logging
 import os
 from typing import Optional
 
-from fastapi import Depends, Header, HTTPException, Request
+from fastapi import Depends, Header, HTTPException, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
@@ -36,13 +35,6 @@ CONTACT = os.environ.get("TCMS_AUTH_CONTACT", "lance.chien@kkday.com")
 LEGACY_MOCK_TOKEN = "mock-jwt-token-for-now"
 WEB_SESSION_TTL_DAYS = 7
 GRACE_AUTO_TOKEN_TTL_DAYS = 7
-
-# Carries an auto-issued token from the dependency out to a middleware that stamps it
-# onto the response. Using a contextvar avoids threading a Response object through every
-# endpoint signature.
-auto_issued_token: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
-    "tcms_auto_issued_token", default=None
-)
 
 
 _MESSAGES = {
@@ -106,6 +98,7 @@ async def issue_web_session_token(db: AsyncSession, user_id: int, label: str = "
 
 async def get_current_user(
     request: Request,
+    response: Response,
     authorization: str = Header(default=""),
     x_user_id: Optional[str] = Header(default=None),
     db: AsyncSession = Depends(get_db),
@@ -142,7 +135,11 @@ async def get_current_user(
         if not user or not user.is_active:
             _raise_auth_error("invalid", request)
         new_raw = await issue_web_session_token(db, user.id, label="auto-migrated")
-        auto_issued_token.set(new_raw)
+        # Set the header directly on the injected Response — FastAPI merges these headers
+        # into the final response. (A BaseHTTPMiddleware + contextvar approach does NOT
+        # work: Starlette runs the downstream in a separate context, so values set in this
+        # dependency don't propagate back up to the middleware.)
+        response.headers["X-Auto-Issued-Token"] = new_raw
         log.info(
             "[tcms.auth] auto-migrated mock token for user_id=%s ip=%s",
             user.id,
