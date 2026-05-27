@@ -37,6 +37,22 @@ WEB_SESSION_TTL_DAYS = 7
 GRACE_AUTO_TOKEN_TTL_DAYS = 7
 
 
+def utcnow() -> _dt.datetime:
+    """Timezone-aware UTC now. The token columns are `DateTime(timezone=True)`, so on
+    PostgreSQL (asyncpg) reads come back tz-aware; comparing against a naive
+    `datetime.utcnow()` would raise TypeError. Always use aware datetimes here."""
+    return _dt.datetime.now(_dt.timezone.utc)
+
+
+def _as_aware_utc(value: Optional[_dt.datetime]) -> Optional[_dt.datetime]:
+    """Coerce a datetime read back from the DB to tz-aware UTC. Postgres (asyncpg)
+    returns aware datetimes for `DateTime(timezone=True)`; SQLite returns naive ones.
+    Normalizing here lets the expiry comparison work on both dialects."""
+    if value is None or value.tzinfo is not None:
+        return value
+    return value.replace(tzinfo=_dt.timezone.utc)
+
+
 _MESSAGES = {
     "missing": (
         "TCMS API 已啟用 Bearer token 認證, 此 request 未帶 token。\n"
@@ -89,7 +105,7 @@ async def issue_web_session_token(db: AsyncSession, user_id: int, label: str = "
             user_id=user_id,
             token_hash=hash_api_token(raw),
             label=label,
-            expires_at=_dt.datetime.utcnow() + _dt.timedelta(days=WEB_SESSION_TTL_DAYS),
+            expires_at=utcnow() + _dt.timedelta(days=WEB_SESSION_TTL_DAYS),
         )
     )
     await db.commit()
@@ -114,12 +130,12 @@ async def get_current_user(
         ).scalar_one_or_none()
         if not row:
             _raise_auth_error("invalid", request)
-        if row.expires_at and row.expires_at < _dt.datetime.utcnow():
+        if row.expires_at and _as_aware_utc(row.expires_at) < utcnow():
             _raise_auth_error("expired", request)
         user = await db.get(User, row.user_id)
         if not user or not user.is_active:
             _raise_auth_error("invalid", request)
-        row.last_used_at = _dt.datetime.utcnow()
+        row.last_used_at = utcnow()
         await db.commit()
         return user
 

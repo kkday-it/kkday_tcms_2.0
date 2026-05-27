@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, utcnow
 from app.core.security import generate_api_token, hash_api_token
 from app.db.database import get_db
 from app.models.api_token import ApiToken
@@ -37,7 +37,7 @@ async def create_token(
     if body.expires_in_days is not None:
         if body.expires_in_days <= 0:
             raise HTTPException(status_code=400, detail="expires_in_days must be positive")
-        expires_at = _dt.datetime.utcnow() + _dt.timedelta(days=body.expires_in_days)
+        expires_at = utcnow() + _dt.timedelta(days=body.expires_in_days)
     token = ApiToken(
         user_id=user.id,
         token_hash=hash_api_token(raw),
