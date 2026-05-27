@@ -44,7 +44,9 @@ api.interceptors.response.use(
         if (status === 401 && !isAuthCall && !window.location.pathname.endsWith('/login')) {
             localStorage.removeItem('tcms_token');
             localStorage.removeItem('tcms_user');
-            window.location.href = '/login';
+            // Respect the router basename (prod serves under /tcms/). BASE_URL already
+            // includes a trailing slash, so this yields "/tcms/login" or "/login".
+            window.location.href = `${import.meta.env.BASE_URL}login`;
         }
         return Promise.reject(error);
     },
