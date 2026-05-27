@@ -396,7 +396,8 @@ export default function TestRuns() {
     };
 
     const handleDeleteFolder = async (folderId: number) => {
-        if (!confirm("Are you sure you want to delete this folder? All child folders will NOT be deleted automatically (may cause issues), and runs won't be deleted.")) return;
+        // KQT-15346: backend cascade-deletes descendant folders + every Cycle inside them.
+        if (!confirm("請問確定要刪除，底下所有也會一並清空")) return;
         try {
             await api.delete(`/run-folders/${folderId}`);
             if (activeFolderId === folderId) {

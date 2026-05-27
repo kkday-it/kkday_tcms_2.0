@@ -16,20 +16,30 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
+def _has_column(bind, table: str, column: str) -> bool:
+    inspector = sa.inspect(bind)
+    return column in {c["name"] for c in inspector.get_columns(table)}
+
+
 def upgrade() -> None:
-    """Add jira_unfix_filter_ids and jira_total_filter_ids JSON array columns."""
+    """Add jira_unfix_filter_ids and jira_total_filter_ids JSON array columns.
+
+    Idempotent: skips columns that already exist (some deployed DBs got them via the
+    `main.py` startup column-migration hack before this alembic revision landed)."""
     bind = op.get_bind()
-    # Use JSONB on PostgreSQL, JSON (stored as TEXT) on SQLite
     if bind.dialect.name == "postgresql":
         from sqlalchemy.dialects.postgresql import JSONB
         col_type = JSONB()
     else:
         col_type = sa.JSON()
-    op.add_column("tcms_test_plans", sa.Column("jira_unfix_filter_ids", col_type, nullable=True))
-    op.add_column("tcms_test_plans", sa.Column("jira_total_filter_ids", col_type, nullable=True))
+    for name in ("jira_unfix_filter_ids", "jira_total_filter_ids"):
+        if not _has_column(bind, "tcms_test_plans", name):
+            op.add_column("tcms_test_plans", sa.Column(name, col_type, nullable=True))
 
 
 def downgrade() -> None:
     """Remove jira filter id array columns."""
-    op.drop_column("tcms_test_plans", "jira_total_filter_ids")
-    op.drop_column("tcms_test_plans", "jira_unfix_filter_ids")
+    bind = op.get_bind()
+    for name in ("jira_total_filter_ids", "jira_unfix_filter_ids"):
+        if _has_column(bind, "tcms_test_plans", name):
+            op.drop_column("tcms_test_plans", name)
