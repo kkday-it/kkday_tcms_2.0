@@ -130,7 +130,9 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["Content-Disposition"],
+    # X-Auto-Issued-Token is set directly by get_current_user via the injected Response;
+    # expose it so the browser (PR-2 axios interceptor) can read it cross-origin.
+    expose_headers=["Content-Disposition", "X-Auto-Issued-Token"],
 )
 
 @app.get("/api/v1/health")
