@@ -128,16 +128,21 @@ export default function TestRunDetails() {
     }, [results]);
 
     // Distinct assignees in this run (id + display name resolved via useUsers cache).
+    // Build the user id→record map once per `users` change. As the org grows
+    // (TCMS may reach ~300 users), a per-assignee `users.find()` becomes O(N·M);
+    // the Map collapses it to O(N + M) and `users` updates are infrequent.
+    const userById = useMemo(() => new Map(users.map(u => [u.id, u])), [users]);
+
     const allAssignees = useMemo(() => {
         const ids = new Set<number>();
         results.forEach(r => { if (r.assignee_id != null) ids.add(r.assignee_id); });
         return [...ids]
             .map(id => {
-                const u = users.find(uu => uu.id === id);
+                const u = userById.get(id);
                 return { id, name: u?.full_name || u?.username || u?.email || `User ${id}` };
             })
             .sort((a, b) => a.name.localeCompare(b.name));
-    }, [results, users]);
+    }, [results, userById]);
 
     // ── FILTERED RESULTS ─────────────────────────────────────────────────────
     const filteredResults = useMemo(() => {
