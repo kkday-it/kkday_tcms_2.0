@@ -1,11 +1,13 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useParams, Link, useSearchParams } from 'react-router-dom';
-import { Loader2, ArrowLeft, CheckCircle2, XCircle, SkipForward, Edit2, Filter, X, Save, Ban } from 'lucide-react';
+import { Loader2, ArrowLeft, CheckCircle2, XCircle, SkipForward, Edit2, Search, X, Save, Ban } from 'lucide-react';
 import api from '../lib/api';
 import { canWrite } from '../lib/permissions';
 import { useUsers } from '../lib/useUsers';
 import TestCaseExecutionPane from '../components/runs/TestCaseExecutionPane';
 import EditRunModal from '../components/runs/EditRunModal';
+import PillGroup, { type PillOption } from '../components/common/PillGroup';
+import SortableHeader, { type SortDirection } from '../components/common/SortableHeader';
 
 interface TestResult {
     id: number;
@@ -26,7 +28,30 @@ interface TestResult {
     };
 }
 
-const STATUS_OPTIONS = ['Passed', 'Failed', 'Untested', 'Blocked'];
+// Result enum matches backend tcms_test_results.status (Untested/Passed/Failed/
+// Blocked/Skipped). Order is the spec v3 §4.3 + §5.1 canonical display rank.
+const STATUS_OPTIONS = ['Passed', 'Failed', 'Untested', 'Blocked', 'Skipped'];
+
+// Spec v3 §4.3 Result pill mapping — value matches backend enum, label is the
+// user-facing copy (e.g. "Skipped" → "Skip" reads tighter in a pill).
+const RESULT_PILL_OPTIONS: ReadonlyArray<PillOption> = [
+    { value: 'Passed',   label: 'Passed',   variant: 'success' },
+    { value: 'Failed',   label: 'Failed',   variant: 'danger' },
+    { value: 'Untested', label: 'Untested', variant: 'info' },
+    { value: 'Blocked',  label: 'Blocked',  variant: 'warning' },
+    { value: 'Skipped',  label: 'Skip',     variant: 'neutral' },
+];
+
+// Spec v3 §4.3 Priority pill mapping — Not Set takes a dashed border (style)
+// to flag it as a transitional bucket; remove the dashed branch once Priority
+// becomes mandatory (spec v3 §4.3 footnote).
+const PRIORITY_PILL_OPTIONS: ReadonlyArray<PillOption> = [
+    { value: 'Critical', label: 'Critical', variant: 'danger' },
+    { value: 'High',     label: 'High',     variant: 'warning' },
+    { value: 'Medium',   label: 'Medium',   variant: 'info' },
+    { value: 'Low',      label: 'Low',      variant: 'success' },
+    { value: 'Not Set',  label: 'Not Set',  variant: 'neutral', style: 'dashed' },
+];
 
 
 
@@ -71,7 +96,6 @@ export default function TestRunDetails() {
     const [folders, setFolders] = useState<{ id: number; name: string }[]>([]);
 
     // ── FILTERS ──────────────────────────────────────────────────────────────
-    const [showFilters, setShowFilters] = useState(false);
     const [filterAssignToMe, setFilterAssignToMe] = useState(false);
     const [filterUnassigned, setFilterUnassigned] = useState(false);
     const [filterStatus, setFilterStatus] = useState<string[]>([]);
@@ -84,8 +108,16 @@ export default function TestRunDetails() {
     // '' = any assignee. Stored as string so the <select> value type stays simple;
     // converted to number on compare. Unassigned is already covered by filterUnassigned.
     const [filterAssigneeId, setFilterAssigneeId] = useState<string>('');
-    type SortMode = 'case-asc' | 'priority-desc' | 'priority-asc';
-    const [sortMode, setSortMode] = useState<SortMode>('case-asc');
+    // Sort: header click cycles asc→desc→null. null means "fall back to the
+    // canonical default" — case_id ascending, set by the filteredResults
+    // comparator below. (Spec v3 §5.2 cycle: unsorted → asc → desc → default.)
+    type SortKey = 'case' | 'priority' | 'result' | 'assignee';
+    const [sortKey, setSortKey] = useState<SortKey | null>(null);
+    const [sortDirection, setSortDirection] = useState<SortDirection>(null);
+    const handleSort = (key: string, dir: SortDirection) => {
+        setSortKey(dir === null ? null : (key as SortKey));
+        setSortDirection(dir);
+    };
 
     // Current user id derived from login localStorage
     const currentUserId = useMemo(() => {
@@ -118,6 +150,13 @@ export default function TestRunDetails() {
     const priorityRank = (p: string | undefined | null) => {
         const idx = PRIORITY_OPTIONS.indexOf((p || 'Not Set') as typeof PRIORITY_OPTIONS[number]);
         return idx < 0 ? PRIORITY_OPTIONS.length : idx;  // anything off-canonical sinks below Not Set
+    };
+    // Result canonical order (spec v3 §5.1): Passed → Failed → Untested →
+    // Blocked → Skipped. Anything unknown sinks below — same pattern as
+    // priorityRank.
+    const resultRank = (r: string | undefined | null) => {
+        const idx = STATUS_OPTIONS.indexOf((r || 'Untested') as string);
+        return idx < 0 ? STATUS_OPTIONS.length : idx;
     };
 
     // Distinct priorities seen in this run — used to dim buttons for buckets that
@@ -181,19 +220,34 @@ export default function TestRunDetails() {
             }
             return true;
         });
-        // KQT-15251 default sort: case_id ascending. Priority modes use canonical rank
-        // with case_id as tiebreaker so order is stable within the same bucket.
+        // Default sort: case_id ascending (KQT-15251). Header-driven sort
+        // applies its key first, with case_id as a stable tiebreaker so order
+        // is reproducible within a bucket.
         return [...filtered].sort((a, b) => {
-            if (sortMode === 'priority-desc') {
+            if (sortKey === 'priority') {
                 const r = priorityRank(a.test_case?.priority) - priorityRank(b.test_case?.priority);
-                if (r !== 0) return r;
-            } else if (sortMode === 'priority-asc') {
-                const r = priorityRank(b.test_case?.priority) - priorityRank(a.test_case?.priority);
-                if (r !== 0) return r;
+                const cmp = sortDirection === 'desc' ? -r : r;
+                if (cmp !== 0) return cmp;
+            } else if (sortKey === 'result') {
+                const r = resultRank(a.status) - resultRank(b.status);
+                const cmp = sortDirection === 'desc' ? -r : r;
+                if (cmp !== 0) return cmp;
+            } else if (sortKey === 'assignee') {
+                const an = userById.get(a.assignee_id ?? -1)?.full_name
+                    ?? userById.get(a.assignee_id ?? -1)?.username ?? '￿';  // unassigned sinks
+                const bn = userById.get(b.assignee_id ?? -1)?.full_name
+                    ?? userById.get(b.assignee_id ?? -1)?.username ?? '￿';
+                const r = an.localeCompare(bn);
+                const cmp = sortDirection === 'desc' ? -r : r;
+                if (cmp !== 0) return cmp;
+            } else if (sortKey === 'case') {
+                const r = a.case_id - b.case_id;
+                const cmp = sortDirection === 'desc' ? -r : r;
+                if (cmp !== 0) return cmp;
             }
             return a.case_id - b.case_id;
         });
-    }, [results, filterSearch, filterAssignToMe, filterUnassigned, filterAssigneeId, filterStatus, filterPriority, filterLabel, filterTag, currentUserId, sortMode]);
+    }, [results, filterSearch, filterAssignToMe, filterUnassigned, filterAssigneeId, filterStatus, filterPriority, filterLabel, filterTag, currentUserId, sortKey, sortDirection, userById]);
 
     const activeFilterCount = [
         filterAssignToMe, filterUnassigned, filterAssigneeId !== '',
@@ -331,14 +385,6 @@ export default function TestRunDetails() {
         }
     };
 
-    const toggleStatusFilter = (s: string) => {
-        setFilterStatus(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
-    };
-
-    const togglePriorityFilter = (p: string) => {
-        setFilterPriority(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]);
-    };
-
     const clearAllFilters = () => {
         setFilterAssignToMe(false);
         setFilterUnassigned(false);
@@ -467,161 +513,107 @@ export default function TestRunDetails() {
             <div ref={resultListRef} className="flex-1 overflow-y-auto w-full p-8">
                 <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
 
-                    {/* ── Filter Bar ─────────────────────────────────────────────── */}
-                    <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex flex-wrap items-center gap-3">
-                        <input
-                            type="text"
-                            value={filterSearch}
-                            onChange={e => setFilterSearch(e.target.value)}
-                            placeholder="Search title, ID..."
-                            className="flex-1 min-w-48 px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-primary-500 bg-white"
-                        />
+                    {/* ── Filter (spec v3 §4: two-row, no More) ──────────────────
+                        Row 1: search + 3 dropdowns (assignee/labels/tags)
+                        Row 2: Result + Priority pill groups
+                        Sort moved to column header (§5). */}
+                    <div className="px-4 py-3.5 border-b border-slate-100 bg-white flex flex-col gap-3">
+                        {/* Row 1: search + dropdowns */}
+                        <div className="flex items-center gap-2.5 flex-wrap">
+                            <div className="relative flex-[2] min-w-[180px]">
+                                <Search className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                <input
+                                    type="text"
+                                    value={filterSearch}
+                                    onChange={e => setFilterSearch(e.target.value)}
+                                    placeholder="Search title, ID..."
+                                    aria-label="Search test cases"
+                                    className="w-full pl-8 pr-3 py-2 text-[13px] border border-black/[0.08] rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                                />
+                            </div>
 
-                        <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white cursor-pointer hover:border-primary-400 transition-colors text-sm font-medium text-slate-700 select-none">
-                            <input
-                                type="checkbox"
-                                checked={filterAssignToMe}
-                                onChange={e => { setFilterAssignToMe(e.target.checked); if (e.target.checked) { setFilterUnassigned(false); setFilterAssigneeId(''); } }}
-                                className="w-3.5 h-3.5 rounded accent-primary-600"
-                            />
-                            Assign to me
-                        </label>
-
-                        <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white cursor-pointer hover:border-primary-400 transition-colors text-sm font-medium text-slate-700 select-none">
-                            <input
-                                type="checkbox"
-                                checked={filterUnassigned}
-                                onChange={e => { setFilterUnassigned(e.target.checked); if (e.target.checked) { setFilterAssignToMe(false); setFilterAssigneeId(''); } }}
-                                className="w-3.5 h-3.5 rounded accent-primary-600"
-                            />
-                            Unassigned
-                        </label>
-
-                        <div className="flex items-center gap-1">
-                            {STATUS_OPTIONS.map(s => (
-                                <button
-                                    key={s}
-                                    type="button"
-                                    onClick={() => toggleStatusFilter(s)}
-                                    className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${filterStatus.includes(s)
-                                        ? s === 'Passed' ? 'bg-green-500 text-white border-green-600'
-                                            : s === 'Failed' ? 'bg-red-500 text-white border-red-600'
-                                                : s === 'Blocked' ? 'bg-amber-500 text-white border-amber-600'
-                                                    : 'bg-slate-700 text-white border-slate-800'
-                                        : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'
-                                        }`}
-                                >
-                                    {s}
-                                </button>
-                            ))}
-                        </div>
-
-                        {/* Priority pills — same toggle pattern as status, colored by severity. */}
-                        <div className="flex items-center gap-1">
-                            {PRIORITY_OPTIONS.map(p => {
-                                const active = filterPriority.includes(p);
-                                const dimmed = !active && !presentPriorities.has(p);
-                                const activeClass =
-                                    p === 'Critical' ? 'bg-red-500 text-white border-red-600' :
-                                    p === 'High'     ? 'bg-orange-500 text-white border-orange-600' :
-                                    p === 'Medium'   ? 'bg-yellow-500 text-white border-yellow-600' :
-                                    p === 'Low'      ? 'bg-sky-500 text-white border-sky-600' :
-                                                       'bg-slate-500 text-white border-slate-600';
-                                return (
-                                    <button
-                                        key={p}
-                                        type="button"
-                                        onClick={() => togglePriorityFilter(p)}
-                                        title={dimmed ? '此 run 內無此優先級' : undefined}
-                                        className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${active
-                                            ? activeClass
-                                            : `bg-white text-slate-600 border-slate-200 hover:border-slate-400 ${dimmed ? 'opacity-40' : ''}`}`}
-                                    >
-                                        {p}
-                                    </button>
-                                );
-                            })}
-                        </div>
-
-                        {/* Sort selector — defaults to case_id asc; priority modes use canonical rank. */}
-                        <select
-                            value={sortMode}
-                            onChange={e => setSortMode(e.target.value as SortMode)}
-                            className="text-sm border border-slate-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-primary-500"
-                            title="Sort order"
-                        >
-                            <option value="case-asc">Sort: Case ID ↑</option>
-                            <option value="priority-desc">Sort: Priority High → Low</option>
-                            <option value="priority-asc">Sort: Priority Low → High</option>
-                        </select>
-
-                        <button
-                            type="button"
-                            onClick={() => setShowFilters(f => !f)}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition-all ${showFilters ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-slate-600 border-slate-200 hover:border-primary-400'}`}
-                        >
-                            <Filter className="w-4 h-4" />
-                            More {activeFilterCount > 0 && <span className="ml-0.5 bg-white/30 rounded-full px-1.5 text-xs">{activeFilterCount}</span>}
-                        </button>
-
-                        {activeFilterCount > 0 && (
-                            <button
-                                type="button"
-                                onClick={clearAllFilters}
-                                className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-red-500 hover:text-red-700 font-medium"
+                            {/* Assignee — three special buckets (Any / Mine /
+                                Unassigned) plus the per-user list. The three
+                                bool/string state fields stay (changing them
+                                would ripple into filteredResults); we only
+                                fold them into one <select> for the UI. */}
+                            <select
+                                value={
+                                    filterAssignToMe ? '__mine'
+                                    : filterUnassigned ? '__unassigned'
+                                    : filterAssigneeId !== '' ? filterAssigneeId
+                                    : ''
+                                }
+                                onChange={e => {
+                                    const v = e.target.value;
+                                    setFilterAssignToMe(v === '__mine');
+                                    setFilterUnassigned(v === '__unassigned');
+                                    setFilterAssigneeId(v === '__mine' || v === '__unassigned' || v === '' ? '' : v);
+                                }}
+                                aria-label="Filter by assignee"
+                                className="flex-1 min-w-[150px] px-2.5 py-2 text-[13px] border border-black/[0.08] rounded-md hover:border-primary-500 bg-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                             >
-                                <X className="w-3.5 h-3.5" /> Clear
-                            </button>
-                        )}
-                    </div>
+                                <option value="">Assignee: Any</option>
+                                <option value="__mine">Mine</option>
+                                <option value="__unassigned">Unassigned</option>
+                                {allAssignees.length > 0 && <option disabled>──────────</option>}
+                                {allAssignees.map(a => <option key={a.id} value={String(a.id)}>{a.name}</option>)}
+                            </select>
 
-                    {/* Advanced filter panel */}
-                    {showFilters && (
-                        <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/60 flex flex-wrap gap-3">
-                            <div className="flex flex-col gap-1">
-                                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Labels</label>
-                                <select
-                                    value={filterLabel}
-                                    onChange={e => setFilterLabel(e.target.value)}
-                                    className="text-sm border border-slate-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-primary-500 min-w-36"
+                            <select
+                                value={filterLabel}
+                                onChange={e => setFilterLabel(e.target.value)}
+                                aria-label="Filter by label"
+                                className="flex-1 min-w-[120px] px-2.5 py-2 text-[13px] border border-black/[0.08] rounded-md hover:border-primary-500 bg-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                            >
+                                <option value="">Labels</option>
+                                {allLabels.map(l => <option key={l} value={l}>{l}</option>)}
+                            </select>
+
+                            <select
+                                value={filterTag}
+                                onChange={e => setFilterTag(e.target.value)}
+                                aria-label="Filter by tag"
+                                className="flex-1 min-w-[120px] px-2.5 py-2 text-[13px] border border-black/[0.08] rounded-md hover:border-primary-500 bg-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                            >
+                                <option value="">Tags</option>
+                                {allTags.map(t => <option key={t} value={t}>{t}</option>)}
+                            </select>
+
+                            {activeFilterCount > 0 && (
+                                <button
+                                    type="button"
+                                    onClick={clearAllFilters}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs text-slate-500 hover:text-slate-900"
+                                    title="清除所有篩選"
                                 >
-                                    <option value="">All Labels</option>
-                                    {allLabels.map(l => <option key={l} value={l}>{l}</option>)}
-                                </select>
-                            </div>
-                            <div className="flex flex-col gap-1">
-                                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Tags</label>
-                                <select
-                                    value={filterTag}
-                                    onChange={e => setFilterTag(e.target.value)}
-                                    className="text-sm border border-slate-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-primary-500 min-w-36"
-                                >
-                                    <option value="">All Tags</option>
-                                    {allTags.map(t => <option key={t} value={t}>{t}</option>)}
-                                </select>
-                            </div>
-                            {/* Assignee picker — complements the "Assign to me" / "Unassigned"
-                                quick toggles above when you want a specific person. */}
-                            <div className="flex flex-col gap-1">
-                                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Assignee</label>
-                                <select
-                                    value={filterAssigneeId}
-                                    onChange={e => {
-                                        setFilterAssigneeId(e.target.value);
-                                        // Picking a specific person implicitly disables the broader toggles.
-                                        if (e.target.value !== '') {
-                                            setFilterAssignToMe(false);
-                                            setFilterUnassigned(false);
-                                        }
-                                    }}
-                                    className="text-sm border border-slate-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-primary-500 min-w-44"
-                                >
-                                    <option value="">Any assignee</option>
-                                    {allAssignees.map(a => <option key={a.id} value={String(a.id)}>{a.name}</option>)}
-                                </select>
-                            </div>
+                                    <X className="w-3.5 h-3.5" /> Clear
+                                </button>
+                            )}
                         </div>
-                    )}
+
+                        {/* Row 2: Result + Priority pills, divider between */}
+                        <div className="flex items-center gap-3 flex-wrap">
+                            <PillGroup
+                                label="Result"
+                                type="round"
+                                options={RESULT_PILL_OPTIONS}
+                                value={new Set(filterStatus)}
+                                onChange={next => setFilterStatus([...next])}
+                            />
+                            <div className="w-px h-4 bg-black/[0.08]" />
+                            <PillGroup
+                                label="Priority"
+                                type="square"
+                                options={PRIORITY_PILL_OPTIONS.map(opt => ({
+                                    ...opt,
+                                    dimmed: !presentPriorities.has(opt.value),
+                                }))}
+                                value={new Set(filterPriority)}
+                                onChange={next => setFilterPriority([...next])}
+                            />
+                        </div>
+                    </div>
 
                     {/* Unassigned hint bar */}
                     {filterUnassigned && filteredResults.length > 0 && selectedRows.size === 0 && (
@@ -709,10 +701,38 @@ export default function TestRunDetails() {
                                         className="size-4 rounded border-slate-300 text-primary-600 focus:ring-primary-600"
                                     />
                                 </th>
-                                <th className="py-3 font-semibold px-6 border-b border-slate-200">Case Title</th>
-                                <th className="py-3 font-semibold px-4 border-b border-slate-200">Priority</th>
-                                <th className="py-3 font-semibold px-4 border-b border-slate-200">Result</th>
-                                <th className="py-3 font-semibold px-4 border-b border-slate-200">Assignee</th>
+                                <SortableHeader
+                                    label="Case Title"
+                                    sortKey="case"
+                                    currentKey={sortKey}
+                                    currentDirection={sortDirection}
+                                    onSort={handleSort}
+                                    className="px-6 text-left"
+                                />
+                                <SortableHeader
+                                    label="Priority"
+                                    sortKey="priority"
+                                    currentKey={sortKey}
+                                    currentDirection={sortDirection}
+                                    onSort={handleSort}
+                                    className="px-4 text-left"
+                                />
+                                <SortableHeader
+                                    label="Result"
+                                    sortKey="result"
+                                    currentKey={sortKey}
+                                    currentDirection={sortDirection}
+                                    onSort={handleSort}
+                                    className="px-4 text-left"
+                                />
+                                <SortableHeader
+                                    label="Assignee"
+                                    sortKey="assignee"
+                                    currentKey={sortKey}
+                                    currentDirection={sortDirection}
+                                    onSort={handleSort}
+                                    className="px-4 text-left"
+                                />
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
