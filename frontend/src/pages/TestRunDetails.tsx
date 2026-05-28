@@ -8,6 +8,7 @@ import TestCaseExecutionPane from '../components/runs/TestCaseExecutionPane';
 import EditRunModal from '../components/runs/EditRunModal';
 import PillGroup, { type PillOption } from '../components/common/PillGroup';
 import SortableHeader, { type SortDirection } from '../components/common/SortableHeader';
+import { useUrlString, useUrlStringList, useUrlSortState } from '../lib/useUrlState';
 
 interface TestResult {
     id: number;
@@ -98,13 +99,15 @@ export default function TestRunDetails() {
     // ── FILTERS ──────────────────────────────────────────────────────────────
     const [filterAssignToMe, setFilterAssignToMe] = useState(false);
     const [filterUnassigned, setFilterUnassigned] = useState(false);
-    const [filterStatus, setFilterStatus] = useState<string[]>([]);
+    // Spec v3 §9: q / result / priority / sort survive reload + shared links.
+    // The less-common dimensions (label / tag / assignee) stay in-memory
+    // for now — refactoring the 3-bool assignee model adds risk without
+    // matching reload value.
+    const [filterSearch, setFilterSearch] = useUrlString('q');
+    const [filterStatus, setFilterStatus] = useUrlStringList('result');
+    const [filterPriority, setFilterPriority] = useUrlStringList('priority');
     const [filterLabel, setFilterLabel] = useState('');
     const [filterTag, setFilterTag] = useState('');
-    const [filterSearch, setFilterSearch] = useState('');
-    // Priority canonical buckets (aligned with priority_normalizer / migration c3d4e5f6a7b8),
-    // ordered most→least severe — also used as the sort rank below.
-    const [filterPriority, setFilterPriority] = useState<string[]>([]);
     // '' = any assignee. Stored as string so the <select> value type stays simple;
     // converted to number on compare. Unassigned is already covered by filterUnassigned.
     const [filterAssigneeId, setFilterAssigneeId] = useState<string>('');
@@ -112,11 +115,11 @@ export default function TestRunDetails() {
     // canonical default" — case_id ascending, set by the filteredResults
     // comparator below. (Spec v3 §5.2 cycle: unsorted → asc → desc → default.)
     type SortKey = 'case' | 'priority' | 'result' | 'assignee';
-    const [sortKey, setSortKey] = useState<SortKey | null>(null);
-    const [sortDirection, setSortDirection] = useState<SortDirection>(null);
+    const [sortState, setSortState] = useUrlSortState('sort');
+    const sortKey = sortState.key as SortKey | null;
+    const sortDirection: SortDirection = sortState.direction;
     const handleSort = (key: string, dir: SortDirection) => {
-        setSortKey(dir === null ? null : (key as SortKey));
-        setSortDirection(dir);
+        setSortState({ key: dir === null ? null : key, direction: dir });
     };
 
     // Current user id derived from login localStorage

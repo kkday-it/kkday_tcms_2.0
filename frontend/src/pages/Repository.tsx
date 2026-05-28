@@ -11,6 +11,7 @@ import EditSuiteModal from '../components/suites/EditSuiteModal';
 import SuiteNode from '../components/suites/SuiteNode';
 import SearchableSelect, { SearchableOption } from '../components/common/SearchableSelect';
 import PillGroup, { type PillOption } from '../components/common/PillGroup';
+import { useUrlString, useUrlStringList } from '../lib/useUrlState';
 import api from '../lib/api';
 import { useUsers } from '../lib/useUsers';
 
@@ -805,9 +806,12 @@ export default function Repository() {
     // groups can OR-multi-select within a group (§4.4). Tags / Labels stay
     // single-value to match the existing select UX; Layer / Type / Automation
     // are rare single-value dimensions kept as compact selects.
-    const [searchQuery, setSearchQuery] = useState('');
-    const [filterStatus, setFilterStatus] = useState<string[]>([]);
-    const [filterPriority, setFilterPriority] = useState<string[]>([]);
+    //
+    // Spec v3 §9: q / status / priority survive reload + shared links via
+    // ?q / ?status / ?priority. The rare dimensions stay in-memory.
+    const [searchQuery, setSearchQuery] = useUrlString('q');
+    const [filterStatus, setFilterStatus] = useUrlStringList('status');
+    const [filterPriority, setFilterPriority] = useUrlStringList('priority');
     const [filterAutomation, setFilterAutomation] = useState('');
     const [filterTags, setFilterTags] = useState('');
     const [filterLabels, setFilterLabels] = useState('');
