@@ -29,28 +29,10 @@ export default function EditSuiteModal({ isOpen, onClose, suite, allSuites, onSa
         }
     }, [suite, isOpen]);
 
-    if (!isOpen || !suite) return null;
-
-    const handleSave = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!name.trim()) return;
-
-        setIsSaving(true);
-        try {
-            await api.put(`/suites/${suite.id}`, {
-                name: name.trim(),
-                parent_suite_id: parentSuiteId === '' ? null : Number(parentSuiteId)
-            });
-            onSaved();
-            onClose();
-        } catch (error) {
-            console.error("Failed to update suite:", error);
-            alert("Failed to update suite");
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
+    // Hooks-of-rules: keep all useMemo / hook calls above any conditional return.
+    // Previously these two `useMemo` lived AFTER `if (!isOpen || !suite) return null`,
+    // so opening the modal added two hook calls between renders and React crashed
+    // with "Rendered more hooks than during the previous render", blanking the page.
     // Filter out the current suite and its descendants to prevent circular nesting.
     // (Frontend hides obviously-bad targets; backend should still validate.)
     const availableParents = useMemo(() => {
@@ -82,20 +64,37 @@ export default function EditSuiteModal({ isOpen, onClose, suite, allSuites, onSa
             }
             return parts;
         };
+        // Full breadcrumb as label so the picker (and the selected value after
+        // it collapses) shows where the suite lives, not just the leaf name.
         return availableParents
-            .map(p => {
-                const path = pathOf(p.id);
-                return {
-                    value: p.id,
-                    label: p.name,
-                    hint: path.length > 1 ? path.slice(0, -1).join(' / ') : '',
-                } satisfies SearchableOption;
-            })
-            .sort((a, b) => {
-                const c = (a.hint ?? '').localeCompare(b.hint ?? '', 'zh-Hant');
-                return c !== 0 ? c : a.label.localeCompare(b.label, 'zh-Hant');
-            });
+            .map(p => ({
+                value: p.id,
+                label: pathOf(p.id).join(' / '),
+            } satisfies SearchableOption))
+            .sort((a, b) => a.label.localeCompare(b.label, 'zh-Hant'));
     }, [availableParents, allSuites]);
+
+    if (!isOpen || !suite) return null;
+
+    const handleSave = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!name.trim()) return;
+
+        setIsSaving(true);
+        try {
+            await api.put(`/suites/${suite.id}`, {
+                name: name.trim(),
+                parent_suite_id: parentSuiteId === '' ? null : Number(parentSuiteId)
+            });
+            onSaved();
+            onClose();
+        } catch (error) {
+            console.error("Failed to update suite:", error);
+            alert("Failed to update suite");
+        } finally {
+            setIsSaving(false);
+        }
+    };
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm">

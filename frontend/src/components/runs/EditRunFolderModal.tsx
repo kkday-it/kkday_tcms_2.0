@@ -29,28 +29,10 @@ export default function EditRunFolderModal({ isOpen, onClose, folder, allFolders
         }
     }, [folder, isOpen]);
 
-    if (!isOpen || !folder) return null;
-
-    const handleSave = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!name.trim()) return;
-
-        setIsSaving(true);
-        try {
-            await api.put(`/run-folders/${folder.id}`, {
-                name: name.trim(),
-                parent_id: parentId === '' ? null : Number(parentId)
-            });
-            onSaved();
-            onClose();
-        } catch (error) {
-            console.error("Failed to update folder:", error);
-            alert("Failed to update folder");
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
+    // Hooks MUST run on every render — the early return below would otherwise change
+    // the hook count between "modal closed" and "modal open", crashing the page with
+    // "Rendered more hooks than during the previous render" and showing a blank screen.
+    // Keep all hook calls above any conditional return.
     const parentOptions = useMemo<SearchableOption[]>(() => {
         if (!folder) return [];
         const blocked = new Set<number>([folder.id]);
@@ -76,21 +58,40 @@ export default function EditRunFolderModal({ isOpen, onClose, folder, allFolders
             }
             return parts;
         };
+        // Render the *full* path as the label (e.g. "A / A2 / A3") so the
+        // hierarchy is visible both in the dropdown and in the selected value —
+        // previously only the leaf name was shown and users lost context when the
+        // picker collapsed. Sorting on the same string gives tree-like ordering.
         return allFolders
             .filter(f => !blocked.has(f.id))
-            .map(f => {
-                const path = pathOf(f.id);
-                return {
-                    value: f.id,
-                    label: f.name,
-                    hint: path.length > 1 ? path.slice(0, -1).join(' / ') : '',
-                } satisfies SearchableOption;
-            })
-            .sort((a, b) => {
-                const c = (a.hint ?? '').localeCompare(b.hint ?? '', 'zh-Hant');
-                return c !== 0 ? c : a.label.localeCompare(b.label, 'zh-Hant');
-            });
+            .map(f => ({
+                value: f.id,
+                label: pathOf(f.id).join(' / '),
+            } satisfies SearchableOption))
+            .sort((a, b) => a.label.localeCompare(b.label, 'zh-Hant'));
     }, [allFolders, folder]);
+
+    if (!isOpen || !folder) return null;
+
+    const handleSave = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!name.trim()) return;
+
+        setIsSaving(true);
+        try {
+            await api.put(`/run-folders/${folder.id}`, {
+                name: name.trim(),
+                parent_id: parentId === '' ? null : Number(parentId)
+            });
+            onSaved();
+            onClose();
+        } catch (error) {
+            console.error("Failed to update folder:", error);
+            alert("Failed to update folder");
+        } finally {
+            setIsSaving(false);
+        }
+    };
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm">

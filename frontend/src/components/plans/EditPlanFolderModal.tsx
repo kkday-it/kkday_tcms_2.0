@@ -29,28 +29,10 @@ export default function EditPlanFolderModal({ isOpen, onClose, folder, allFolder
         }
     }, [folder, isOpen]);
 
-    if (!isOpen || !folder) return null;
-
-    const handleSave = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!name.trim()) return;
-
-        setIsSaving(true);
-        try {
-            await api.put(`/plan-folders/${folder.id}`, {
-                name: name.trim(),
-                parent_id: parentId === '' ? null : Number(parentId)
-            });
-            onSaved();
-            onClose();
-        } catch (error) {
-            console.error('Failed to update folder:', error);
-            alert('Failed to update folder');
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
+    // Hooks must run in the same order every render — keep useMemo above the early
+    // return below. Previously the order was `useMemo` AFTER the conditional return,
+    // which triggered "Rendered more hooks than during the previous render" on first
+    // open and blanked the page.
     const parentOptions = useMemo<SearchableOption[]>(() => {
         if (!folder) return [];
         const blocked = new Set<number>([folder.id]);
@@ -76,21 +58,39 @@ export default function EditPlanFolderModal({ isOpen, onClose, folder, allFolder
             }
             return parts;
         };
+        // Full breadcrumb as label so hierarchy stays visible even after the
+        // picker collapses to the selected value. Sort on the same string for
+        // tree-like dropdown ordering.
         return allFolders
             .filter(f => !blocked.has(f.id))
-            .map(f => {
-                const path = pathOf(f.id);
-                return {
-                    value: f.id,
-                    label: f.name,
-                    hint: path.length > 1 ? path.slice(0, -1).join(' / ') : '',
-                } satisfies SearchableOption;
-            })
-            .sort((a, b) => {
-                const c = (a.hint ?? '').localeCompare(b.hint ?? '', 'zh-Hant');
-                return c !== 0 ? c : a.label.localeCompare(b.label, 'zh-Hant');
-            });
+            .map(f => ({
+                value: f.id,
+                label: pathOf(f.id).join(' / '),
+            } satisfies SearchableOption))
+            .sort((a, b) => a.label.localeCompare(b.label, 'zh-Hant'));
     }, [allFolders, folder]);
+
+    if (!isOpen || !folder) return null;
+
+    const handleSave = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!name.trim()) return;
+
+        setIsSaving(true);
+        try {
+            await api.put(`/plan-folders/${folder.id}`, {
+                name: name.trim(),
+                parent_id: parentId === '' ? null : Number(parentId)
+            });
+            onSaved();
+            onClose();
+        } catch (error) {
+            console.error('Failed to update folder:', error);
+            alert('Failed to update folder');
+        } finally {
+            setIsSaving(false);
+        }
+    };
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm">
