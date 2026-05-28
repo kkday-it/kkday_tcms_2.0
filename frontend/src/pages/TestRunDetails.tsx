@@ -77,6 +77,14 @@ export default function TestRunDetails() {
     const [filterLabel, setFilterLabel] = useState('');
     const [filterTag, setFilterTag] = useState('');
     const [filterSearch, setFilterSearch] = useState('');
+    // Priority canonical buckets (aligned with priority_normalizer / migration c3d4e5f6a7b8),
+    // ordered most→least severe — also used as the sort rank below.
+    const [filterPriority, setFilterPriority] = useState<string[]>([]);
+    // '' = any assignee. Stored as string so the <select> value type stays simple;
+    // converted to number on compare. Unassigned is already covered by filterUnassigned.
+    const [filterAssigneeId, setFilterAssigneeId] = useState<string>('');
+    type SortMode = 'case-asc' | 'priority-desc' | 'priority-asc';
+    const [sortMode, setSortMode] = useState<SortMode>('case-asc');
 
     // Current user id derived from login localStorage
     const currentUserId = useMemo(() => {
@@ -103,6 +111,39 @@ export default function TestRunDetails() {
         return [...set].sort();
     }, [results]);
 
+    // Canonical severity order (Critical→Not Set); ranks higher-severity smaller so
+    // ascending rank == descending severity == "priority-desc" / High→Low display order.
+    const PRIORITY_OPTIONS = ['Critical', 'High', 'Medium', 'Low', 'Not Set'] as const;
+    const priorityRank = (p: string | undefined | null) => {
+        const idx = PRIORITY_OPTIONS.indexOf((p || 'Not Set') as typeof PRIORITY_OPTIONS[number]);
+        return idx < 0 ? PRIORITY_OPTIONS.length : idx;  // anything off-canonical sinks below Not Set
+    };
+
+    // Distinct priorities seen in this run — used to dim buttons for buckets that
+    // wouldn't filter anything (avoids confusing the user with options that match 0 rows).
+    const presentPriorities = useMemo(() => {
+        const set = new Set<string>();
+        results.forEach(r => set.add(r.test_case?.priority || 'Not Set'));
+        return set;
+    }, [results]);
+
+    // Distinct assignees in this run (id + display name resolved via useUsers cache).
+    // Build the user id→record map once per `users` change. As the org grows
+    // (TCMS may reach ~300 users), a per-assignee `users.find()` becomes O(N·M);
+    // the Map collapses it to O(N + M) and `users` updates are infrequent.
+    const userById = useMemo(() => new Map(users.map(u => [u.id, u])), [users]);
+
+    const allAssignees = useMemo(() => {
+        const ids = new Set<number>();
+        results.forEach(r => { if (r.assignee_id != null) ids.add(r.assignee_id); });
+        return [...ids]
+            .map(id => {
+                const u = userById.get(id);
+                return { id, name: u?.full_name || u?.username || u?.email || `User ${id}` };
+            })
+            .sort((a, b) => a.name.localeCompare(b.name));
+    }, [results, userById]);
+
     // ── FILTERED RESULTS ─────────────────────────────────────────────────────
     const filteredResults = useMemo(() => {
         const filtered = results.filter(r => {
@@ -119,8 +160,15 @@ export default function TestRunDetails() {
             if (filterUnassigned) {
                 if (r.assignee_id != null) return false;
             }
+            if (filterAssigneeId !== '') {
+                if (r.assignee_id !== Number(filterAssigneeId)) return false;
+            }
             if (filterStatus.length > 0) {
                 if (!filterStatus.includes(r.status)) return false;
+            }
+            if (filterPriority.length > 0) {
+                const p = r.test_case?.priority || 'Not Set';
+                if (!filterPriority.includes(p)) return false;
             }
             if (filterLabel) {
                 const labels = parseJsonList(r.test_case?.labels);
@@ -132,13 +180,24 @@ export default function TestRunDetails() {
             }
             return true;
         });
-        // KQT-15251: sort by case_id ascending so TC-5514 appears above TC-5594.
-        return [...filtered].sort((a, b) => a.case_id - b.case_id);
-    }, [results, filterSearch, filterAssignToMe, filterUnassigned, filterStatus, filterLabel, filterTag, currentUserId]);
+        // KQT-15251 default sort: case_id ascending. Priority modes use canonical rank
+        // with case_id as tiebreaker so order is stable within the same bucket.
+        return [...filtered].sort((a, b) => {
+            if (sortMode === 'priority-desc') {
+                const r = priorityRank(a.test_case?.priority) - priorityRank(b.test_case?.priority);
+                if (r !== 0) return r;
+            } else if (sortMode === 'priority-asc') {
+                const r = priorityRank(b.test_case?.priority) - priorityRank(a.test_case?.priority);
+                if (r !== 0) return r;
+            }
+            return a.case_id - b.case_id;
+        });
+    }, [results, filterSearch, filterAssignToMe, filterUnassigned, filterAssigneeId, filterStatus, filterPriority, filterLabel, filterTag, currentUserId, sortMode]);
 
     const activeFilterCount = [
-        filterAssignToMe, filterUnassigned,
-        filterStatus.length > 0, filterLabel !== '', filterTag !== '', filterSearch !== ''
+        filterAssignToMe, filterUnassigned, filterAssigneeId !== '',
+        filterStatus.length > 0, filterPriority.length > 0,
+        filterLabel !== '', filterTag !== '', filterSearch !== ''
     ].filter(Boolean).length;
 
     // ── Dirty check ──────────────────────────────────────────────────────────
@@ -275,13 +334,20 @@ export default function TestRunDetails() {
         setFilterStatus(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
     };
 
+    const togglePriorityFilter = (p: string) => {
+        setFilterPriority(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]);
+    };
+
     const clearAllFilters = () => {
         setFilterAssignToMe(false);
         setFilterUnassigned(false);
+        setFilterAssigneeId('');
         setFilterStatus([]);
+        setFilterPriority([]);
         setFilterLabel('');
         setFilterTag('');
         setFilterSearch('');
+        // Sort isn't really a "filter" — keep user's chosen sort across Clear.
     };
 
     if (isLoading) {
@@ -411,7 +477,7 @@ export default function TestRunDetails() {
                             <input
                                 type="checkbox"
                                 checked={filterAssignToMe}
-                                onChange={e => { setFilterAssignToMe(e.target.checked); if (e.target.checked) setFilterUnassigned(false); }}
+                                onChange={e => { setFilterAssignToMe(e.target.checked); if (e.target.checked) { setFilterUnassigned(false); setFilterAssigneeId(''); } }}
                                 className="w-3.5 h-3.5 rounded accent-primary-600"
                             />
                             Assign to me
@@ -421,7 +487,7 @@ export default function TestRunDetails() {
                             <input
                                 type="checkbox"
                                 checked={filterUnassigned}
-                                onChange={e => { setFilterUnassigned(e.target.checked); if (e.target.checked) setFilterAssignToMe(false); }}
+                                onChange={e => { setFilterUnassigned(e.target.checked); if (e.target.checked) { setFilterAssignToMe(false); setFilterAssigneeId(''); } }}
                                 className="w-3.5 h-3.5 rounded accent-primary-600"
                             />
                             Unassigned
@@ -445,6 +511,45 @@ export default function TestRunDetails() {
                                 </button>
                             ))}
                         </div>
+
+                        {/* Priority pills — same toggle pattern as status, colored by severity. */}
+                        <div className="flex items-center gap-1">
+                            {PRIORITY_OPTIONS.map(p => {
+                                const active = filterPriority.includes(p);
+                                const dimmed = !active && !presentPriorities.has(p);
+                                const activeClass =
+                                    p === 'Critical' ? 'bg-red-500 text-white border-red-600' :
+                                    p === 'High'     ? 'bg-orange-500 text-white border-orange-600' :
+                                    p === 'Medium'   ? 'bg-yellow-500 text-white border-yellow-600' :
+                                    p === 'Low'      ? 'bg-sky-500 text-white border-sky-600' :
+                                                       'bg-slate-500 text-white border-slate-600';
+                                return (
+                                    <button
+                                        key={p}
+                                        type="button"
+                                        onClick={() => togglePriorityFilter(p)}
+                                        title={dimmed ? '此 run 內無此優先級' : undefined}
+                                        className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${active
+                                            ? activeClass
+                                            : `bg-white text-slate-600 border-slate-200 hover:border-slate-400 ${dimmed ? 'opacity-40' : ''}`}`}
+                                    >
+                                        {p}
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        {/* Sort selector — defaults to case_id asc; priority modes use canonical rank. */}
+                        <select
+                            value={sortMode}
+                            onChange={e => setSortMode(e.target.value as SortMode)}
+                            className="text-sm border border-slate-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-primary-500"
+                            title="Sort order"
+                        >
+                            <option value="case-asc">Sort: Case ID ↑</option>
+                            <option value="priority-desc">Sort: Priority High → Low</option>
+                            <option value="priority-asc">Sort: Priority Low → High</option>
+                        </select>
 
                         <button
                             type="button"
@@ -489,6 +594,26 @@ export default function TestRunDetails() {
                                 >
                                     <option value="">All Tags</option>
                                     {allTags.map(t => <option key={t} value={t}>{t}</option>)}
+                                </select>
+                            </div>
+                            {/* Assignee picker — complements the "Assign to me" / "Unassigned"
+                                quick toggles above when you want a specific person. */}
+                            <div className="flex flex-col gap-1">
+                                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Assignee</label>
+                                <select
+                                    value={filterAssigneeId}
+                                    onChange={e => {
+                                        setFilterAssigneeId(e.target.value);
+                                        // Picking a specific person implicitly disables the broader toggles.
+                                        if (e.target.value !== '') {
+                                            setFilterAssignToMe(false);
+                                            setFilterUnassigned(false);
+                                        }
+                                    }}
+                                    className="text-sm border border-slate-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-primary-500 min-w-44"
+                                >
+                                    <option value="">Any assignee</option>
+                                    {allAssignees.map(a => <option key={a.id} value={String(a.id)}>{a.name}</option>)}
                                 </select>
                             </div>
                         </div>
