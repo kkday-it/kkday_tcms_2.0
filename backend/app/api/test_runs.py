@@ -102,10 +102,13 @@ async def export_runs(
     if not run_ids:
         results_by_run: dict = {}
     else:
+        # Filter archived TestCases — see test_results.get_results_by_run for the
+        # rationale (soft-deleted cases stay in DB but shouldn't bleed into run views).
         res_query = (
             select(TestResult, TestCase.title.label("case_title"))
             .join(TestCase, TestResult.case_id == TestCase.id)
             .where(TestResult.run_id.in_(run_ids))
+            .where(TestCase.status != "Archived")
             .order_by(TestResult.run_id, TestResult.id)
         )
         res_rows = (await db.execute(res_query)).all()
@@ -267,13 +270,19 @@ async def get_run(run_id: int, db: AsyncSession = Depends(get_db)):
     if not run:
         raise HTTPException(status_code=404, detail="TestRun not found")
 
-    # Recalculate stats
-    stats_query = select(
-        func.sum(case((TestResult.status == 'Passed', 1), else_=0)).label("passed"),
-        func.sum(case((TestResult.status == 'Failed', 1), else_=0)).label("failed"),
-        func.sum(case((TestResult.status == 'Blocked', 1), else_=0)).label("blocked"),
-        func.count(TestResult.id).label("total")
-    ).where(TestResult.run_id == run_id)
+    # Recalculate stats — exclude rows whose TestCase is archived so the header
+    # counts match what the UI actually shows.
+    stats_query = (
+        select(
+            func.sum(case((TestResult.status == 'Passed', 1), else_=0)).label("passed"),
+            func.sum(case((TestResult.status == 'Failed', 1), else_=0)).label("failed"),
+            func.sum(case((TestResult.status == 'Blocked', 1), else_=0)).label("blocked"),
+            func.count(TestResult.id).label("total")
+        )
+        .join(TestCase, TestResult.case_id == TestCase.id)
+        .where(TestResult.run_id == run_id)
+        .where(TestCase.status != "Archived")
+    )
     stats_res = await db.execute(stats_query)
     passed, failed, blocked, total = stats_res.one()
     passed = passed or 0
@@ -344,7 +353,10 @@ async def update_run(run_id: int, run_in: TestRunUpdate, db: AsyncSession = Depe
             func.sum(case((TestResult.status == 'Failed', 1), else_=0)),
             func.sum(case((TestResult.status == 'Blocked', 1), else_=0)),
             func.count(TestResult.id),
-        ).where(TestResult.run_id == run_id)
+        )
+        .join(TestCase, TestResult.case_id == TestCase.id)
+        .where(TestResult.run_id == run_id)
+        .where(TestCase.status != "Archived")
     )
     passed, failed, blocked, total = counts_result.one()
     passed = passed or 0

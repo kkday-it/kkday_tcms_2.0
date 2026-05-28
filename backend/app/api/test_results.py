@@ -18,11 +18,16 @@ router = APIRouter()
 
 @router.get("/run/{run_id}", response_model=List[dict])
 async def get_results_by_run(run_id: int, db: AsyncSession = Depends(get_db)):
+    # Hide rows whose underlying TestCase has been archived (soft-deleted via the
+    # Repository UI). The TestResult row stays in the DB so un-archiving the case
+    # restores it; the filter is purely at read time. Matches how the rest of the
+    # app filters out `status="Archived"` resources.
     query = (
         select(TestResult, TestCase.title, TestCase.external_id, TestCase.priority,
                TestCase.labels, TestCase.tags, TestCase.suite_id)
         .join(TestCase, TestResult.case_id == TestCase.id)
         .where(TestResult.run_id == run_id)
+        .where(TestCase.status != "Archived")
         .order_by(TestResult.id)
     )
     result = await db.execute(query)
