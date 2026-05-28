@@ -90,11 +90,22 @@ async def reset_password(reset_data: UserPasswordReset, db: AsyncSession = Depen
     return {"message": "Password updated successfully"}
 
 @router.post("/change-password")
-async def change_password(change_data: UserChangePassword, db: AsyncSession = Depends(get_db), _actor: User = Depends(get_current_user)):
+async def change_password(
+    change_data: UserChangePassword,
+    db: AsyncSession = Depends(get_db),
+    actor: User = Depends(get_current_user),
+):
+    # Ownership guard (code review #802): the body carries user_id but a
+    # logged-in user must only be able to change their own password, unless
+    # they're an Admin (admin paths exist via /reset-default but explicitly
+    # going through change-password as Admin is still fine).
+    if actor.id != change_data.user_id and actor.role != "Admin":
+        raise HTTPException(status_code=403, detail="只能修改自己的密碼;如需協助請聯絡 Admin。")
+
     user = await db.get(User, change_data.user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-        
+
     # Client sends SHA-256; bcrypt-wrap before storage.
     user.hashed_password = hash_password(change_data.new_password)
     user.force_change_password = False
