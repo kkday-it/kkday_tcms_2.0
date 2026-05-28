@@ -29,19 +29,23 @@ export default function MainLayout() {
 
     return (
         <div className="flex h-screen bg-white">
-            {/* Global Sidebar */}
+            {/* Global Sidebar — spec filter-spec-v3 §3: navy bg + cyan accent.
+                Active state is a cyan-tinted bg (10% opacity) over navy with
+                cyan text, not a full primary fill — keeps the brand color as
+                an *accent* rather than dominating the chrome. */}
             <div
-                className={`${isSidebarExpanded ? 'w-44' : 'w-14'} flex-shrink-0 flex flex-col py-4 bg-slate-900 border-r border-slate-800 transition-all duration-200 overflow-hidden`}
+                className={`${isSidebarExpanded ? 'w-44' : 'w-14'} flex-shrink-0 flex flex-col py-4 bg-sidebar-bg border-r border-sidebar-divider transition-all duration-200 overflow-hidden`}
             >
-                {/* Logo + Collapse Toggle */}
+                {/* Logo + Collapse Toggle. T sits on a cyan tile with the bg
+                    color as the letter — high contrast, no need for white. */}
                 <div className="flex items-center justify-between px-3 mb-8">
-                    <div className="w-10 h-10 bg-primary-600 text-white rounded-lg flex items-center justify-center font-bold text-xl shrink-0">
+                    <div className="w-10 h-10 bg-primary-500 text-sidebar-bg rounded-lg flex items-center justify-center font-bold text-xl shrink-0">
                         T
                     </div>
                     {isSidebarExpanded && (
                         <button
                             onClick={() => setIsSidebarExpanded(false)}
-                            className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-md transition-colors"
+                            className="p-1.5 text-sidebar-text hover:text-sidebar-text-active hover:bg-sidebar-hover rounded-md transition-colors"
                             title="收合選單"
                         >
                             <ChevronLeft className="w-4 h-4" />
@@ -54,7 +58,7 @@ export default function MainLayout() {
                     <div className="flex justify-center mb-4">
                         <button
                             onClick={() => setIsSidebarExpanded(true)}
-                            className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-md transition-colors"
+                            className="p-1.5 text-sidebar-text hover:text-sidebar-text-active hover:bg-sidebar-hover rounded-md transition-colors"
                             title="展開選單"
                         >
                             <ChevronRight className="w-4 h-4" />
@@ -69,12 +73,13 @@ export default function MainLayout() {
                             <Link
                                 key={item.name}
                                 to={item.href}
-                                className={`flex items-center gap-3 px-2 py-2 rounded-lg transition-colors ${isActive ? 'bg-primary-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
+                                aria-current={isActive ? 'page' : undefined}
+                                className={`flex items-center gap-3 px-2 py-2 rounded-lg transition-colors ${isActive ? 'bg-sidebar-active text-sidebar-text-active font-medium' : 'text-sidebar-text hover:text-sidebar-text-active hover:bg-sidebar-hover'}`}
                                 title={item.name}
                             >
                                 <item.icon className="w-5 h-5 shrink-0" />
                                 {isSidebarExpanded && (
-                                    <span className="text-sm font-medium truncate">{item.name}</span>
+                                    <span className="text-sm truncate">{item.name}</span>
                                 )}
                             </Link>
                         );
@@ -86,36 +91,38 @@ export default function MainLayout() {
                     {isAdmin && (
                         <Link
                             to="/settings"
+                            aria-current={location.pathname.startsWith('/settings') ? 'page' : undefined}
                             className={`flex items-center gap-3 px-2 py-2 rounded-lg transition-colors ${location.pathname.startsWith('/settings')
-                                ? 'bg-primary-600 text-white'
-                                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                                ? 'bg-sidebar-active text-sidebar-text-active font-medium'
+                                : 'text-sidebar-text hover:text-sidebar-text-active hover:bg-sidebar-hover'
                                 }`}
                             title="設定（管理員）"
                         >
                             <SettingsIcon className="w-5 h-5 shrink-0" />
-                            {isSidebarExpanded && <span className="text-sm font-medium">設定</span>}
+                            {isSidebarExpanded && <span className="text-sm">設定</span>}
                         </Link>
                     )}
 
                     {/* Current User */}
                     <button
-                        className="flex items-center gap-3 px-2 py-2 rounded-lg w-full text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                        className="flex items-center gap-3 px-2 py-2 rounded-lg w-full text-sidebar-text hover:text-sidebar-text-active hover:bg-sidebar-hover transition-colors"
                         title={currentUser?.username || '帳號'}
                     >
                         <User className="w-5 h-5 shrink-0" />
                         {isSidebarExpanded && (
-                            <span className="text-sm font-medium truncate">{currentUser?.username || '帳號'}</span>
+                            <span className="text-sm truncate">{currentUser?.username || '帳號'}</span>
                         )}
                     </button>
 
-                    {/* Logout */}
+                    {/* Logout — destructive intent stays in the hover (red).
+                        text-danger-400 reads as a warning over the navy bg. */}
                     <button
                         onClick={handleLogout}
-                        className="flex items-center gap-3 px-2 py-2 mb-2 rounded-lg w-full text-slate-400 hover:text-red-400 hover:bg-slate-800 transition-colors"
+                        className="flex items-center gap-3 px-2 py-2 mb-2 rounded-lg w-full text-sidebar-text hover:text-danger-400 hover:bg-sidebar-hover transition-colors"
                         title="登出"
                     >
                         <LogOut className="w-5 h-5 shrink-0" />
-                        {isSidebarExpanded && <span className="text-sm font-medium">登出</span>}
+                        {isSidebarExpanded && <span className="text-sm">登出</span>}
                     </button>
                 </div>
             </div>
