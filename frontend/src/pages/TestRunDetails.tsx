@@ -472,7 +472,7 @@ export default function TestRunDetails() {
                             <input
                                 type="checkbox"
                                 checked={filterAssignToMe}
-                                onChange={e => { setFilterAssignToMe(e.target.checked); if (e.target.checked) setFilterUnassigned(false); }}
+                                onChange={e => { setFilterAssignToMe(e.target.checked); if (e.target.checked) { setFilterUnassigned(false); setFilterAssigneeId(''); } }}
                                 className="w-3.5 h-3.5 rounded accent-primary-600"
                             />
                             Assign to me
@@ -482,7 +482,7 @@ export default function TestRunDetails() {
                             <input
                                 type="checkbox"
                                 checked={filterUnassigned}
-                                onChange={e => { setFilterUnassigned(e.target.checked); if (e.target.checked) setFilterAssignToMe(false); }}
+                                onChange={e => { setFilterUnassigned(e.target.checked); if (e.target.checked) { setFilterAssignToMe(false); setFilterAssigneeId(''); } }}
                                 className="w-3.5 h-3.5 rounded accent-primary-600"
                             />
                             Unassigned
