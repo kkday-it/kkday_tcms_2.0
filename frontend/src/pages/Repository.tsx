@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Plus, Search, Filter, Loader2, Upload, Download, RefreshCw, Trash2, FolderOpen, ChevronDown, X, CheckCircle2, AlertCircle, FileCode2, GripVertical } from 'lucide-react';
+import { canWrite } from '../lib/permissions';
 import { DndContext, DragEndEvent, pointerWithin, closestCenter, useDroppable, useDraggable, useSensor, useSensors, PointerSensor } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import TestCaseEditor from '../components/cases/TestCaseEditor';
@@ -37,6 +38,7 @@ interface DraggableCaseRowProps {
 }
 
 function DraggableCaseRow({ tc, isSelected, onToggle, onPreview, onDelete }: DraggableCaseRowProps) {
+    const writable = canWrite();
     const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
         id: `case-${tc.id}`,
         data: { type: 'case', caseId: tc.id },
@@ -108,13 +110,15 @@ function DraggableCaseRow({ tc, isSelected, onToggle, onPreview, onDelete }: Dra
                 </span>
             </td>
             <td className="py-3.5 px-8 text-right">
-                <button
-                    onClick={onDelete}
-                    className="text-slate-400 hover:text-rose-500 p-1.5 rounded-md hover:bg-rose-50 opacity-0 group-hover:opacity-100 transition-all"
-                    title="Delete Case"
-                >
-                    <Trash2 className="w-4 h-4" />
-                </button>
+                {writable && (
+                    <button
+                        onClick={onDelete}
+                        className="text-slate-400 hover:text-rose-500 p-1.5 rounded-md hover:bg-rose-50 opacity-0 group-hover:opacity-100 transition-all"
+                        title="Delete Case"
+                    >
+                        <Trash2 className="w-4 h-4" />
+                    </button>
+                )}
             </td>
         </tr>
     );
@@ -322,6 +326,7 @@ function XmindImportModal({
 
 export default function Repository() {
     const projectId = 1; // single-project mode; extend with project selector when needed
+    const writable = canWrite();
     const [searchParams, setSearchParams] = useSearchParams();
 
     const [suites, setSuites] = useState<TestSuite[]>([]);
@@ -1019,13 +1024,15 @@ export default function Repository() {
                 />
                 <div className="px-5 py-4 flex items-center justify-between">
                     <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Project Suites</h2>
-                    <button
-                        onClick={() => setIsAddingSuite(true)}
-                        className="text-slate-400 hover:text-primary-600 transition-colors p-1"
-                        title="Add Suite"
-                    >
-                        <Plus className="w-4 h-4" />
-                    </button>
+                    {writable && (
+                        <button
+                            onClick={() => setIsAddingSuite(true)}
+                            className="text-slate-400 hover:text-primary-600 transition-colors p-1"
+                            title="Add Suite"
+                        >
+                            <Plus className="w-4 h-4" />
+                        </button>
+                    )}
                 </div>
 
                 <RootDroppableArea>
@@ -1052,7 +1059,7 @@ export default function Repository() {
                         </div>
                     </RootDroppableArea>
                 {/* Bulk Actions Footer */}
-                {selectedSuites.length > 0 && (
+                {selectedSuites.length > 0 && writable && (
                     <div className="p-3 border-t border-slate-200 bg-slate-100/50 flex flex-col gap-2">
                         <div className="text-xs font-medium text-slate-600 px-1">{selectedSuites.length} selected</div>
                         <button
@@ -1208,9 +1215,11 @@ export default function Repository() {
                                 >
                                     <Filter className="w-4 h-4" /> Filter
                                 </button>
-                                <button onClick={handleCreateCase} className="btn-primary flex items-center gap-2 shadow-sm">
-                                    <Plus className="w-4 h-4" /> Create Case
-                                </button>
+                                {writable && (
+                                    <button onClick={handleCreateCase} className="btn-primary flex items-center gap-2 shadow-sm">
+                                        <Plus className="w-4 h-4" /> Create Case
+                                    </button>
+                                )}
                             </div>
                         </div>
 
@@ -1387,13 +1396,17 @@ export default function Repository() {
                                         Move
                                     </button>
 
-                                    <div className="h-4 w-px bg-primary-200 mx-2" />
-                                    <button
-                                        onClick={handleBatchDeleteCases}
-                                        className="px-4 py-1.5 text-sm font-semibold text-rose-600 bg-rose-50 border border-rose-200 rounded-lg hover:bg-rose-100 transition-colors shadow-sm flex items-center gap-1.5"
-                                    >
-                                        <Trash2 className="w-4 h-4" /> Delete
-                                    </button>
+                                    {writable && (
+                                        <>
+                                            <div className="h-4 w-px bg-primary-200 mx-2" />
+                                            <button
+                                                onClick={handleBatchDeleteCases}
+                                                className="px-4 py-1.5 text-sm font-semibold text-rose-600 bg-rose-50 border border-rose-200 rounded-lg hover:bg-rose-100 transition-colors shadow-sm flex items-center gap-1.5"
+                                            >
+                                                <Trash2 className="w-4 h-4" /> Delete
+                                            </button>
+                                        </>
+                                    )}
 
                                     <div className="h-4 w-px bg-primary-200 mx-2" />
                                     <button
@@ -1411,9 +1424,11 @@ export default function Repository() {
                             {filteredCases.length === 0 ? (
                                 <div className="flex flex-col items-center justify-center h-full text-slate-500">
                                     <p className="mb-4">No test cases found in this suite.</p>
-                                    <button onClick={handleCreateCase} className="btn-primary flex items-center gap-2 shadow-sm">
-                                        <Plus className="w-4 h-4" /> Create First Case
-                                    </button>
+                                    {writable && (
+                                        <button onClick={handleCreateCase} className="btn-primary flex items-center gap-2 shadow-sm">
+                                            <Plus className="w-4 h-4" /> Create First Case
+                                        </button>
+                                    )}
                                 </div>
                             ) : (
                                 <table className="w-full text-left border-collapse min-w-max">

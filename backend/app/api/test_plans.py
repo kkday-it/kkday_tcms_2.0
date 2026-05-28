@@ -3,19 +3,21 @@ import io
 import json
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import case, delete, func, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 
+from app.api.deps import record_audit, require_role
 from app.db.database import get_db
 from app.models.test_case import TestCase
 from app.models.test_plan import TestPlan, plan_cases, plan_runs
 from app.models.test_plan_history import TestPlanHistory
 from app.models.test_result import TestResult
 from app.models.test_run import TestRun
+from app.models.user import User
 from app.schemas.test_plan import TestPlanCreate, TestPlanResponse, TestPlanUpdate
 from app.schemas.test_plan_history import TestPlanHistoryResponse
 
@@ -280,7 +282,7 @@ async def get_test_plans(project_id: int = None, db: AsyncSession = Depends(get_
 
 
 @router.post("/", response_model=TestPlanResponse)
-async def create_test_plan(plan_in: TestPlanCreate, db: AsyncSession = Depends(get_db), actor_id: int = Depends(get_actor_id)):
+async def create_test_plan(plan_in: TestPlanCreate, db: AsyncSession = Depends(get_db), actor: User = Depends(require_role("Admin", "QA"))):
     data = plan_in.model_dump(exclude={"run_ids", "case_ids"})
     db_plan = TestPlan(**data)
     db.add(db_plan)
@@ -288,11 +290,11 @@ async def create_test_plan(plan_in: TestPlanCreate, db: AsyncSession = Depends(g
 
     await _set_runs(db, db_plan.id, plan_in.run_ids or [])
     await _set_cases(db, db_plan.id, plan_in.case_ids or [])
-    
+
     # Create history
     history = TestPlanHistory(
         plan_id=db_plan.id,
-        user_id=actor_id,
+        user_id=actor.id,
         action="Created",
         changed_fields=json.dumps({"title": db_plan.title})
     )
@@ -341,7 +343,7 @@ async def get_plan_runs(plan_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.put("/{plan_id}", response_model=TestPlanResponse)
-async def update_test_plan(plan_id: int, plan_update: TestPlanUpdate, db: AsyncSession = Depends(get_db), actor_id: int = Depends(get_actor_id)):
+async def update_test_plan(plan_id: int, plan_update: TestPlanUpdate, db: AsyncSession = Depends(get_db), actor: User = Depends(require_role("Admin", "QA"))):
     db_plan = await db.get(TestPlan, plan_id)
     if not db_plan:
         raise HTTPException(status_code=404, detail="Test Plan not found")
@@ -358,7 +360,7 @@ async def update_test_plan(plan_id: int, plan_update: TestPlanUpdate, db: AsyncS
     # History record (Simplified for now)
     history = TestPlanHistory(
         plan_id=db_plan.id,
-        user_id=actor_id,
+        user_id=actor.id,
         action="Updated",
         changed_fields=json.dumps({"update": "Plan fields or linked items modified"}, ensure_ascii=False)
     )
@@ -369,26 +371,37 @@ async def update_test_plan(plan_id: int, plan_update: TestPlanUpdate, db: AsyncS
 
 
 @router.delete("/{plan_id}")
-async def delete_test_plan(plan_id: int, db: AsyncSession = Depends(get_db), actor_id: int = Depends(get_actor_id)):
+async def delete_test_plan(
+    plan_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    actor: User = Depends(require_role("Admin", "QA")),
+):
     db_plan = await db.get(TestPlan, plan_id)
     if not db_plan:
         raise HTTPException(status_code=404, detail="Test Plan not found")
     db_plan.status = "Archived"
-    
+
     # History record
     history = TestPlanHistory(
         plan_id=db_plan.id,
-        user_id=actor_id,
+        user_id=actor.id,
         action="Archived",
         changed_fields=json.dumps({"status": "Active -> Archived"}, ensure_ascii=False)
     )
     db.add(history)
-    
+
     await db.commit()
+    await record_audit(
+        db, request, actor,
+        action="delete_plan",
+        resource_type="test_plan",
+        resource_id=plan_id,
+    )
     return {"message": "Test Plan archived"}
 
 @router.post("/{plan_id}/clone", response_model=TestPlanResponse)
-async def clone_test_plan(plan_id: int, db: AsyncSession = Depends(get_db), actor_id: int = Depends(get_actor_id)):
+async def clone_test_plan(plan_id: int, db: AsyncSession = Depends(get_db), actor: User = Depends(require_role("Admin", "QA"))):
     """
     複製一個 Test Plan，包含關聯的 runs 與 cases。
     新計畫標題為「{原標題} (複製)」，狀態重置為 Draft，資料夾維持相同。
@@ -424,7 +437,7 @@ async def clone_test_plan(plan_id: int, db: AsyncSession = Depends(get_db), acto
 
     history = TestPlanHistory(
         plan_id=new_plan.id,
-        user_id=actor_id,
+        user_id=actor.id,
         action="Created",
         changed_fields=json.dumps({"title": new_plan.title, "cloned_from": plan_id}, ensure_ascii=False),
     )
@@ -435,26 +448,37 @@ async def clone_test_plan(plan_id: int, db: AsyncSession = Depends(get_db), acto
 
 
 @router.post("/{plan_id}/restore")
-async def restore_test_plan(plan_id: int, db: AsyncSession = Depends(get_db), actor_id: int = Depends(get_actor_id)):
+async def restore_test_plan(
+    plan_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    actor: User = Depends(require_role("Admin", "QA")),
+):
     db_plan = await db.get(TestPlan, plan_id)
     if not db_plan:
         raise HTTPException(status_code=404, detail="Test Plan not found")
-    
+
     if db_plan.status != "Archived":
         return {"message": "Test Plan is not archived"}
 
     db_plan.status = "Draft"
-    
+
     # History record
     history = TestPlanHistory(
         plan_id=db_plan.id,
-        user_id=actor_id,
+        user_id=actor.id,
         action="Restored",
         changed_fields=json.dumps({"status": "Archived -> Draft"}, ensure_ascii=False)
     )
     db.add(history)
-    
+
     await db.commit()
+    await record_audit(
+        db, request, actor,
+        action="restore_plan",
+        resource_type="test_plan",
+        resource_id=plan_id,
+    )
     return {"message": "Test Plan restored successfully"}
 
 

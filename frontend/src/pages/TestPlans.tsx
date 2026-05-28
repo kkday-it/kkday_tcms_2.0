@@ -4,6 +4,7 @@ import { ClipboardList, Plus, Loader2, Trash2, Pencil, Folder as FolderIcon, Dow
 import { DndContext, DragEndEvent, closestCenter, useDroppable, useSensor, useSensors, PointerSensor, useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import api from '../lib/api';
+import { canWrite } from '../lib/permissions';
 import PlanFolderNode from '../components/plans/PlanFolderNode';
 import EditPlanFolderModal from '../components/plans/EditPlanFolderModal';
 import EditPlanModal, { CaseFolder } from '../components/plans/EditPlanModal';
@@ -42,6 +43,7 @@ interface TestPlan {
 
 function DraggablePlanCard({ plan, onEdit, onDelete, onClone }: { plan: TestPlan; onEdit: () => void; onDelete: () => void; onClone: () => void }) {
     const navigate = useNavigate();
+    const writable = canWrite();
     const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
         id: `plan-${plan.id}`,
         data: { type: 'plan', plan }
@@ -89,10 +91,12 @@ function DraggablePlanCard({ plan, onEdit, onDelete, onClone }: { plan: TestPlan
                         className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="編輯計畫">
                         <Pencil className="w-4 h-4" />
                     </button>
-                    <button onClick={(e) => { e.stopPropagation(); onDelete(); }}
-                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="刪除計畫">
-                        <Trash2 className="w-4 h-4" />
-                    </button>
+                    {writable && (
+                        <button onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                            className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="刪除計畫">
+                            <Trash2 className="w-4 h-4" />
+                        </button>
+                    )}
                 </div>
             </div>
         </div>
@@ -114,6 +118,7 @@ function RootDroppableArea({ children, className }: { children: React.ReactNode;
 
 export default function TestPlans() {
     const projectId = 1;
+    const writable = canWrite();
 
     const [plans, setPlans] = useState<TestPlan[]>([]);
     const [planSearchQuery, setPlanSearchQuery] = useState('');
@@ -359,10 +364,12 @@ export default function TestPlans() {
                         <div className="p-4 border-b border-slate-200 shrink-0">
                             <div className="flex items-center justify-between">
                                 <h2 className="text-sm font-bold tracking-wider text-slate-500 uppercase">Folders</h2>
-                                <button onClick={() => { setIsAddingFolder(true); setNewFolderParentId(null); setNewFolderName(''); }}
-                                    className="p-1 hover:bg-slate-200 text-slate-400 hover:text-slate-600 rounded">
-                                    <Plus className="w-4 h-4" />
-                                </button>
+                                {writable && (
+                                    <button onClick={() => { setIsAddingFolder(true); setNewFolderParentId(null); setNewFolderName(''); }}
+                                        className="p-1 hover:bg-slate-200 text-slate-400 hover:text-slate-600 rounded">
+                                        <Plus className="w-4 h-4" />
+                                    </button>
+                                )}
                             </div>
                         </div>
 
@@ -412,10 +419,12 @@ export default function TestPlans() {
                                             </div>
                                         )}
                                     </div>
-                                    <button onClick={() => { fetchEditData(); setEditingPlan(null); }}
-                                        className="btn-primary flex items-center gap-2">
-                                        <Plus className="w-4 h-4" /> New Plan
-                                    </button>
+                                    {writable && (
+                                        <button onClick={() => { fetchEditData(); setEditingPlan(null); }}
+                                            className="btn-primary flex items-center gap-2">
+                                            <Plus className="w-4 h-4" /> New Plan
+                                        </button>
+                                    )}
                                 </div>
                             </div>
 
@@ -457,9 +466,11 @@ export default function TestPlans() {
                                         <ClipboardList className="w-12 h-12 text-slate-300 mb-4" />
                                         <p className="text-lg font-medium text-slate-700 mb-1">No test plans here</p>
                                         <p className="text-sm mb-6">Create a plan to group test runs and cases.</p>
-                                        <button onClick={() => { fetchEditData(); setEditingPlan(null); }} className="btn-primary flex items-center gap-2">
-                                            <Plus className="w-4 h-4" /> New Plan
-                                        </button>
+                                        {writable && (
+                                            <button onClick={() => { fetchEditData(); setEditingPlan(null); }} className="btn-primary flex items-center gap-2">
+                                                <Plus className="w-4 h-4" /> New Plan
+                                            </button>
+                                        )}
                                     </div>
                                 )
                             ) : (

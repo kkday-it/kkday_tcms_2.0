@@ -4,11 +4,13 @@ from sqlalchemy.future import select
 from typing import List
 from datetime import datetime, timezone
 
+from app.api.deps import require_role
 from app.db.database import get_db
 from app.models.test_result import TestResult
 from app.models.test_case import TestCase
 from app.models.test_step import TestStep
 from app.models.test_step_result import TestStepResult
+from app.models.user import User
 from app.schemas.test_result import TestResultUpdate, TestResultResponse
 from app.schemas.test_step_result import TestStepResultUpdate
 
@@ -127,7 +129,7 @@ async def get_result_details(result_id: int, db: AsyncSession = Depends(get_db))
     }
 
 @router.put("/{result_id}/steps/{step_id}")
-async def update_step_result(result_id: int, step_id: int, step_in: dict, db: AsyncSession = Depends(get_db)):
+async def update_step_result(result_id: int, step_id: int, step_in: dict, db: AsyncSession = Depends(get_db), _actor: User = Depends(require_role("Admin", "QA"))):
     # Check if a TestStepResult already exists
     query = select(TestStepResult).where(
         (TestStepResult.test_result_id == result_id) & 
@@ -156,7 +158,7 @@ async def update_step_result(result_id: int, step_id: int, step_in: dict, db: As
     return step_res
 
 @router.put("/{result_id}", response_model=TestResultResponse)
-async def update_test_result(result_id: int, result_in: TestResultUpdate, db: AsyncSession = Depends(get_db)):
+async def update_test_result(result_id: int, result_in: TestResultUpdate, db: AsyncSession = Depends(get_db), _actor: User = Depends(require_role("Admin", "QA"))):
     test_result = await db.get(TestResult, result_id)
     if not test_result:
         raise HTTPException(status_code=404, detail="TestResult not found")

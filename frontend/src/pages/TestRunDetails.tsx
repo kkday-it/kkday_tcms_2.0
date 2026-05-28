@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useParams, Link, useSearchParams } from 'react-router-dom';
 import { Loader2, ArrowLeft, CheckCircle2, XCircle, SkipForward, Edit2, Filter, X, Save, Ban } from 'lucide-react';
 import api from '../lib/api';
+import { canWrite } from '../lib/permissions';
 import { useUsers } from '../lib/useUsers';
 import TestCaseExecutionPane from '../components/runs/TestCaseExecutionPane';
 import EditRunModal from '../components/runs/EditRunModal';
@@ -358,6 +359,7 @@ export default function TestRunDetails() {
         );
     }
 
+    const writable = canWrite();
     const passed = results.filter(r => r.status === 'Passed').length;
     const failed = results.filter(r => r.status === 'Failed').length;
     const blocked = results.filter(r => r.status === 'Blocked').length;
@@ -408,13 +410,15 @@ export default function TestRunDetails() {
                             )}
                         </button>
 
-                        <button
-                            onClick={() => setIsEditModalOpen(true)}
-                            className="px-4 py-2 bg-white text-slate-700 border border-slate-200 text-sm font-medium rounded-lg hover:bg-slate-50 transition-colors shadow-sm flex items-center gap-2"
-                        >
-                            <Edit2 className="w-4 h-4" /> Edit Run
-                        </button>
-                        {testRun?.status !== 'Done' && (
+                        {writable && (
+                            <button
+                                onClick={() => setIsEditModalOpen(true)}
+                                className="px-4 py-2 bg-white text-slate-700 border border-slate-200 text-sm font-medium rounded-lg hover:bg-slate-50 transition-colors shadow-sm flex items-center gap-2"
+                            >
+                                <Edit2 className="w-4 h-4" /> Edit Run
+                            </button>
+                        )}
+                        {writable && testRun?.status !== 'Done' && (
                             <button
                                 onClick={handleCompleteRun}
                                 className="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800 transition-colors shadow-sm"

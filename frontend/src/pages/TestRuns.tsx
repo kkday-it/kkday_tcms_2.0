@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Play, CheckCircle2, XCircle, SkipForward, Clock, Loader2, Trash2, Copy, Search, Plus, Folder as FolderIcon, Pencil, Ban, Download, ChevronDown, CalendarDays, Link2, Check, X } from 'lucide-react';
 import { DndContext, DragEndEvent, closestCenter, useDroppable, useSensor, useSensors, PointerSensor, useDraggable } from '@dnd-kit/core';
 import api from '../lib/api';
+import { canWrite } from '../lib/permissions';
 import CreateRunModal from '../components/runs/CreateRunModal';
 import EditRunFolderModal from '../components/runs/EditRunFolderModal';
 import EditRunModal from '../components/runs/EditRunModal';
@@ -21,6 +22,7 @@ function RootDroppableArea({ children, className }: { children: React.ReactNode,
 
 function DraggableRunCard({ run, onClick, onEdit, onDuplicate, onDelete }: { run: TestRun, onClick: () => void, onEdit: (e: React.MouseEvent) => void, onDuplicate: (e: React.MouseEvent) => void, onDelete: (e: React.MouseEvent) => void }) {
     const [copied, setCopied] = useState(false);
+    const writable = canWrite();
     const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
         id: `run-${run.id}`,
         data: { type: 'run', run }
@@ -127,9 +129,11 @@ function DraggableRunCard({ run, onClick, onEdit, onDuplicate, onDelete }: { run
                 >
                     {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Link2 className="w-3.5 h-3.5" />}
                 </button>
-                <button onClick={onDelete} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors" title="刪除">
-                    <Trash2 className="w-3.5 h-3.5" />
-                </button>
+                {writable && (
+                    <button onClick={onDelete} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors" title="刪除">
+                        <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                )}
             </div>
         </div>
     );
@@ -163,6 +167,7 @@ export default function TestRuns() {
     const projectId = 1; // Hardcoded for now
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
+    const writable = canWrite();
 
     // Test Runs state
     const [runs, setRuns] = useState<TestRun[]>([]);
@@ -599,12 +604,14 @@ export default function TestRuns() {
                         <div className="p-4 border-b border-slate-200 flex-shrink-0">
                             <div className="flex items-center justify-between mb-4">
                                 <h2 className="text-sm font-bold tracking-wider text-slate-500 uppercase">資料夾</h2>
-                                <button
-                                    onClick={() => setIsAddingFolder(true)}
-                                    className="p-1 hover:bg-slate-200 text-slate-400 hover:text-slate-600 rounded transition-colors"
-                                >
-                                    <Plus className="w-4 h-4" />
-                                </button>
+                                {writable && (
+                                    <button
+                                        onClick={() => setIsAddingFolder(true)}
+                                        className="p-1 hover:bg-slate-200 text-slate-400 hover:text-slate-600 rounded transition-colors"
+                                    >
+                                        <Plus className="w-4 h-4" />
+                                    </button>
+                                )}
                             </div>
 
                             <div className="relative">
@@ -672,12 +679,14 @@ export default function TestRuns() {
                                             </div>
                                         )}
                                     </div>
-                                    <button
-                                        onClick={() => { setDuplicateData(null); setIsCreatingRun(true); }}
-                                        className="btn-primary flex items-center gap-2"
-                                    >
-                                        <Play className="w-4 h-4" fill="currentColor" /> 開始新執行
-                                    </button>
+                                    {writable && (
+                                        <button
+                                            onClick={() => { setDuplicateData(null); setIsCreatingRun(true); }}
+                                            className="btn-primary flex items-center gap-2"
+                                        >
+                                            <Play className="w-4 h-4" fill="currentColor" /> 開始新執行
+                                        </button>
+                                    )}
                                 </div>
                             </div>
 
@@ -712,12 +721,14 @@ export default function TestRuns() {
                                         <Play className="w-12 h-12 text-slate-300 mb-4" />
                                         <p className="mb-2 text-lg font-medium text-slate-900">尚無測試執行</p>
                                         <p className="mb-6 text-sm">開始新的測試執行以追蹤案例結果。</p>
-                                        <button
-                                            onClick={() => { setDuplicateData(null); setIsCreatingRun(true); }}
-                                            className="btn-primary flex items-center gap-2"
-                                        >
-                                            <Play className="w-4 h-4" fill="currentColor" /> 開始新執行
-                                        </button>
+                                        {writable && (
+                                            <button
+                                                onClick={() => { setDuplicateData(null); setIsCreatingRun(true); }}
+                                                className="btn-primary flex items-center gap-2"
+                                            >
+                                                <Play className="w-4 h-4" fill="currentColor" /> 開始新執行
+                                            </button>
+                                        )}
                                     </div>
                                 )
                             ) : isLoading ? (

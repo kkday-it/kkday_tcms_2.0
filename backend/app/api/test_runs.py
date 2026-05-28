@@ -4,13 +4,14 @@ import json
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, case, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 
+from app.api.deps import record_audit, require_role
 from app.db.database import get_db
 from app.models.test_case import TestCase
 from app.models.test_result import TestResult
@@ -226,7 +227,7 @@ async def list_runs_by_project(project_id: int, db: AsyncSession = Depends(get_d
 
 
 @router.post("/", response_model=TestRunResponse)
-async def create_run(run_in: TestRunCreate, db: AsyncSession = Depends(get_db)):
+async def create_run(run_in: TestRunCreate, db: AsyncSession = Depends(get_db), _actor: User = Depends(require_role("Admin", "QA"))):
     run_data = run_in.model_dump(exclude={"case_ids", "assignee_ids"})
     run = TestRun(**run_data)
 
@@ -285,7 +286,7 @@ async def get_run(run_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.put("/{run_id}", response_model=TestRunResponse)
-async def update_run(run_id: int, run_in: TestRunUpdate, db: AsyncSession = Depends(get_db)):
+async def update_run(run_id: int, run_in: TestRunUpdate, db: AsyncSession = Depends(get_db), _actor: User = Depends(require_role("Admin", "QA"))):
     run = await _get_run_with_assignees(run_id, db)
     if not run:
         raise HTTPException(status_code=404, detail="TestRun not found")
@@ -355,7 +356,12 @@ async def update_run(run_id: int, run_in: TestRunUpdate, db: AsyncSession = Depe
 
 
 @router.delete("/{run_id}")
-async def delete_run(run_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_run(
+    run_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    actor: User = Depends(require_role("Admin", "QA")),
+):
     run = await db.get(TestRun, run_id)
     if not run:
         raise HTTPException(status_code=404, detail="TestRun not found")
@@ -372,11 +378,17 @@ async def delete_run(run_id: int, db: AsyncSession = Depends(get_db)):
     db.add(history)
 
     await db.commit()
+    await record_audit(
+        db, request, actor,
+        action="delete_run",
+        resource_type="test_run",
+        resource_id=run_id,
+    )
     return {"message": "TestRun archived successfully"}
 
 
 @router.post("/bulk-copy", response_model=List[TestRunResponse])
-async def bulk_copy_runs(body: BulkCopyRunsRequest, db: AsyncSession = Depends(get_db)):
+async def bulk_copy_runs(body: BulkCopyRunsRequest, db: AsyncSession = Depends(get_db), _actor: User = Depends(require_role("Admin", "QA"))):
     """Copy multiple runs at once, replacing '$template' in titles with the given date string.
 
     Performs everything in a single DB transaction to avoid per-run round-trips.
@@ -470,7 +482,12 @@ async def bulk_copy_runs(body: BulkCopyRunsRequest, db: AsyncSession = Depends(g
 
 
 @router.post("/{run_id}/restore")
-async def restore_test_run(run_id: int, db: AsyncSession = Depends(get_db)):
+async def restore_test_run(
+    run_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    actor: User = Depends(require_role("Admin", "QA")),
+):
     run = await db.get(TestRun, run_id)
     if not run:
         raise HTTPException(status_code=404, detail="TestRun not found")
@@ -490,11 +507,17 @@ async def restore_test_run(run_id: int, db: AsyncSession = Depends(get_db)):
     db.add(history)
 
     await db.commit()
+    await record_audit(
+        db, request, actor,
+        action="restore_run",
+        resource_type="test_run",
+        resource_id=run_id,
+    )
     return {"message": "TestRun restored successfully"}
 
 
 @router.post("/bulk-copy", response_model=List[TestRunResponse])
-async def bulk_copy_runs(body: BulkCopyRunsRequest, db: AsyncSession = Depends(get_db)):
+async def bulk_copy_runs(body: BulkCopyRunsRequest, db: AsyncSession = Depends(get_db), _actor: User = Depends(require_role("Admin", "QA"))):  # noqa: F811 — duplicate route kept for reference; FastAPI only registers the first
     """Copy multiple runs at once, replacing '$template' in titles with the given date string.
 
     Performs everything in a single DB transaction to avoid per-run round-trips.
@@ -563,7 +586,7 @@ async def bulk_copy_runs(body: BulkCopyRunsRequest, db: AsyncSession = Depends(g
 
 
 @router.post("/{run_id}/duplicate", response_model=TestRunResponse)
-async def duplicate_run(run_id: int, db: AsyncSession = Depends(get_db)):
+async def duplicate_run(run_id: int, db: AsyncSession = Depends(get_db), _actor: User = Depends(require_role("Admin", "QA"))):
     original_run = await _get_run_with_assignees(run_id, db)
     if not original_run:
         raise HTTPException(status_code=404, detail="Original TestRun not found")

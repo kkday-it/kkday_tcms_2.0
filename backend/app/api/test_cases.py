@@ -4,18 +4,20 @@ import json
 import logging
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload, with_loader_criteria
 
+from app.api.deps import record_audit, require_role
 from app.db.database import get_db
 from app.models.test_case import TestCase
 from app.models.test_case_history import TestCaseHistory
 from app.models.test_step import TestStep
 from app.models.test_suite import TestSuite
+from app.models.user import User
 from app.schemas.test_case import TestCaseCreate, TestCaseResponse, TestCaseUpdate, TestCaseBatchDelete, TestCaseBatchMove
 from app.schemas.test_case_history import TestCaseHistoryResponse
 from app.services.dify_sync import build_case_metadata, build_case_text
@@ -107,7 +109,7 @@ async def list_cases_by_suite(suite_id: int, db: AsyncSession = Depends(get_db))
     return result.scalars().all()
 
 @router.post("/", response_model=TestCaseResponse)
-async def create_case(case_in: TestCaseCreate, db: AsyncSession = Depends(get_db)):
+async def create_case(case_in: TestCaseCreate, db: AsyncSession = Depends(get_db), _actor: User = Depends(require_role("Admin", "QA"))):
     provided_ext_id = case_in.external_id and case_in.external_id.strip()
 
     case_data = case_in.model_dump(exclude={"steps"})
@@ -302,7 +304,12 @@ async def export_cases(
 # producing a 422 with "value is not a valid integer" (see KQT-15197).
 
 @router.delete("/batch")
-async def batch_delete_cases(payload: TestCaseBatchDelete, db: AsyncSession = Depends(get_db)):
+async def batch_delete_cases(
+    request: Request,
+    payload: TestCaseBatchDelete,
+    db: AsyncSession = Depends(get_db),
+    actor: User = Depends(require_role("Admin", "QA")),
+):
     if not payload.case_ids:
         return {"message": "No test cases provided"}
 
@@ -323,11 +330,18 @@ async def batch_delete_cases(payload: TestCaseBatchDelete, db: AsyncSession = De
         db.add(history)
 
     await db.commit()
+    await record_audit(
+        db, request, actor,
+        action="delete_case_batch",
+        resource_type="test_case",
+        resource_id=None,
+        metadata={"case_ids": payload.case_ids},
+    )
     return {"message": f"Successfully archived {len(cases)} TestCases"}
 
 
 @router.put("/batch-move")
-async def batch_move_cases(payload: TestCaseBatchMove, db: AsyncSession = Depends(get_db)):
+async def batch_move_cases(payload: TestCaseBatchMove, db: AsyncSession = Depends(get_db), _actor: User = Depends(require_role("Admin", "QA"))):
     if not payload.case_ids:
         return {"message": "No test cases provided"}
 
@@ -370,7 +384,7 @@ async def get_case(case_id: int, db: AsyncSession = Depends(get_db)):
     return case
 
 @router.put("/{case_id}", response_model=TestCaseResponse)
-async def update_case(case_id: int, case_in: TestCaseUpdate, db: AsyncSession = Depends(get_db)):
+async def update_case(case_id: int, case_in: TestCaseUpdate, db: AsyncSession = Depends(get_db), _actor: User = Depends(require_role("Admin", "QA"))):
     # KQT-15246: only load active step rows. Without this filter every
     # archived row from prior edits would land in `existing_steps` and the
     # soft-delete loop below would redundantly re-stamp `status = "Archived"`
@@ -471,13 +485,18 @@ async def update_case(case_id: int, case_in: TestCaseUpdate, db: AsyncSession = 
     return result.scalar_one()
 
 @router.delete("/{case_id}")
-async def delete_case(case_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_case(
+    case_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    actor: User = Depends(require_role("Admin", "QA")),
+):
     case = await db.get(TestCase, case_id)
     if not case:
         raise HTTPException(status_code=404, detail="TestCase not found")
-    
+
     case.status = "Archived"
-    
+
     # Create history record
     history = TestCaseHistory(
         case_id=case.id,
@@ -486,21 +505,32 @@ async def delete_case(case_id: int, db: AsyncSession = Depends(get_db)):
         changed_fields=json.dumps({"status": "Active -> Archived"}, ensure_ascii=False)
     )
     db.add(history)
-    
+
     await db.commit()
+    await record_audit(
+        db, request, actor,
+        action="delete_case",
+        resource_type="test_case",
+        resource_id=case_id,
+    )
     return {"message": "TestCase archived successfully"}
 
 @router.post("/{case_id}/restore")
-async def restore_case(case_id: int, db: AsyncSession = Depends(get_db)):
+async def restore_case(
+    case_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    actor: User = Depends(require_role("Admin", "QA")),
+):
     case = await db.get(TestCase, case_id)
     if not case:
         raise HTTPException(status_code=404, detail="TestCase not found")
-    
+
     if case.status != "Archived":
         return {"message": "TestCase is not archived"}
 
     case.status = "Active"
-    
+
     # Create history record
     history = TestCaseHistory(
         case_id=case.id,
@@ -509,8 +539,14 @@ async def restore_case(case_id: int, db: AsyncSession = Depends(get_db)):
         changed_fields=json.dumps({"status": "Archived -> Active"}, ensure_ascii=False)
     )
     db.add(history)
-    
+
     await db.commit()
+    await record_audit(
+        db, request, actor,
+        action="restore_case",
+        resource_type="test_case",
+        resource_id=case_id,
+    )
     return {"message": "TestCase restored successfully"}
 
 @router.get("/{case_id}/history", response_model=List[TestCaseHistoryResponse])

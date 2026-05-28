@@ -1,12 +1,14 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import func
 from typing import List
 
+from app.api.deps import record_audit, require_role
 from app.db.database import get_db
 from app.models.test_suite import TestSuite
 from app.models.test_case import TestCase
+from app.models.user import User
 from app.schemas.test_suite import TestSuiteCreate, TestSuiteUpdate, TestSuiteResponse
 
 router = APIRouter()
@@ -60,7 +62,7 @@ async def list_suites_by_project(project_id: int, db: AsyncSession = Depends(get
     return suites
 
 @router.post("/", response_model=TestSuiteResponse)
-async def create_suite(suite_in: TestSuiteCreate, db: AsyncSession = Depends(get_db)):
+async def create_suite(suite_in: TestSuiteCreate, db: AsyncSession = Depends(get_db), _actor: User = Depends(require_role("Admin", "QA"))):
     suite = TestSuite(**suite_in.model_dump())
     db.add(suite)
     await db.commit()
@@ -93,7 +95,7 @@ async def get_suite(suite_id: int, db: AsyncSession = Depends(get_db)):
     return suite_dict
 
 @router.put("/{suite_id}", response_model=TestSuiteResponse)
-async def update_suite(suite_id: int, suite_in: TestSuiteUpdate, db: AsyncSession = Depends(get_db)):
+async def update_suite(suite_id: int, suite_in: TestSuiteUpdate, db: AsyncSession = Depends(get_db), _actor: User = Depends(require_role("Admin", "QA"))):
     suite = await db.get(TestSuite, suite_id)
     if not suite:
         raise HTTPException(status_code=404, detail="TestSuite not found")
@@ -114,11 +116,22 @@ async def update_suite(suite_id: int, suite_in: TestSuiteUpdate, db: AsyncSessio
     return suite_dict
 
 @router.delete("/{suite_id}")
-async def delete_suite(suite_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_suite(
+    suite_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    actor: User = Depends(require_role("Admin", "QA")),
+):
     suite = await db.get(TestSuite, suite_id)
     if not suite:
         raise HTTPException(status_code=404, detail="TestSuite not found")
-    
+
     await db.delete(suite)
     await db.commit()
+    await record_audit(
+        db, request, actor,
+        action="delete_suite",
+        resource_type="test_suite",
+        resource_id=suite_id,
+    )
     return {"message": "TestSuite deleted successfully"}

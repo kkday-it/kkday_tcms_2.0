@@ -1,11 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from typing import List, Optional
 from pydantic import BaseModel
 
+from app.api.deps import record_audit, require_role
 from app.db.database import get_db
 from app.models.test_plan_folder import TestPlanFolder
+from app.models.user import User
 
 router = APIRouter()
 
@@ -41,7 +43,7 @@ async def get_plan_folders_by_project(project_id: int, db: AsyncSession = Depend
     return result.scalars().all()
 
 @router.post("/", response_model=FolderResponse)
-async def create_plan_folder(folder: FolderCreate, db: AsyncSession = Depends(get_db)):
+async def create_plan_folder(folder: FolderCreate, db: AsyncSession = Depends(get_db), _actor: User = Depends(require_role("Admin", "QA"))):
     db_folder = TestPlanFolder(**folder.model_dump())
     db.add(db_folder)
     await db.commit()
@@ -49,7 +51,7 @@ async def create_plan_folder(folder: FolderCreate, db: AsyncSession = Depends(ge
     return db_folder
 
 @router.put("/{folder_id}", response_model=FolderResponse)
-async def update_plan_folder(folder_id: int, folder_update: FolderUpdate, db: AsyncSession = Depends(get_db)):
+async def update_plan_folder(folder_id: int, folder_update: FolderUpdate, db: AsyncSession = Depends(get_db), _actor: User = Depends(require_role("Admin", "QA"))):
     db_folder = await db.get(TestPlanFolder, folder_id)
     if not db_folder:
         raise HTTPException(status_code=404, detail="Folder not found")
@@ -61,10 +63,21 @@ async def update_plan_folder(folder_id: int, folder_update: FolderUpdate, db: As
     return db_folder
 
 @router.delete("/{folder_id}")
-async def delete_plan_folder(folder_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_plan_folder(
+    folder_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    actor: User = Depends(require_role("Admin", "QA")),
+):
     db_folder = await db.get(TestPlanFolder, folder_id)
     if not db_folder:
         raise HTTPException(status_code=404, detail="Folder not found")
     await db.delete(db_folder)
     await db.commit()
+    await record_audit(
+        db, request, actor,
+        action="delete_plan_folder",
+        resource_type="test_plan_folder",
+        resource_id=folder_id,
+    )
     return {"message": "Folder deleted"}

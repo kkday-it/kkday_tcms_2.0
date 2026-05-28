@@ -1,9 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from typing import List
 
-from app.api.deps import issue_web_session_token
+from app.api.deps import get_current_user, issue_web_session_token, record_audit, require_role
 from app.core.security import hash_password, is_legacy_sha256, verify_password
 from app.db.database import get_db
 from app.models.user import User
@@ -19,7 +19,7 @@ async def get_users(db: AsyncSession = Depends(get_db)):
     return result.scalars().all()
 
 @router.post("/", response_model=UserResponse)
-async def create_user(user: UserCreate, db: AsyncSession = Depends(get_db)):
+async def create_user(user: UserCreate, db: AsyncSession = Depends(get_db), _actor: User = Depends(require_role("Admin"))):
     user_data = user.model_dump(exclude={"password"})
     db_user = User(**user_data)
     
@@ -90,7 +90,7 @@ async def reset_password(reset_data: UserPasswordReset, db: AsyncSession = Depen
     return {"message": "Password updated successfully"}
 
 @router.post("/change-password")
-async def change_password(change_data: UserChangePassword, db: AsyncSession = Depends(get_db)):
+async def change_password(change_data: UserChangePassword, db: AsyncSession = Depends(get_db), _actor: User = Depends(get_current_user)):
     user = await db.get(User, change_data.user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -102,24 +102,39 @@ async def change_password(change_data: UserChangePassword, db: AsyncSession = De
     return {"message": "Password changed successfully"}
 
 @router.post("/{user_id}/reset-default")
-async def reset_default_password(user_id: int, db: AsyncSession = Depends(get_db)):
+async def reset_default_password(
+    user_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    actor: User = Depends(require_role("Admin")),
+):
     user = await db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-        
+
     # SHA-256 of '1234', then bcrypt-wrapped (matches the frontend pre-hash flow).
     SHA256_OF_1234 = "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4"
     user.hashed_password = hash_password(SHA256_OF_1234)
     user.force_change_password = True
     await db.commit()
+    await record_audit(
+        db, request, actor,
+        action="reset_user_password",
+        resource_type="user",
+        resource_id=user_id,
+    )
     return {"message": "Password reset to default (1234)"}
 
 @router.post("/migrate-passwords")
-async def migrate_all_passwords(db: AsyncSession = Depends(get_db)):
+async def migrate_all_passwords(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    actor: User = Depends(require_role("Admin")),
+):
     # Set all existing users to default 1234. Quick endpoint for the migration.
     result = await db.execute(select(User))
     users = result.scalars().all()
-    
+
     SHA256_OF_1234 = "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4"
     default_hash = hash_password(SHA256_OF_1234)
     for u in users:
@@ -127,6 +142,12 @@ async def migrate_all_passwords(db: AsyncSession = Depends(get_db)):
         u.force_change_password = True
 
     await db.commit()
+    await record_audit(
+        db, request, actor,
+        action="migrate_all_passwords",
+        resource_type="user",
+        resource_id=None,
+    )
     return {"message": f"Migrated {len(users)} users"}
 
 @router.get("/{user_id}", response_model=UserResponse)
@@ -137,25 +158,48 @@ async def get_user(user_id: int, db: AsyncSession = Depends(get_db)):
     return user
 
 @router.put("/{user_id}", response_model=UserResponse)
-async def update_user(user_id: int, user_update: UserUpdate, db: AsyncSession = Depends(get_db)):
+async def update_user(
+    user_id: int,
+    user_update: UserUpdate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    actor: User = Depends(require_role("Admin")),
+):
     db_user = await db.get(User, user_id)
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
     update_data = user_update.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(db_user, key, value)
-        
+
     await db.commit()
     await db.refresh(db_user)
+    await record_audit(
+        db, request, actor,
+        action="update_user",
+        resource_type="user",
+        resource_id=user_id,
+    )
     return db_user
 
 @router.delete("/{user_id}")
-async def delete_user(user_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_user(
+    user_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    actor: User = Depends(require_role("Admin")),
+):
     db_user = await db.get(User, user_id)
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
     await db.delete(db_user)
     await db.commit()
+    await record_audit(
+        db, request, actor,
+        action="delete_user",
+        resource_type="user",
+        resource_id=user_id,
+    )
     return {"message": "User deleted"}
