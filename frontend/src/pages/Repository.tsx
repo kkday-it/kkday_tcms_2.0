@@ -1394,7 +1394,7 @@ export default function Repository() {
                                     </select>
                                     <button
                                         onClick={handleBatchAssignOwner}
-                                        className="px-4 py-1.5 text-sm font-semibold text-white bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors shadow-sm"
+                                        className="btn-primary !py-1.5"
                                     >
                                         Apply
                                     </button>
@@ -1413,7 +1413,7 @@ export default function Repository() {
                                     <button
                                         onClick={handleBatchMoveCases}
                                         disabled={!batchMoveSuiteId}
-                                        className="px-4 py-1.5 text-sm font-semibold text-white bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors shadow-sm disabled:opacity-50"
+                                        className="btn-primary !py-1.5 disabled:opacity-50"
                                     >
                                         Move
                                     </button>

@@ -66,7 +66,7 @@ export default function Users() {
                 </div>
                 <button
                     onClick={() => setIsAddOpen(true)}
-                    className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors shadow-sm font-medium"
+                    className="btn-primary items-center gap-2"
                 >
                     <Plus className="w-4 h-4" />
                     Add User
