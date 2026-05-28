@@ -6,6 +6,7 @@ import { DndContext, DragEndEvent, pointerWithin, closestCenter, useDroppable, u
 import { CSS } from '@dnd-kit/utilities';
 import TestCaseEditor from '../components/cases/TestCaseEditor';
 import TestCasePreviewPane from '../components/cases/TestCasePreviewPane';
+import ExportCasesModal from '../components/cases/ExportCasesModal';
 import EditSuiteModal from '../components/suites/EditSuiteModal';
 import SuiteNode from '../components/suites/SuiteNode';
 import SearchableSelect, { SearchableOption } from '../components/common/SearchableSelect';
@@ -669,18 +670,16 @@ export default function Repository() {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [isImporting, setIsImporting] = useState(false);
     const [isXmindModalOpen, setIsXmindModalOpen] = useState(false);
-    const [openMenu, setOpenMenu] = useState<null | 'import' | 'export'>(null);
+    // Only 'import' remains as a dropdown — export is now a modal, so the union
+    // is narrowed and `exportMenuRef` plus its outside-click branch were removed.
+    const [openMenu, setOpenMenu] = useState<null | 'import'>(null);
     const menuRef = useRef<HTMLDivElement>(null);
-    const exportMenuRef = useRef<HTMLDivElement>(null);
     const [isSyncingDify, setIsSyncingDify] = useState(false);
 
-    // Close dropdown when clicking outside
+    // Close the import dropdown when clicking outside it.
     useEffect(() => {
         const handleClickOutside = (e: MouseEvent) => {
-            const target = e.target as Node;
-            const insideImport = menuRef.current?.contains(target);
-            const insideExport = exportMenuRef.current?.contains(target);
-            if (!insideImport && !insideExport) {
+            if (!menuRef.current?.contains(e.target as Node)) {
                 setOpenMenu(null);
             }
         };
@@ -689,11 +688,22 @@ export default function Repository() {
     }, []);
 
     const [isExporting, setIsExporting] = useState(false);
-    const handleExport = async (format: 'csv' | 'json' | 'ai_json') => {
-        setOpenMenu(null);
+    const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+
+    // Resolve the optional `suite_id` query param from the user-picked scope.
+    // Previous behavior (no modal) implicitly used `activeSuiteId` when set, so
+    // we preserve that as the default in the modal — see ExportCasesModal.
+    const handleExport = async (
+        format: 'csv' | 'json' | 'ai_json',
+        scope: { kind: 'all' } | { kind: 'active' } | { kind: 'pick'; suiteId: number },
+    ) => {
         setIsExporting(true);
         const params = new URLSearchParams({ project_id: String(projectId), format });
-        if (activeSuiteId) params.append('suite_id', String(activeSuiteId));
+        if (scope.kind === 'active' && activeSuiteId != null) {
+            params.append('suite_id', String(activeSuiteId));
+        } else if (scope.kind === 'pick') {
+            params.append('suite_id', String(scope.suiteId));
+        }
 
         try {
             // 3000+ cases × selectinload(steps) can outrun the default 30s axios
@@ -711,6 +721,7 @@ export default function Repository() {
             a.download = filename;
             a.click();
             URL.revokeObjectURL(url);
+            setIsExportModalOpen(false);
         } catch (error: any) {
             console.error('Export failed:', error);
             const msg = error?.code === 'ECONNABORTED'
@@ -1027,6 +1038,14 @@ export default function Repository() {
                 allSuites={suites}
                 onSaved={fetchSuites}
             />
+            <ExportCasesModal
+                isOpen={isExportModalOpen}
+                onClose={() => setIsExportModalOpen(false)}
+                activeSuiteId={activeSuiteId}
+                suites={suites}
+                isExporting={isExporting}
+                onConfirm={(fmt, scope) => handleExport(fmt, scope)}
+            />
             {/* Suites Tree Sidebar */}
             <div
                 className="bg-slate-50 border-r border-slate-200 h-full flex flex-col relative shrink-0"
@@ -1138,29 +1157,18 @@ export default function Repository() {
                                     </div>
                                     <span className="text-sm font-semibold text-slate-700">匯出測試案例</span>
                                 </div>
-                                <div className="relative" ref={exportMenuRef}>
-                                    <button
-                                        onClick={() => setOpenMenu(prev => prev === 'export' ? null : 'export')}
-                                        disabled={isExporting}
-                                        className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 transition-colors shadow-sm disabled:opacity-60 disabled:cursor-wait"
-                                    >
-                                        <span className="flex items-center gap-2">
-                                            {isExporting
-                                                ? <Loader2 className="w-4 h-4 animate-spin" />
-                                                : <Download className="w-4 h-4" />}
-                                            {isExporting ? '匯出中...' : 'Export All Cases'}
-                                        </span>
-                                        <ChevronDown className="w-3 h-3 text-slate-400" />
-                                    </button>
-                                    {openMenu === 'export' && (
-                                        <div className="absolute left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg z-20 py-1">
-                                            <button onClick={() => handleExport('csv')} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">Export CSV</button>
-                                            <button onClick={() => handleExport('json')} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">Export JSON</button>
-                                            <hr className="my-1 border-slate-100" />
-                                            <button onClick={() => handleExport('ai_json')} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"><span>🤖</span> Export for AI</button>
-                                        </div>
-                                    )}
-                                </div>
+                                {/* Open the picker modal — replaces the old format-only dropdown
+                                    so users can also pick scope (全部 / 目前資料夾 / 指定資料夾). */}
+                                <button
+                                    onClick={() => setIsExportModalOpen(true)}
+                                    disabled={isExporting}
+                                    className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 transition-colors shadow-sm disabled:opacity-60 disabled:cursor-wait"
+                                >
+                                    {isExporting
+                                        ? <Loader2 className="w-4 h-4 animate-spin" />
+                                        : <Download className="w-4 h-4" />}
+                                    {isExporting ? '匯出中...' : '匯出測試案例...'}
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -1201,23 +1209,18 @@ export default function Repository() {
                                         </div>
                                     )}
                                 </div>
-                                {/* Export 下拉選單 */}
-                                <div className="relative">
-                                    <button
-                                        onClick={() => setOpenMenu(prev => prev === 'export' ? null : 'export')}
-                                        className="bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm"
-                                    >
-                                        <Download className="w-4 h-4" /> 匯出 <ChevronDown className="w-3 h-3" />
-                                    </button>
-                                    {openMenu === 'export' && (
-                                        <div className="absolute right-0 mt-1 w-44 bg-white border border-slate-200 rounded-lg shadow-lg z-50 py-1">
-                                            <button onClick={() => handleExport('csv')} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">匯出 CSV</button>
-                                            <button onClick={() => handleExport('json')} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">匯出 JSON</button>
-                                            <hr className="my-1 border-slate-100" />
-                                            <button onClick={() => handleExport('ai_json')} className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"><span>🤖</span> 匯出給 AI</button>
-                                        </div>
-                                    )}
-                                </div>
+                                {/* Export — opens the picker modal where the user chooses
+                                    scope (全部 / 目前資料夾 / 指定資料夾) and format. */}
+                                <button
+                                    onClick={() => setIsExportModalOpen(true)}
+                                    disabled={isExporting}
+                                    className="bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm disabled:opacity-60 disabled:cursor-wait"
+                                >
+                                    {isExporting
+                                        ? <Loader2 className="w-4 h-4 animate-spin" />
+                                        : <Download className="w-4 h-4" />}
+                                    {isExporting ? '匯出中...' : '匯出'}
+                                </button>
                                 {/* Sync to Dify */}
                                 <button
                                     onClick={handleSyncDify}
