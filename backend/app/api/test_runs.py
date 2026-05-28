@@ -21,6 +21,7 @@ from app.models.test_suite import TestSuite
 from app.models.user import User
 from app.schemas.test_run import BulkCopyRunsRequest, TestRunCreate, TestRunResponse, TestRunUpdate
 from app.schemas.test_run_history import TestRunHistoryResponse
+from app.core.statuses import ARCHIVED
 
 router = APIRouter()
 
@@ -89,7 +90,7 @@ async def export_runs(
         select(TestRun)
         .options(selectinload(TestRun.assignees))
         .where(TestRun.project_id == project_id)
-        .where(TestRun.status != "Archived")
+        .where(TestRun.status != ARCHIVED)
         .order_by(desc(TestRun.created_at))
     )
     if run_id:
@@ -108,7 +109,7 @@ async def export_runs(
             select(TestResult, TestCase.title.label("case_title"))
             .join(TestCase, TestResult.case_id == TestCase.id)
             .where(TestResult.run_id.in_(run_ids))
-            .where(TestCase.status != "Archived")
+            .where(TestCase.status != ARCHIVED)
             .order_by(TestResult.run_id, TestResult.id)
         )
         res_rows = (await db.execute(res_query)).all()
@@ -210,7 +211,7 @@ async def list_runs_by_project(project_id: int, db: AsyncSession = Depends(get_d
         .options(selectinload(TestRun.assignees))
         .outerjoin(TestResult, TestRun.id == TestResult.run_id)
         .where(TestRun.project_id == project_id)
-        .where(TestRun.status != "Archived")
+        .where(TestRun.status != ARCHIVED)
         .group_by(TestRun.id)
         .order_by(desc(TestRun.created_at))
     )
@@ -281,7 +282,7 @@ async def get_run(run_id: int, db: AsyncSession = Depends(get_db)):
         )
         .join(TestCase, TestResult.case_id == TestCase.id)
         .where(TestResult.run_id == run_id)
-        .where(TestCase.status != "Archived")
+        .where(TestCase.status != ARCHIVED)
     )
     stats_res = await db.execute(stats_query)
     passed, failed, blocked, total = stats_res.one()
@@ -356,7 +357,7 @@ async def update_run(run_id: int, run_in: TestRunUpdate, db: AsyncSession = Depe
         )
         .join(TestCase, TestResult.case_id == TestCase.id)
         .where(TestResult.run_id == run_id)
-        .where(TestCase.status != "Archived")
+        .where(TestCase.status != ARCHIVED)
     )
     passed, failed, blocked, total = counts_result.one()
     passed = passed or 0
@@ -378,7 +379,7 @@ async def delete_run(
     if not run:
         raise HTTPException(status_code=404, detail="TestRun not found")
 
-    run.status = "Archived"
+    run.status = ARCHIVED
 
     # History record
     history = TestRunHistory(
@@ -504,7 +505,7 @@ async def restore_test_run(
     if not run:
         raise HTTPException(status_code=404, detail="TestRun not found")
 
-    if run.status != "Archived":
+    if run.status != ARCHIVED:
         return {"message": "TestRun is not archived"}
 
     run.status = "Pending"

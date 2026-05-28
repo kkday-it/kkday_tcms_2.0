@@ -13,6 +13,7 @@ from app.models.test_step_result import TestStepResult
 from app.models.user import User
 from app.schemas.test_result import TestResultUpdate, TestResultResponse
 from app.schemas.test_step_result import TestStepResultUpdate
+from app.core.statuses import ARCHIVED
 
 router = APIRouter()
 
@@ -27,7 +28,7 @@ async def get_results_by_run(run_id: int, db: AsyncSession = Depends(get_db)):
                TestCase.labels, TestCase.tags, TestCase.suite_id)
         .join(TestCase, TestResult.case_id == TestCase.id)
         .where(TestResult.run_id == run_id)
-        .where(TestCase.status != "Archived")
+        .where(TestCase.status != ARCHIVED)
         .order_by(TestResult.id)
     )
     result = await db.execute(query)
