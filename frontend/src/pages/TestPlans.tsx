@@ -229,20 +229,32 @@ export default function TestPlans() {
 
     // ── Export ─────────────────────────────────────────────────────────────────
     const [isExportOpen, setIsExportOpen] = useState(false);
+    const [isExporting, setIsExporting] = useState(false);
     const handleExportPlans = async (format: 'csv' | 'json') => {
         setIsExportOpen(false);
+        setIsExporting(true);
         try {
             const params = new URLSearchParams({ project_id: String(projectId), format });
-            const response = await api.get(`/plans/export?${params}`, { responseType: 'blob' });
+            // Override the default 30s axios timeout — large exports otherwise look
+            // like the button "did nothing" when the request silently times out.
+            const response = await api.get(`/plans/export?${params}`, {
+                responseType: 'blob',
+                timeout: 300_000,
+            });
             const url = URL.createObjectURL(response.data);
             const a = document.createElement('a');
             a.href = url;
             a.download = `test_plans.${format}`;
             a.click();
             URL.revokeObjectURL(url);
-        } catch (error) {
+        } catch (error: any) {
             console.error('Export failed:', error);
-            alert('Export failed');
+            const msg = error?.code === 'ECONNABORTED'
+                ? '匯出逾時 — 計畫數量過多, 請聯絡 Admin。'
+                : `匯出失敗${error?.message ? ': ' + error.message : ''}`;
+            alert(msg);
+        } finally {
+            setIsExporting(false);
         }
     };
 
@@ -408,9 +420,14 @@ export default function TestPlans() {
                                     <div className="relative">
                                         <button
                                             onClick={() => setIsExportOpen(prev => !prev)}
-                                            className="btn-secondary flex items-center gap-1.5"
+                                            disabled={isExporting}
+                                            className="btn-secondary flex items-center gap-1.5 disabled:opacity-60 disabled:cursor-wait"
                                         >
-                                            <Download className="w-4 h-4" /> Export <ChevronDown className="w-3 h-3" />
+                                            {isExporting
+                                                ? <Loader2 className="w-4 h-4 animate-spin" />
+                                                : <Download className="w-4 h-4" />}
+                                            {isExporting ? '匯出中...' : 'Export'}
+                                            <ChevronDown className="w-3 h-3" />
                                         </button>
                                         {isExportOpen && (
                                             <div className="absolute right-0 mt-1 w-36 bg-white border border-slate-200 rounded-lg shadow-lg z-20 py-1">

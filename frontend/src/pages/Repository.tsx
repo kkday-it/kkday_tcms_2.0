@@ -688,13 +688,21 @@ export default function Repository() {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
+    const [isExporting, setIsExporting] = useState(false);
     const handleExport = async (format: 'csv' | 'json' | 'ai_json') => {
         setOpenMenu(null);
+        setIsExporting(true);
         const params = new URLSearchParams({ project_id: String(projectId), format });
         if (activeSuiteId) params.append('suite_id', String(activeSuiteId));
 
         try {
-            const response = await api.get(`/cases/export?${params}`, { responseType: 'blob' });
+            // 3000+ cases × selectinload(steps) can outrun the default 30s axios
+            // timeout in production. Override per-request to 5 min so large
+            // exports actually complete instead of silently failing.
+            const response = await api.get(`/cases/export?${params}`, {
+                responseType: 'blob',
+                timeout: 300_000,
+            });
             const ext = format === 'ai_json' ? 'json' : format;
             const filename = format === 'ai_json' ? 'test_cases_ai.json' : `test_cases.${ext}`;
             const url = URL.createObjectURL(response.data);
@@ -703,9 +711,16 @@ export default function Repository() {
             a.download = filename;
             a.click();
             URL.revokeObjectURL(url);
-        } catch (error) {
+        } catch (error: any) {
             console.error('Export failed:', error);
-            alert('Export failed');
+            const msg = error?.code === 'ECONNABORTED'
+                ? '匯出逾時 — 案例數量過多或後端處理過慢, 請聯絡 Admin。'
+                : error?.response?.status === 403
+                    ? '沒有匯出權限'
+                    : `匯出失敗${error?.message ? ': ' + error.message : ''}`;
+            alert(msg);
+        } finally {
+            setIsExporting(false);
         }
     };
 
@@ -1126,10 +1141,14 @@ export default function Repository() {
                                 <div className="relative" ref={exportMenuRef}>
                                     <button
                                         onClick={() => setOpenMenu(prev => prev === 'export' ? null : 'export')}
-                                        className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 transition-colors shadow-sm"
+                                        disabled={isExporting}
+                                        className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 transition-colors shadow-sm disabled:opacity-60 disabled:cursor-wait"
                                     >
                                         <span className="flex items-center gap-2">
-                                            <Download className="w-4 h-4" /> Export All Cases
+                                            {isExporting
+                                                ? <Loader2 className="w-4 h-4 animate-spin" />
+                                                : <Download className="w-4 h-4" />}
+                                            {isExporting ? '匯出中...' : 'Export All Cases'}
                                         </span>
                                         <ChevronDown className="w-3 h-3 text-slate-400" />
                                     </button>
