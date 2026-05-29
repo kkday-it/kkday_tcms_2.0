@@ -14,6 +14,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
+from app.api.deps import issue_web_session_token
 from app.core.config import settings
 from app.db.database import get_db
 from app.models.user import User
@@ -166,12 +167,20 @@ async def google_oauth_callback(
     await db.commit()
     await db.refresh(user)
 
+    # Issue a real bearer token the same way /users/login does. Before this
+    # fix the callback wrote a hardcoded "google-sso-token" string into the
+    # redirect, which every Google-login user then stored as their
+    # `tcms_token`. That string doesn't match any row in tcms_api_tokens, so
+    # PR-3's get_current_user took Path 1, found nothing, and 401'd every
+    # subsequent request — bricking the whole UI for Google-login users.
+    access_token = await issue_web_session_token(db, user.id, label="web-session-google")
+
     # ── Build frontend redirect URL with session info ──────────────────────
     # We pass the minimal session data as query params so the frontend
     # can store them in localStorage (same pattern as the normal login).
     import urllib.parse
     params = urllib.parse.urlencode({
-        "token": "google-sso-token",
+        "token": access_token,
         "user_id": user.id,
         "role": user.role,
         "full_name": user.full_name or "",
