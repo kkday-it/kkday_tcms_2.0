@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Shield, Loader2, Plus, X, Save, Users, Bell, Palette, Database, Download, Upload, CheckCircle2, AlertCircle, Clock, Play, FileArchive, KeyRound, Copy, Trash2 } from 'lucide-react';
 import api from '../lib/api';
 import { useUsers } from '../lib/useUsers';
+import { copyToClipboard } from '../lib/clipboard';
 
 export interface AppUser {
     id: number;
@@ -758,12 +759,11 @@ function ApiTokensTab() {
 
     const copyToken = async () => {
         if (!revealedToken) return;
-        try {
-            await navigator.clipboard.writeText(revealedToken);
+        // KQT-15399: helper handles HTTP-context fallback so the token reveal
+        // copy button works on SIT (plain HTTP) too.
+        if (await copyToClipboard(revealedToken)) {
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
-        } catch {
-            // clipboard 不可用時讓 user 手動選取
         }
     };
 

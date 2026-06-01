@@ -12,6 +12,7 @@ import SuiteNode from '../components/suites/SuiteNode';
 import SearchableSelect, { SearchableOption } from '../components/common/SearchableSelect';
 import api from '../lib/api';
 import { useUsers } from '../lib/useUsers';
+import { copyToClipboard } from '../lib/clipboard';
 
 function RootDroppableArea({ children }: { children: React.ReactNode }) {
     const { setNodeRef, isOver } = useDroppable({
@@ -485,9 +486,10 @@ export default function Repository() {
         setSearchParams(prev => { const next = new URLSearchParams(prev); next.set('suite', String(id)); return next; });
     };
 
-    const handleShareSuiteLink = (id: number) => {
+    const handleShareSuiteLink = async (id: number) => {
         const url = `${window.location.origin}${window.location.pathname}?suite=${id}`;
-        navigator.clipboard.writeText(url).catch(console.warn);
+        const ok = await copyToClipboard(url);
+        if (!ok) return;
         setCopiedSuiteId(id);
         setTimeout(() => setCopiedSuiteId(null), 1500);
     };
