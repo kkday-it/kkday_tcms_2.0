@@ -9,6 +9,7 @@ from app.models.test_run import TestRun
 from app.models.test_run_folder import TestRunFolder
 from app.models.user import User
 from app.schemas.test_run_folder import TestRunFolderCreate, TestRunFolderUpdate, TestRunFolderResponse
+from app.core.statuses import ARCHIVED
 
 router = APIRouter()
 
@@ -21,7 +22,7 @@ async def list_folders_by_project(project_id: int, db: AsyncSession = Depends(ge
     result = await db.execute(
         select(TestRunFolder)
         .where(TestRunFolder.project_id == project_id)
-        .where(TestRunFolder.status != "Archived")
+        .where(TestRunFolder.status != ARCHIVED)
         .order_by(TestRunFolder.id)
     )
     return result.scalars().all()
@@ -97,21 +98,21 @@ async def delete_folder(
     runs_result = await db.execute(
         select(TestRun)
         .where(TestRun.folder_id.in_(folder_ids_in_scope))
-        .where(TestRun.status != "Archived")
+        .where(TestRun.status != ARCHIVED)
     )
     runs = runs_result.scalars().all()
     for run in runs:
-        run.status = "Archived"
+        run.status = ARCHIVED
 
     # Archive the folders themselves.
     folders_result = await db.execute(
         select(TestRunFolder)
         .where(TestRunFolder.id.in_(folder_ids_in_scope))
-        .where(TestRunFolder.status != "Archived")
+        .where(TestRunFolder.status != ARCHIVED)
     )
     folders_to_archive = folders_result.scalars().all()
     for f in folders_to_archive:
-        f.status = "Archived"
+        f.status = ARCHIVED
 
     await db.commit()
     await record_audit(

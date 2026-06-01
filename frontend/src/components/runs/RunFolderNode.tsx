@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { Folder, ChevronRight, ChevronDown, Plus, Edit2, Trash2, Copy, MoreHorizontal, Link2, Check } from 'lucide-react';
+import { canWrite } from '../../lib/permissions';
 
 interface TestRunFolder {
     id: number;
@@ -41,6 +42,8 @@ export default function RunFolderNode({
     const [isExpanded, setIsExpanded] = useState(false);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
+    // Hide write actions for non-Admin/QA — backend still enforces (PR-3).
+    const writable = canWrite();
 
     useEffect(() => {
         const handleClickOutside = (e: MouseEvent) => {
@@ -126,7 +129,7 @@ export default function RunFolderNode({
                     </button>
                     {isMenuOpen && (
                         <div className="absolute right-0 bottom-full mb-0.5 w-40 bg-white border border-slate-200 rounded-lg shadow-lg z-50 py-1">
-                            {onCopyFolder && (
+                            {writable && onCopyFolder && (
                                 <button
                                     onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); onCopyFolder(folder.id); }}
                                     onPointerDown={(e) => e.stopPropagation()}
@@ -135,7 +138,7 @@ export default function RunFolderNode({
                                     <Copy className="w-3.5 h-3.5 text-emerald-500" /> 批次複製
                                 </button>
                             )}
-                            {onAddSubFolder && (
+                            {writable && onAddSubFolder && (
                                 <button
                                     onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); onAddSubFolder(folder.id); setIsExpanded(true); }}
                                     onPointerDown={(e) => e.stopPropagation()}
@@ -144,7 +147,7 @@ export default function RunFolderNode({
                                     <Plus className="w-3.5 h-3.5 text-primary-500" /> 新增子資料夾
                                 </button>
                             )}
-                            {onEdit && (
+                            {writable && onEdit && (
                                 <button
                                     onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); onEdit(folder); }}
                                     onPointerDown={(e) => e.stopPropagation()}
@@ -166,7 +169,7 @@ export default function RunFolderNode({
                                     {copiedFolderId === folder.id ? '已複製！' : '複製連結'}
                                 </button>
                             )}
-                            {onDelete && (
+                            {writable && onDelete && (
                                 <button
                                     onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); onDelete(folder.id); }}
                                     onPointerDown={(e) => e.stopPropagation()}
