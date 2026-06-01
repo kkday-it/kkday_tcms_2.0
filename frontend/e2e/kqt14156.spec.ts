@@ -1,5 +1,32 @@
 import { test, expect } from '@playwright/test';
-import { ensureLoggedIn, selectReactOption } from './utils';
+import { ensureLoggedIn, canWrite, selectReactOption } from './utils';
+
+/**
+ * Navigate to a run whose tcms_test_results.case list is non-empty. PR #806's
+ * `where(TestCase.status != ARCHIVED)` filter means a run whose every case has
+ * been archived will legitimately render 0 rows now; the e2e used to click
+ * "first cursor-pointer row" and frequently landed on such a run after the
+ * filter rollout. Driving via the API + `/runs/<id>` URL keeps the selection
+ * deterministic and skips runs that wouldn't have rows.
+ */
+async function gotoNonEmptyRun(page: import('@playwright/test').Page): Promise<number | null> {
+    const res = await page.request.get('/api/v1/runs/project/1');
+    if (res.status() !== 200) return null;
+    const runs: { id: number; total?: number }[] = await res.json();
+    // Probe results to find a run with active rows post-archive-filter.
+    for (const r of runs) {
+        if ((r.total ?? 0) < 2) continue;
+        const results = await page.request.get(`/api/v1/results/run/${r.id}`);
+        if (results.status() !== 200) continue;
+        const rows = await results.json();
+        if (Array.isArray(rows) && rows.length >= 2) {
+            await page.goto(`/runs/${r.id}`);
+            await page.waitForLoadState('networkidle');
+            return r.id;
+        }
+    }
+    return null;
+}
 
 // ─── KQT-14481: PRD 欄位顯示 Link 超連結 ──────────────────────────────────────
 test('KQT-14481: PRD field shows "Link" hyperlink, not raw URL', async ({ page }) => {
@@ -43,13 +70,8 @@ test('KQT-14482: Jira filter tables have sortable column headers', async ({ page
 // ─── KQT-14484: Test Step 有 Blocked 按鈕 ────────────────────────────────────
 test('KQT-14484: Each test step has a Blocked button', async ({ page }) => {
     await ensureLoggedIn(page);
-    await page.goto('/runs');
-    await page.waitForLoadState('networkidle');
-    // Run rows are clickable divs (not <a> tags) — identify by case-count badge
-    const runRow = page.locator('div[class*="cursor-pointer"]').filter({ has: page.locator('text=/個案例/') }).first();
-    await expect(runRow).toBeVisible();
-    await runRow.click();
-    await page.waitForLoadState('networkidle');
+    const runId = await gotoNonEmptyRun(page);
+    test.skip(!runId, 'no run with >= 2 active cases in target env');
     // Click the first test case row to open execution pane
     const firstRow = page.locator('tbody tr').first();
     await expect(firstRow).toBeVisible();
@@ -66,13 +88,8 @@ test('KQT-14484: Each test step has a Blocked button', async ({ page }) => {
 // ─── KQT-14495: Pass All 不捲動列表至頂部 ────────────────────────────────────
 test('KQT-14495: Clicking Pass All preserves scroll position of case list', async ({ page }) => {
     await ensureLoggedIn(page);
-    await page.goto('/runs');
-    await page.waitForLoadState('networkidle');
-    // Run rows are clickable divs (not <a> tags) — identify by case-count badge
-    const runRow = page.locator('div[class*="cursor-pointer"]').filter({ has: page.locator('text=/個案例/') }).first();
-    await expect(runRow).toBeVisible();
-    await runRow.click();
-    await page.waitForURL(/\/runs\/\d+/, { timeout: 10000 });
+    const runId = await gotoNonEmptyRun(page);
+    test.skip(!runId, 'no run with >= 2 active cases in target env');
     // Wait for the results table to render (React state settles after navigation)
     await page.waitForSelector('tbody tr', { timeout: 10000 });
     const rows = page.locator('tbody tr');
@@ -94,14 +111,10 @@ test('KQT-14495: Clicking Pass All preserves scroll position of case list', asyn
 
 // ─── KQT-14496: 結果列表順序穩定 ─────────────────────────────────────────────
 test('KQT-14496: Result list order is stable after updating a case status', async ({ page }) => {
-    await ensureLoggedIn(page);
-    await page.goto('/runs');
-    await page.waitForLoadState('networkidle');
-    // Run rows are clickable divs (not <a> tags) — identify by case-count badge
-    const runRow = page.locator('div[class*="cursor-pointer"]').filter({ has: page.locator('text=/個案例/') }).first();
-    await expect(runRow).toBeVisible();
-    await runRow.click();
-    await page.waitForURL(/\/runs\/\d+/, { timeout: 10000 });
+    const { role } = await ensureLoggedIn(page);
+    test.skip(!canWrite(role), 'updating a case status requires Admin/QA');
+    const runId = await gotoNonEmptyRun(page);
+    test.skip(!runId, 'no run with >= 2 active cases in target env');
     await page.waitForSelector('tbody tr', { timeout: 10000 });
     const getOrder = () => page.locator('tbody tr td:nth-child(2) span.font-mono').allInnerTexts();
     const before = await getOrder();
@@ -157,11 +170,15 @@ test('KQT-14671: Archived runs are not shown in test plan', async ({ page }) => 
 
 // ─── KQT-14713 + KQT-14531: Suite 樹狀選擇器有層級展開 ──────────────────────
 test('KQT-14531/14713: Suite tree selector shows expandable hierarchy', async ({ page }) => {
-    await ensureLoggedIn(page);
+    const { role } = await ensureLoggedIn(page);
+    // PR-3 (auth rollout) hides the "New Plan" button for non-Admin/QA via
+    // TestPlans.tsx's `writable && ...` gate. Skip cleanly under read-only
+    // accounts instead of failing on a missing button.
+    test.skip(!canWrite(role), 'New Plan button is gated to Admin/QA');
     await page.goto('/plans');
     await page.waitForLoadState('networkidle');
-    // Open new plan modal
-    const newBtn = page.locator('button', { hasText: /new plan|新增/i }).first();
+    // Open new plan modal — copy in master is "New Plan" (with the Plus icon).
+    const newBtn = page.locator('button', { hasText: /new plan/i }).first();
     await expect(newBtn).toBeVisible();
     await newBtn.click();
     // Wait for modal content
