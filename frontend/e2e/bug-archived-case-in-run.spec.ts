@@ -1,5 +1,6 @@
 import { test, expect, type APIRequestContext } from '@playwright/test';
 import { ensureLoggedIn } from './utils';
+import { getTestCredentials } from './utils/secrets';
 import { createHash } from 'node:crypto';
 
 // Bug report (2026-05-28): archived TestCases still appear in their parent
@@ -17,8 +18,7 @@ import { createHash } from 'node:crypto';
 const sha256Hex = (s: string) => createHash('sha256').update(s).digest('hex');
 
 async function loginAdmin(request: APIRequestContext): Promise<string | null> {
-    const email = process.env.TEST_EMAIL ?? 'CI_test@kkday.com';
-    const password = process.env.TEST_PASSWORD ?? 'KKday1234567890!';
+    const { email, password } = await getTestCredentials();
     const res = await request.post('/api/v1/users/login', {
         data: { email, password: sha256Hex(password) },
     });
