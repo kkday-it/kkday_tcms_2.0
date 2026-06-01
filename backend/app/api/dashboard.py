@@ -3,6 +3,7 @@ from sqlalchemy import case, desc, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
+from app.core.statuses import ARCHIVED
 from app.db.database import get_db
 from app.models.test_case import TestCase
 from app.models.test_result import TestResult
@@ -12,8 +13,10 @@ router = APIRouter()
 
 @router.get("/stats")
 async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
-    # Total Cases
-    total_cases_result = await db.execute(select(func.count(TestCase.id)))
+    # Total Cases — exclude soft-archived
+    total_cases_result = await db.execute(
+        select(func.count(TestCase.id)).where(TestCase.status != ARCHIVED)
+    )
     total_cases = total_cases_result.scalar() or 0
     
     # Active Runs
@@ -42,7 +45,10 @@ async def get_dashboard_summary(db: AsyncSession = Depends(get_db)):
     # 1. Summary cards — single round-trip via scalar subqueries
     summary_row = (await db.execute(
         select(
-            select(func.count(TestCase.id)).scalar_subquery().label("total_cases"),
+            select(func.count(TestCase.id))
+            .where(TestCase.status != ARCHIVED)
+            .scalar_subquery()
+            .label("total_cases"),
             select(func.count(TestRun.id)).where(TestRun.status == "Active").scalar_subquery().label("active_runs"),
             select(func.count(func.distinct(TestResult.jira_bug_id)))
             .where(TestResult.jira_bug_id.isnot(None))
@@ -116,10 +122,12 @@ async def get_dashboard_summary(db: AsyncSession = Depends(get_db)):
 
     # 5. Top Failing Test Cases
     # Count how many times a case has failed
+    # Skip archived cases so soft-deleted noise doesn't pollute the top-5.
     top_failing_query = (
         select(TestCase.title, func.count(TestResult.id).label("fail_count"))
         .join(TestResult, TestCase.id == TestResult.case_id)
         .where(TestResult.status == 'Failed')
+        .where(TestCase.status != ARCHIVED)
         .group_by(TestCase.id, TestCase.title)
         .order_by(desc("fail_count"))
         .limit(5)

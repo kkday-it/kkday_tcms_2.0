@@ -28,7 +28,10 @@ log = logging.getLogger("tcms.auth")
 
 # Surface to the user in 401 / 403 bodies and to the WWW-Authenticate header.
 TCMS_UI_URL = os.environ.get("TCMS_UI_URL", "http://autotest-service.sit.kkday.com:8081/tcms")
-TOKEN_PAGE = f"{TCMS_UI_URL}/settings#api-tokens"
+# 401/403 detail bodies surface this URL so users know where to (re)generate
+# a token. Moved out of Settings into /account in this PR — keep the anchor
+# `#api-tokens` so future tabs on Account don't force this constant to update.
+TOKEN_PAGE = f"{TCMS_UI_URL}/account#api-tokens"
 CONTACT = os.environ.get("TCMS_AUTH_CONTACT", "lance.chien@kkday.com")
 
 # Legacy header still used as the actor source — kept for grace period.
@@ -56,7 +59,7 @@ def _as_aware_utc(value: Optional[_dt.datetime]) -> Optional[_dt.datetime]:
 _MESSAGES = {
     "missing": (
         "TCMS API 已啟用 Bearer token 認證, 此 request 未帶 token。\n"
-        f"請到 TCMS Settings → API Tokens 產生 token ({TOKEN_PAGE}),\n"
+        f"請到 TCMS 帳號 → API Tokens 產生 token ({TOKEN_PAGE}),\n"
         "然後在每個 request 加上 header `Authorization: Bearer <your-token>`。\n"
         "建立後, raw token 只會顯示一次, 請妥善保存。"
     ),

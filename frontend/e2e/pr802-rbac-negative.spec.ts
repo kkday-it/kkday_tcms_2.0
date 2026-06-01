@@ -1,5 +1,6 @@
 import { test, expect, type APIRequestContext, type APIResponse } from '@playwright/test';
 import { createHash } from 'node:crypto';
+import { getTestCredentials } from './utils/secrets';
 
 // PR-3 (#802) negative-path checks: non-Admin/QA tokens must hit 403 on every
 // write/delete endpoint we locked down, and unauthenticated requests must hit
@@ -10,8 +11,7 @@ const sha256Hex = (s: string) => createHash('sha256').update(s).digest('hex');
 // One-time bootstrap helper for the whole suite: ensure a Tester user exists
 // (via Admin) and return both tokens. Falls back to env overrides when present.
 async function bootstrap(request: APIRequestContext) {
-    const adminEmail = process.env.TEST_EMAIL ?? 'CI_test@kkday.com';
-    const adminPassword = process.env.TEST_PASSWORD ?? 'KKday1234567890!';
+    const { email: adminEmail, password: adminPassword } = await getTestCredentials();
     const testerEmail = process.env.TESTER_EMAIL ?? 'pr802_negative_tester@kkday.com';
     // Default password for any newly-created user is "1234" per the backend's
     // create_user fallback (see app/api/users.py).

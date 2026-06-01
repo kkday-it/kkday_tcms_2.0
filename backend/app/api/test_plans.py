@@ -20,6 +20,7 @@ from app.models.test_run import TestRun
 from app.models.user import User
 from app.schemas.test_plan import TestPlanCreate, TestPlanResponse, TestPlanUpdate
 from app.schemas.test_plan_history import TestPlanHistoryResponse
+from app.core.statuses import ARCHIVED
 
 router = APIRouter()
 
@@ -138,7 +139,7 @@ async def export_plans(
         select(TestPlan)
         .options(selectinload(TestPlan.linked_runs), selectinload(TestPlan.linked_cases))
         .where(TestPlan.project_id == project_id)
-        .where(TestPlan.status != "Archived")
+        .where(TestPlan.status != ARCHIVED)
         .order_by(TestPlan.id)
     )
     plans = result.scalars().all()
@@ -267,14 +268,14 @@ async def get_test_plans_by_project(project_id: int, db: AsyncSession = Depends(
     result = await db.execute(
         select(TestPlan)
         .where(TestPlan.project_id == project_id)
-        .where(TestPlan.status != "Archived")
+        .where(TestPlan.status != ARCHIVED)
     )
     return await _build_list_response(db, list(result.scalars().all()))
 
 
 @router.get("/", response_model=List[TestPlanResponse])
 async def get_test_plans(project_id: int = None, db: AsyncSession = Depends(get_db)):
-    query = select(TestPlan).where(TestPlan.status != "Archived")
+    query = select(TestPlan).where(TestPlan.status != ARCHIVED)
     if project_id:
         query = query.where(TestPlan.project_id == project_id)
     result = await db.execute(query)
@@ -323,7 +324,7 @@ async def get_plan_runs(plan_id: int, db: AsyncSession = Depends(get_db)):
         )
         .outerjoin(TestResult, TestRun.id == TestResult.run_id)
         .where(TestRun.id.in_(subq))
-        .where(TestRun.status != "Archived")
+        .where(TestRun.status != ARCHIVED)
         .group_by(TestRun.id)
     )
     rows = (await db.execute(query)).all()
@@ -380,7 +381,7 @@ async def delete_test_plan(
     db_plan = await db.get(TestPlan, plan_id)
     if not db_plan:
         raise HTTPException(status_code=404, detail="Test Plan not found")
-    db_plan.status = "Archived"
+    db_plan.status = ARCHIVED
 
     # History record
     history = TestPlanHistory(
@@ -458,7 +459,7 @@ async def restore_test_plan(
     if not db_plan:
         raise HTTPException(status_code=404, detail="Test Plan not found")
 
-    if db_plan.status != "Archived":
+    if db_plan.status != ARCHIVED:
         return {"message": "Test Plan is not archived"}
 
     db_plan.status = "Draft"

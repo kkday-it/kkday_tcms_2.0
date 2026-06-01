@@ -4,6 +4,7 @@ import { Play, CheckCircle2, XCircle, SkipForward, Clock, Loader2, Trash2, Copy,
 import { DndContext, DragEndEvent, closestCenter, useDroppable, useSensor, useSensors, PointerSensor, useDraggable } from '@dnd-kit/core';
 import api from '../lib/api';
 import { canWrite } from '../lib/permissions';
+import { copyToClipboard } from '../lib/clipboard';
 import CreateRunModal from '../components/runs/CreateRunModal';
 import EditRunFolderModal from '../components/runs/EditRunFolderModal';
 import EditRunModal from '../components/runs/EditRunModal';
@@ -118,9 +119,13 @@ function DraggableRunCard({ run, onClick, onEdit, onDuplicate, onDelete }: { run
                     <Copy className="w-3.5 h-3.5" />
                 </button>
                 <button
-                    onClick={(e) => {
+                    onClick={async (e) => {
                         e.stopPropagation();
-                        navigator.clipboard.writeText(`${window.location.origin}/runs/${run.id}`);
+                        // KQT-15399: SIT is plain HTTP so navigator.clipboard is
+                        // unavailable; the helper falls back to execCommand so the
+                        // icon does what its tooltip says.
+                        const ok = await copyToClipboard(`${window.location.origin}/runs/${run.id}`);
+                        if (!ok) return;
                         setCopied(true);
                         setTimeout(() => setCopied(false), 1500);
                     }}
@@ -199,9 +204,10 @@ export default function TestRuns() {
     // Share link copy feedback
     const [copiedFolderId, setCopiedFolderId] = useState<number | null>(null);
 
-    const handleShareFolderLink = (id: number) => {
+    const handleShareFolderLink = async (id: number) => {
         const url = `${window.location.origin}${window.location.pathname}?folder=${id}`;
-        navigator.clipboard.writeText(url).catch(console.warn);
+        const ok = await copyToClipboard(url);
+        if (!ok) return;
         setCopiedFolderId(id);
         setTimeout(() => setCopiedFolderId(null), 1500);
     };
