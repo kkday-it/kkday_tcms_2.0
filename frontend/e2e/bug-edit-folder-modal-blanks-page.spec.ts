@@ -1,5 +1,5 @@
 import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
-import { ensureLoggedIn } from './utils';
+import { ensureLoggedIn, canWrite } from './utils';
 import { createHash } from 'node:crypto';
 
 // Bug report (2026-05-28): clicking "編輯資料夾" on a folder blanked the page.
@@ -73,7 +73,12 @@ async function openEditFolderModal(page: Page, folderName: string) {
 }
 
 test('編輯資料夾 modal opens without blanking the page (regression guard for the useMemo-after-return bug)', async ({ page, request }) => {
-    await ensureLoggedIn(page);
+    const { role } = await ensureLoggedIn(page);
+    // PR-3 RBAC hides the 編輯資料夾 dropdown item for non-Admin/QA via the
+    // canWrite gate in SuiteNode / PlanFolderNode / RunFolderNode. This spec
+    // tests the useMemo-after-return regression, which only matters when the
+    // write button is reachable — skip cleanly under read-only accounts.
+    test.skip(!canWrite(role), '編輯資料夾 button is gated to Admin/QA');
     const token = await adminToken(request);
     test.skip(!token, 'cannot obtain admin token');
 

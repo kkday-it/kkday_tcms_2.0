@@ -1,13 +1,20 @@
 import { test, expect } from '@playwright/test';
-import { ensureLoggedIn } from './utils';
+import { ensureLoggedIn, canWrite } from './utils';
+
+type CaseRow = {
+    id: number;
+    suite_id?: number | null;
+    external_id?: string | null;
+    labels?: string | null;
+};
 
 // Pull the first case from the API so tests don't hardcode an id that may not
 // exist in the target env. Mirrors the pattern used in the /plans regression
 // test at the bottom of kqt14156.spec.ts.
-async function pickFirstCase(page: import('@playwright/test').Page) {
+async function pickFirstCase(page: import('@playwright/test').Page): Promise<CaseRow | null> {
     const res = await page.request.get('/api/v1/cases/project/1');
     if (res.status() !== 200) return null;
-    const cases: { id: number; external_id?: string | null; labels?: string | null }[] = await res.json();
+    const cases: CaseRow[] = await res.json();
     return cases[0] ?? null;
 }
 
@@ -18,6 +25,35 @@ async function pickRunWithMultipleCases(page: import('@playwright/test').Page) {
     return runs.find(r => (r.total ?? 0) >= 2) ?? null;
 }
 
+/**
+ * Open Repository scoped to a specific suite (or the project's first when
+ * none specified), exercising the `?suite=<id>` deep-link Repository.tsx
+ * already supports. We can't rely on a sidebar text selector (suite names
+ * in SIT are Chinese / project-specific and historically the e2e tried to
+ * match the literal word "Suite"); driving via URL keeps the test stable.
+ *
+ * Pass the target case's `suite_id` when the test needs that specific case
+ * to be visible — Repository only renders rows from the active suite.
+ *
+ * Returns `null` if the project has no suites — caller should `test.skip`.
+ */
+async function gotoRepositorySuite(
+    page: import('@playwright/test').Page,
+    suiteId?: number | null,
+): Promise<number | null> {
+    let target = suiteId ?? null;
+    if (target == null) {
+        const res = await page.request.get('/api/v1/suites/project/1');
+        if (res.status() !== 200) return null;
+        const suites: { id: number }[] = await res.json();
+        if (!suites.length) return null;
+        target = suites[0].id;
+    }
+    await page.goto(`/repository?suite=${target}`);
+    await page.waitForLoadState('networkidle');
+    return target;
+}
+
 // ─── KQT-15250: 案例庫搜尋支援 TC- 編號 ──────────────────────────────────────
 test('KQT-15250: 案例庫輸入 "TC-{id}" 可命中對應 case', async ({ page }) => {
     await ensureLoggedIn(page);
@@ -26,14 +62,11 @@ test('KQT-15250: 案例庫輸入 "TC-{id}" 可命中對應 case', async ({ page 
     test.skip(!sample, 'no cases in target env');
     const targetId = sample!.id;
 
-    await page.goto('/repository');
-    await page.waitForLoadState('networkidle');
-
-    // Repository hides the search input until a suite is active. Click the
-    // first suite in the sidebar to load that suite's cases.
-    const suiteBtn = page.locator('aside button, [role="button"]').filter({ hasText: /Suite/i }).first();
-    await expect(suiteBtn).toBeVisible({ timeout: 5000 });
-    await suiteBtn.click();
+    // Open the suite that actually contains `sample` — Repository only
+    // renders rows from the active suite, so generic "first suite" would
+    // hide the row we want to assert on.
+    const suiteId = await gotoRepositorySuite(page, sample!.suite_id ?? null);
+    test.skip(!suiteId, 'no suites in target env');
 
     const searchInput = page.locator('input[placeholder*="搜尋案例"]').first();
     await expect(searchInput).toBeVisible();
@@ -54,7 +87,7 @@ test('KQT-15250 extended: 用 labels 內容能搜到 case', async ({ page }) => 
     // Find a case whose labels field carries something searchable.
     const res = await page.request.get('/api/v1/cases/project/1');
     test.skip(res.status() !== 200, 'cases API unavailable');
-    const cases: { id: number; labels?: string | null }[] = await res.json();
+    const cases: CaseRow[] = await res.json();
     const withLabel = cases.find(c => c.labels && c.labels.trim().length > 1);
     test.skip(!withLabel, 'no case with labels in target env');
 
@@ -63,14 +96,10 @@ test('KQT-15250 extended: 用 labels 內容能搜到 case', async ({ page }) => 
     const token = withLabel!.labels!.split(/[\s,]+/).find(t => t.length >= 3);
     test.skip(!token, 'labels field has no usable token');
 
-    await page.goto('/repository');
-    await page.waitForLoadState('networkidle');
-
-    // Repository hides the search input until a suite is active. Click the
-    // first suite in the sidebar to load that suite's cases.
-    const suiteBtn = page.locator('aside button, [role="button"]').filter({ hasText: /Suite/i }).first();
-    await expect(suiteBtn).toBeVisible({ timeout: 5000 });
-    await suiteBtn.click();
+    // Activate the suite that owns `withLabel` so the row will actually be in
+    // the listing once the search narrows.
+    const suiteId = await gotoRepositorySuite(page, withLabel!.suite_id ?? null);
+    test.skip(!suiteId, 'no suites in target env');
 
     const searchInput = page.locator('input[placeholder*="搜尋案例"]').first();
     await expect(searchInput).toBeVisible();
@@ -151,21 +180,20 @@ test('external_id badge: 點 Test Run 內 case 時詳細 pane 顯示 external_id
 
 // ─── external_id badge: 編輯 case modal header ───────────────────────────────
 test('external_id badge: 編輯 case 時 modal header 顯示 external_id', async ({ page }) => {
-    await ensureLoggedIn(page);
+    const { role } = await ensureLoggedIn(page);
+    // PR-3 RBAC: only Admin/QA see the 編輯 button on the preview pane;
+    // running this under a Tester would loop on a missing button.
+    test.skip(!canWrite(role), '編輯 case requires Admin/QA');
 
     const res = await page.request.get('/api/v1/cases/project/1');
     test.skip(res.status() !== 200, 'cases API unavailable');
-    const cases: { id: number; external_id?: string | null }[] = await res.json();
+    const cases: CaseRow[] = await res.json();
     const target = cases.find(c => c.external_id && c.external_id.trim().length > 0);
     test.skip(!target, 'no case with external_id in target env');
 
-    await page.goto('/repository');
-    await page.waitForLoadState('networkidle');
-
-    // Activate a suite first so the case list & search input render.
-    const suiteBtn = page.locator('aside button, [role="button"]').filter({ hasText: /Suite/i }).first();
-    await expect(suiteBtn).toBeVisible({ timeout: 5000 });
-    await suiteBtn.click();
+    // The target case may live in a non-first suite — open its actual suite.
+    const suiteId = await gotoRepositorySuite(page, target!.suite_id ?? null);
+    test.skip(!suiteId, 'no suites in target env');
 
     // Use the search input we just verified to scope to the target case.
     const searchInput = page.locator('input[placeholder*="搜尋案例"]').first();
