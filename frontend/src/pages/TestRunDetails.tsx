@@ -293,14 +293,29 @@ export default function TestRunDetails() {
         setSelectedRows(selectedRows.size === filteredResults.length ? new Set() : new Set(filteredResults.map(r => r.id)));
     };
 
-    /** Batch apply – status and/or assignee */
+    /** Batch apply – status and/or assignee.
+     *
+     *  Assignee dropdown semantics (matches the three options the UI offers):
+     *    - ''           → "Keep" — do not touch assignee_id on these rows
+     *    - '__unassign__' → set assignee_id to null
+     *    - '<userId>'   → set assignee_id to the numeric user id
+     *
+     *  Bug fixed (2026-06-02): the original guard `batchAssigneeId !==
+     *  undefined` always passed (initial state is `''`, not undefined), so
+     *  picking "Keep" was silently treated as Unassign — batch-changing
+     *  status alone wiped every selected row's assignee. */
     const handleBatchApply = async () => {
         if (!batchStatus && !batchAssigneeId) return;
         try {
             await Promise.all([...selectedRows].map(resultId => {
                 const payload: Record<string, any> = {};
                 if (batchStatus) payload.status = batchStatus;
-                if (batchAssigneeId !== undefined) payload.assignee_id = batchAssigneeId ? Number(batchAssigneeId) : null;
+                if (batchAssigneeId === '__unassign__') {
+                    payload.assignee_id = null;
+                } else if (batchAssigneeId) {
+                    payload.assignee_id = Number(batchAssigneeId);
+                }
+                // '' (Keep) → leave assignee_id out of the payload entirely
                 return api.put(`/results/${resultId}`, payload);
             }));
             setSelectedRows(new Set());
