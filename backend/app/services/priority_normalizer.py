@@ -37,34 +37,33 @@ _ALIASES: dict[str, str] = {
     "low": LOW,
     "not set": NOT_SET,
     "": NOT_SET,
-
     # XMind 8 / Zen / 2020+ priority markers (also handled by xmind_import.PRIORITY_MAP
     # but kept here so direct DB writes via /cases POST also normalise)
     "priority-1": CRITICAL,
     "priority-2": HIGH,
     "priority-3": MEDIUM,
     "priority-4": LOW,
-
     # Jira / Zephyr Scale vocabulary
     "highest": CRITICAL,
     "blocker": CRITICAL,
     "urgent": CRITICAL,
     "p0": CRITICAL,
-
     "important": HIGH,
     "p1": HIGH,
     # KKday-specific legacy tag for "needs quick attention" — empirically used
     # interchangeably with High priority by the QA team.
     "fast": HIGH,
-
     "normal": MEDIUM,
     "p2": MEDIUM,
-
     "lowest": LOW,
     "minor": LOW,
     "trivial": LOW,
     "p3": LOW,
     "p4": LOW,
+    # KKday Zephyr (KQT project) custom labels
+    "rat": CRITICAL,
+    "toft": MEDIUM,
+    "fet": LOW,
 }
 
 
