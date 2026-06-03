@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useParams, Link, useSearchParams } from 'react-router-dom';
-import { Loader2, ArrowLeft, CheckCircle2, XCircle, SkipForward, Edit2, Filter, X, Save, Ban } from 'lucide-react';
+import { Loader2, ArrowLeft, CheckCircle2, XCircle, SkipForward, Edit2, Filter, X, Save, Ban, Copy, Check } from 'lucide-react';
 import api from '../lib/api';
 import { canWrite } from '../lib/permissions';
 import { useUsers } from '../lib/useUsers';
@@ -28,6 +28,8 @@ interface TestResult {
 
 const STATUS_OPTIONS = ['Passed', 'Failed', 'Untested', 'Blocked'];
 
+// Display prefix for test run IDs in the UI, e.g. run 230 → "KQT-R230"
+const RUN_ID_PREFIX = 'KQT-R';
 
 
 const STATUS_SELECT_STYLES: Record<string, string> = {
@@ -54,6 +56,7 @@ export default function TestRunDetails() {
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [selectedResultId, setSelectedResultId] = useState<number | null>(null);
+    const [idCopied, setIdCopied] = useState(false);
     const resultListRef = useRef<HTMLDivElement>(null);
 
     // Local unsaved state maps: resultId → value
@@ -321,6 +324,27 @@ export default function TestRunDetails() {
         });
     }, [fetchData]);
 
+    // Human-facing run identifier, e.g. "KQT-R230"
+    const runDisplayId = `${RUN_ID_PREFIX}${testRun?.id ?? runId}`;
+
+    const handleCopyRunId = useCallback(async () => {
+        try {
+            await navigator.clipboard.writeText(runDisplayId);
+        } catch {
+            // Fallback for browsers/contexts where the async Clipboard API is unavailable
+            const ta = document.createElement('textarea');
+            ta.value = runDisplayId;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            try { document.execCommand('copy'); } catch { /* ignore */ }
+            document.body.removeChild(ta);
+        }
+        setIdCopied(true);
+        window.setTimeout(() => setIdCopied(false), 1500);
+    }, [runDisplayId]);
+
     const handleCompleteRun = async () => {
         if (!window.confirm('Mark this run as Done?')) return;
         try {
@@ -378,6 +402,17 @@ export default function TestRunDetails() {
                     <Link to={fromFolder ? `/runs?folder=${fromFolder}` : testRun?.folder_id ? `/runs?folder=${testRun.folder_id}` : '/runs'} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500 transition-colors">
                         <ArrowLeft className="w-5 h-5" />
                     </Link>
+                    <button
+                        type="button"
+                        onClick={handleCopyRunId}
+                        title={idCopied ? 'Copied!' : `Click to copy ${runDisplayId}`}
+                        className="group inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-sm font-mono font-semibold whitespace-nowrap border bg-primary-50 text-primary-700 border-primary-200 hover:bg-primary-100 hover:border-primary-300 transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary-400"
+                    >
+                        {runDisplayId}
+                        {idCopied
+                            ? <Check className="w-3.5 h-3.5 text-emerald-500" />
+                            : <Copy className="w-3.5 h-3.5 opacity-50 group-hover:opacity-100 transition-opacity" />}
+                    </button>
                     <h1 className="text-2xl font-bold text-slate-900">{testRun?.title || 'Test Run Execution'}</h1>
                     <span className="px-2.5 py-0.5 rounded-full text-xs font-medium border bg-primary-50 text-primary-700 border-primary-200">
                         {testRun?.run_type || 'Feature Test'}
