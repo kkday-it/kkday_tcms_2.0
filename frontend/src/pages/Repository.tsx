@@ -1279,9 +1279,9 @@ export default function Repository() {
                                         className="w-full text-sm rounded-md border-slate-200 py-1.5 shadow-sm focus:border-primary-500 focus:ring-primary-500"
                                     >
                                         <option value="">All</option>
-                                        <option value="Active">Active</option>
                                         <option value="Draft">Draft</option>
-                                        <option value="Deprecated">Deprecated</option>
+                                        <option value="Active">Active</option>
+                                        <option value="Approved">Approved</option>
                                     </select>
                                 </div>
                                 <div>
@@ -1319,10 +1319,11 @@ export default function Repository() {
                                         className="w-full text-sm rounded-md border-slate-200 py-1.5 shadow-sm focus:border-primary-500 focus:ring-primary-500"
                                     >
                                         <option value="">All</option>
-                                        <option value="Highest">Highest</option>
+                                        <option value="Critical">Critical</option>
                                         <option value="High">High</option>
                                         <option value="Medium">Medium</option>
                                         <option value="Low">Low</option>
+                                        <option value="Not Set">Not Set</option>
                                     </select>
                                 </div>
                                 <div>
