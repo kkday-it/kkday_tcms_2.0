@@ -1,6 +1,11 @@
 import { test, expect } from '@playwright/test';
 import { ensureLoggedIn, canWrite, TEST_RUN_ID } from './utils';
 
+// Mirrors the ASSIGNEE_UNASSIGN sentinel in src/pages/TestRunDetails.tsx — the
+// e2e tree is kept self-contained (no src imports), so this is the test-side
+// single source for the protocol value instead of a bare magic string.
+const ASSIGNEE_UNASSIGN = '__unassign__';
+
 /**
  * Regression for the 2026-06-02 batch-apply bug:
  *
@@ -93,7 +98,7 @@ test('batch apply with explicit Unassign DOES send assignee_id: null', async ({ 
     await firstRowCheckbox.check();
 
     const assigneeGroup = page.locator('div').filter({ hasText: /^Assign to:/ }).first();
-    await assigneeGroup.locator('select').selectOption('__unassign__');
+    await assigneeGroup.locator('select').selectOption(ASSIGNEE_UNASSIGN);
 
     await page.click('button:has-text("Apply")');
 
