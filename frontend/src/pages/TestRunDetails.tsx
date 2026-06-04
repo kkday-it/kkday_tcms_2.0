@@ -31,6 +31,12 @@ const STATUS_OPTIONS = ['Passed', 'Failed', 'Untested', 'Blocked'];
 // Display prefix for test run IDs in the UI, e.g. run 230 → "KQT-R230"
 const RUN_ID_PREFIX = 'KQT-R';
 
+// Batch "Assign to" dropdown sentinels. Named so the Keep/Unassign protocol
+// values aren't repeated as bare magic strings across the handler and the
+// <select> options. (PR #822 review)
+const ASSIGNEE_KEEP = '';                  // "— Keep —": leave assignee_id untouched
+const ASSIGNEE_UNASSIGN = '__unassign__';  // explicit Unassign: set assignee_id to null
+
 
 const STATUS_SELECT_STYLES: Record<string, string> = {
     Passed: 'border-green-300 bg-green-50 text-green-700',
@@ -66,7 +72,7 @@ export default function TestRunDetails() {
 
     // Batch selection
     const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
-    const [batchAssigneeId, setBatchAssigneeId] = useState<string>('');
+    const [batchAssigneeId, setBatchAssigneeId] = useState<string>(ASSIGNEE_KEEP);
     const [batchStatus, setBatchStatus] = useState<string>('');
 
     // Edit modal
@@ -296,18 +302,33 @@ export default function TestRunDetails() {
         setSelectedRows(selectedRows.size === filteredResults.length ? new Set() : new Set(filteredResults.map(r => r.id)));
     };
 
-    /** Batch apply – status and/or assignee */
+    /** Batch apply – status and/or assignee.
+     *
+     *  Assignee dropdown semantics (matches the three options the UI offers):
+     *    - ''           → "Keep" — do not touch assignee_id on these rows
+     *    - '__unassign__' → set assignee_id to null
+     *    - '<userId>'   → set assignee_id to the numeric user id
+     *
+     *  Bug fixed (2026-06-02): the original guard `batchAssigneeId !==
+     *  undefined` always passed (initial state is `''`, not undefined), so
+     *  picking "Keep" was silently treated as Unassign — batch-changing
+     *  status alone wiped every selected row's assignee. */
     const handleBatchApply = async () => {
         if (!batchStatus && !batchAssigneeId) return;
         try {
             await Promise.all([...selectedRows].map(resultId => {
                 const payload: Record<string, any> = {};
                 if (batchStatus) payload.status = batchStatus;
-                if (batchAssigneeId !== undefined) payload.assignee_id = batchAssigneeId ? Number(batchAssigneeId) : null;
+                if (batchAssigneeId === ASSIGNEE_UNASSIGN) {
+                    payload.assignee_id = null;
+                } else if (batchAssigneeId) {
+                    payload.assignee_id = Number(batchAssigneeId);
+                }
+                // ASSIGNEE_KEEP ('') → leave assignee_id out of the payload entirely
                 return api.put(`/results/${resultId}`, payload);
             }));
             setSelectedRows(new Set());
-            setBatchAssigneeId('');
+            setBatchAssigneeId(ASSIGNEE_KEEP);
             setBatchStatus('');
             fetchData();
         } catch (err) {
@@ -702,8 +723,8 @@ export default function TestRunDetails() {
                                         onChange={e => setBatchAssigneeId(e.target.value)}
                                         className="text-sm rounded-md border-slate-300 py-1.5 pl-2 pr-8 shadow-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500 bg-white"
                                     >
-                                        <option value="">— Keep —</option>
-                                        <option value="__unassign__">Unassign</option>
+                                        <option value={ASSIGNEE_KEEP}>— Keep —</option>
+                                        <option value={ASSIGNEE_UNASSIGN}>Unassign</option>
                                         {users.map(u => <option key={u.id} value={u.id}>{u.full_name || u.username}</option>)}
                                     </select>
                                 </div>
@@ -716,7 +737,7 @@ export default function TestRunDetails() {
                                     Apply
                                 </button>
                                 <button
-                                    onClick={() => { setSelectedRows(new Set()); setBatchStatus(''); setBatchAssigneeId(''); }}
+                                    onClick={() => { setSelectedRows(new Set()); setBatchStatus(''); setBatchAssigneeId(ASSIGNEE_KEEP); }}
                                     className="px-3 py-1.5 text-sm font-medium text-slate-500 bg-white border border-slate-200 rounded-lg hover:bg-slate-50"
                                 >
                                     Clear
