@@ -315,12 +315,25 @@ async def update_run(run_id: int, run_in: TestRunUpdate, db: AsyncSession = Depe
         await _sync_assignees(run, run_in.assignee_ids, db)
 
     if run_in.case_ids is not None:
-        existing_results_result = await db.execute(select(TestResult).where(TestResult.run_id == run.id))
-        existing_results = existing_results_result.scalars().all()
-        existing_case_ids = {r.case_id for r in existing_results}
+        existing_results_result = await db.execute(
+            select(TestResult, TestCase.status)
+            .join(TestCase, TestResult.case_id == TestCase.id)
+            .where(TestResult.run_id == run.id)
+        )
+        existing_rows = existing_results_result.all()
+        existing_results = [tr for tr, _ in existing_rows]
+        # Archived cases are typically *hidden* from the EditRunModal's case
+        # list (GET /results/run/{id} filters them out by default), so they
+        # never appear in `run_in.case_ids` even though the user didn't intend
+        # to remove them. Treat archived rows as untouchable: skip them when
+        # computing cases_to_remove so a no-op modal save doesn't cascade-
+        # delete TestResult rows + any already-recorded status / assignee /
+        # comment / executed_at on them.
+        archived_case_ids = {tr.case_id for tr, status in existing_rows if status == ARCHIVED}
+        existing_case_ids = {tr.case_id for tr, _ in existing_rows}
 
         new_case_ids = set(run_in.case_ids)
-        cases_to_remove = existing_case_ids - new_case_ids
+        cases_to_remove = (existing_case_ids - new_case_ids) - archived_case_ids
         cases_to_add = new_case_ids - existing_case_ids
 
         if cases_to_remove:
