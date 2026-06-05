@@ -103,16 +103,21 @@ export default function MainLayout() {
                         </Link>
                     )}
 
-                    {/* Current User */}
-                    <button
-                        className="flex items-center gap-3 px-2 py-2 rounded-lg w-full text-sidebar-text hover:text-sidebar-text-active hover:bg-sidebar-hover transition-colors"
+                    {/* Account — hosts API Tokens (moved out of Settings) and
+                        is where per-user stuff (profile, sessions, …) will live. */}
+                    <Link
+                        to="/account"
+                        className={`flex items-center gap-3 px-2 py-2 rounded-lg w-full transition-colors ${location.pathname.startsWith('/account')
+                            ? 'bg-sidebar-active text-sidebar-text-active font-medium'
+                            : 'text-sidebar-text hover:text-sidebar-text-active hover:bg-sidebar-hover'
+                            }`}
                         title={currentUser?.username || '帳號'}
                     >
                         <User className="w-5 h-5 shrink-0" />
                         {isSidebarExpanded && (
                             <span className="text-sm truncate">{currentUser?.username || '帳號'}</span>
                         )}
-                    </button>
+                    </Link>
 
                     {/* Logout — destructive intent stays in the hover (red).
                         text-danger-400 reads as a warning over the navy bg. */}

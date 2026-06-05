@@ -14,24 +14,30 @@ import PillGroup, { type PillOption } from '../components/common/PillGroup';
 import { useUrlString, useUrlStringList } from '../lib/useUrlState';
 import api from '../lib/api';
 import { useUsers } from '../lib/useUsers';
+import { copyToClipboard } from '../lib/clipboard';
 
 // Spec v3 §4.3 Priority pill — same shape as TestRunDetails so the
 // two pages feel like one component (the source-of-truth lives in the
 // option array, not in copies of inline className blobs).
 const REPO_PRIORITY_PILL_OPTIONS: ReadonlyArray<PillOption> = [
-    { value: 'Highest', label: 'Highest', variant: 'danger' },
-    { value: 'High',    label: 'High',    variant: 'warning' },
-    { value: 'Medium',  label: 'Medium',  variant: 'info' },
-    { value: 'Low',     label: 'Low',     variant: 'success' },
+    { value: 'Critical', label: 'Critical', variant: 'danger' },
+    { value: 'High',     label: 'High',     variant: 'warning' },
+    { value: 'Medium',   label: 'Medium',   variant: 'info' },
+    { value: 'Low',      label: 'Low',      variant: 'success' },
+    { value: 'Not Set',  label: 'Not Set',  variant: 'neutral' },
 ];
 
-// Test case lifecycle status (Active/Draft/Deprecated). Spec v3 says
-// non-state classification stays outline-black, but here Status is a
-// real selectable enum that drives filtering — using round pills keeps
+// Test case lifecycle status. Canonical set is Draft/Approved/Deprecated
+// (see services/status_normalizer.py); 'Active' is the legacy in-use state
+// being folded into Draft on edit, kept here while ~946 SIT rows still carry
+// it. 'Archived' is the soft-delete sentinel and never a filterable value.
+// Spec v3 says non-state classification stays outline-black, but here Status
+// is a real selectable enum that drives filtering — using round pills keeps
 // it visually paired with Priority while still reading as "filterable".
 const REPO_STATUS_PILL_OPTIONS: ReadonlyArray<PillOption> = [
-    { value: 'Active',     label: 'Active',     variant: 'success' },
     { value: 'Draft',      label: 'Draft',      variant: 'info' },
+    { value: 'Active',     label: 'Active',     variant: 'success' },
+    { value: 'Approved',   label: 'Approved',   variant: 'success' },
     { value: 'Deprecated', label: 'Deprecated', variant: 'neutral' },
 ];
 
@@ -507,9 +513,10 @@ export default function Repository() {
         setSearchParams(prev => { const next = new URLSearchParams(prev); next.set('suite', String(id)); return next; });
     };
 
-    const handleShareSuiteLink = (id: number) => {
+    const handleShareSuiteLink = async (id: number) => {
         const url = `${window.location.origin}${window.location.pathname}?suite=${id}`;
-        navigator.clipboard.writeText(url).catch(console.warn);
+        const ok = await copyToClipboard(url);
+        if (!ok) return;
         setCopiedSuiteId(id);
         setTimeout(() => setCopiedSuiteId(null), 1500);
     };

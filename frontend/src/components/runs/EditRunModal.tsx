@@ -16,7 +16,9 @@ interface TestCase {
     status: string;
     priority: string;
     automation_status: string;
-    assignee_id?: number | null;
+    // Repository test cases carry `default_owner_id`, not `assignee_id`
+    // (assignee_id only exists per test-result inside a run). KQT-15412.
+    default_owner_id?: number | null;
     tags?: string;
     labels?: string;
 }
@@ -184,8 +186,8 @@ export default function EditRunModal({ isOpen, onClose, run, folders, onUpdated 
             if (filterPriority && c.priority !== filterPriority) return false;
             if (filterAutomation && c.automation_status !== filterAutomation) return false;
             if (filterAssignee) {
-                if (filterAssignee === 'unassigned' && c.assignee_id != null) return false;
-                if (filterAssignee !== 'unassigned' && c.assignee_id !== Number(filterAssignee)) return false;
+                if (filterAssignee === 'unassigned' && c.default_owner_id != null) return false;
+                if (filterAssignee !== 'unassigned' && c.default_owner_id !== Number(filterAssignee)) return false;
             }
             if (filterTags) {
                 const searchTags = filterTags.toLowerCase().split(',').map(t => t.trim()).filter(Boolean);
@@ -483,9 +485,9 @@ export default function EditRunModal({ isOpen, onClose, run, folders, onUpdated 
                                         className="w-full text-xs rounded border-slate-300 py-1"
                                     >
                                         <option value="">全部</option>
-                                        <option value="Active">Active</option>
                                         <option value="Draft">Draft</option>
-                                        <option value="Deprecated">Deprecated</option>
+                                        <option value="Active">Active</option>
+                                        <option value="Approved">Approved</option>
                                     </select>
                                 </div>
                                 <div>
@@ -496,11 +498,11 @@ export default function EditRunModal({ isOpen, onClose, run, folders, onUpdated 
                                         className="w-full text-xs rounded border-slate-300 py-1"
                                     >
                                         <option value="">全部</option>
-                                        <option value="Highest">Highest</option>
                                         <option value="Critical">Critical</option>
                                         <option value="High">High</option>
                                         <option value="Medium">Medium</option>
                                         <option value="Low">Low</option>
+                                        <option value="Not Set">Not Set</option>
                                     </select>
                                 </div>
                                 <div>

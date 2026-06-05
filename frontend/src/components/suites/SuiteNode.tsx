@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { Folder, ChevronRight, ChevronDown, Plus, Edit2, Trash2, MoreHorizontal, Link2, Check } from 'lucide-react';
+import { canWrite } from '../../lib/permissions';
 
 interface TestSuite {
     id: number;
@@ -43,6 +44,8 @@ export default function SuiteNode({
     const [isExpanded, setIsExpanded] = useState(false);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
+    // Hide write actions for non-Admin/QA — backend still enforces (PR-3).
+    const writable = canWrite();
 
     useEffect(() => {
         const handleClickOutside = (e: MouseEvent) => {
@@ -136,7 +139,7 @@ export default function SuiteNode({
                         </button>
                         {isMenuOpen && (
                             <div className="absolute right-0 top-full mt-0.5 w-40 bg-white border border-slate-200 rounded-lg shadow-lg z-50 py-1">
-                                {onAddSubFolder && (
+                                {writable && onAddSubFolder && (
                                     <button
                                         onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); onAddSubFolder(suite.id); setIsExpanded(true); }}
                                         onPointerDown={(e) => e.stopPropagation()}
@@ -145,13 +148,15 @@ export default function SuiteNode({
                                         <Plus className="w-3.5 h-3.5 text-primary-500" /> 新增子資料夾
                                     </button>
                                 )}
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); onEdit(suite); }}
-                                    onPointerDown={(e) => e.stopPropagation()}
-                                    className="w-full text-left px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
-                                >
-                                    <Edit2 className="w-3.5 h-3.5 text-blue-500" /> 編輯資料夾
-                                </button>
+                                {writable && (
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); onEdit(suite); }}
+                                        onPointerDown={(e) => e.stopPropagation()}
+                                        className="w-full text-left px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                                    >
+                                        <Edit2 className="w-3.5 h-3.5 text-blue-500" /> 編輯資料夾
+                                    </button>
+                                )}
                                 {onShareLink && (
                                     <button
                                         onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); onShareLink(suite.id); }}
@@ -165,13 +170,15 @@ export default function SuiteNode({
                                         {isCopied ? '已複製！' : '複製連結'}
                                     </button>
                                 )}
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); onDelete(suite.id); }}
-                                    onPointerDown={(e) => e.stopPropagation()}
-                                    className="w-full text-left px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
-                                >
-                                    <Trash2 className="w-3.5 h-3.5" /> 刪除資料夾
-                                </button>
+                                {writable && (
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); onDelete(suite.id); }}
+                                        onPointerDown={(e) => e.stopPropagation()}
+                                        className="w-full text-left px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                                    >
+                                        <Trash2 className="w-3.5 h-3.5" /> 刪除資料夾
+                                    </button>
+                                )}
                             </div>
                         )}
                     </div>

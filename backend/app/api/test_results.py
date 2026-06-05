@@ -13,23 +13,35 @@ from app.models.test_step_result import TestStepResult
 from app.models.user import User
 from app.schemas.test_result import TestResultUpdate, TestResultResponse
 from app.schemas.test_step_result import TestStepResultUpdate
+from app.core.statuses import ARCHIVED
 
 router = APIRouter()
 
 @router.get("/run/{run_id}", response_model=List[dict])
-async def get_results_by_run(run_id: int, db: AsyncSession = Depends(get_db)):
-    # Hide rows whose underlying TestCase has been archived (soft-deleted via the
-    # Repository UI). The TestResult row stays in the DB so un-archiving the case
-    # restores it; the filter is purely at read time. Matches how the rest of the
-    # app filters out `status="Archived"` resources.
+async def get_results_by_run(
+    run_id: int,
+    include_all: bool = False,
+    db: AsyncSession = Depends(get_db),
+):
+    # By default hide rows whose underlying TestCase has been archived (soft-
+    # deleted via the Repository UI). The TestResult row stays in the DB so
+    # un-archiving the case restores it; the filter is purely at read time.
+    #
+    # `?include_all=true` opts out: callers that need the full case set —
+    # EditRunModal computes `existing case_ids` from this endpoint and sends
+    # the result back as PUT /runs/{id}'s `case_ids` payload. Without the
+    # archived rows the update treats them as "to remove" and the underlying
+    # TestResult gets cascade-deleted. FE has been sending the param all
+    # along; backend just wasn't honouring it.
     query = (
         select(TestResult, TestCase.title, TestCase.external_id, TestCase.priority,
                TestCase.labels, TestCase.tags, TestCase.suite_id)
         .join(TestCase, TestResult.case_id == TestCase.id)
         .where(TestResult.run_id == run_id)
-        .where(TestCase.status != "Archived")
         .order_by(TestResult.id)
     )
+    if not include_all:
+        query = query.where(TestCase.status != ARCHIVED)
     result = await db.execute(query)
     rows = result.all()
 

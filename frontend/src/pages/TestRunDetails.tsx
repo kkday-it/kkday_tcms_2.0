@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useParams, Link, useSearchParams } from 'react-router-dom';
-import { Loader2, ArrowLeft, CheckCircle2, XCircle, SkipForward, Edit2, Search, X, Save, Ban } from 'lucide-react';
+import { Loader2, ArrowLeft, CheckCircle2, XCircle, SkipForward, Edit2, Search, X, Save, Ban, Copy, Check } from 'lucide-react';
 import api from '../lib/api';
 import { canWrite } from '../lib/permissions';
 import { useUsers } from '../lib/useUsers';
@@ -54,6 +54,14 @@ const PRIORITY_PILL_OPTIONS: ReadonlyArray<PillOption> = [
     { value: 'Not Set',  label: 'Not Set',  variant: 'neutral', style: 'dashed' },
 ];
 
+// Display prefix for test run IDs in the UI, e.g. run 230 → "KQT-R230"
+const RUN_ID_PREFIX = 'KQT-R';
+
+// Batch "Assign to" dropdown sentinels. Named so the Keep/Unassign protocol
+// values aren't repeated as bare magic strings across the handler and the
+// <select> options. (PR #822 review)
+const ASSIGNEE_KEEP = '';                  // "— Keep —": leave assignee_id untouched
+const ASSIGNEE_UNASSIGN = '__unassign__';  // explicit Unassign: set assignee_id to null
 
 
 const STATUS_SELECT_STYLES: Record<string, string> = {
@@ -80,6 +88,7 @@ export default function TestRunDetails() {
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [selectedResultId, setSelectedResultId] = useState<number | null>(null);
+    const [idCopied, setIdCopied] = useState(false);
     const resultListRef = useRef<HTMLDivElement>(null);
 
     // Local unsaved state maps: resultId → value
@@ -89,7 +98,7 @@ export default function TestRunDetails() {
 
     // Batch selection
     const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
-    const [batchAssigneeId, setBatchAssigneeId] = useState<string>('');
+    const [batchAssigneeId, setBatchAssigneeId] = useState<string>(ASSIGNEE_KEEP);
     const [batchStatus, setBatchStatus] = useState<string>('');
 
     // Edit modal
@@ -350,18 +359,33 @@ export default function TestRunDetails() {
         setSelectedRows(selectedRows.size === filteredResults.length ? new Set() : new Set(filteredResults.map(r => r.id)));
     };
 
-    /** Batch apply – status and/or assignee */
+    /** Batch apply – status and/or assignee.
+     *
+     *  Assignee dropdown semantics (matches the three options the UI offers):
+     *    - ''           → "Keep" — do not touch assignee_id on these rows
+     *    - '__unassign__' → set assignee_id to null
+     *    - '<userId>'   → set assignee_id to the numeric user id
+     *
+     *  Bug fixed (2026-06-02): the original guard `batchAssigneeId !==
+     *  undefined` always passed (initial state is `''`, not undefined), so
+     *  picking "Keep" was silently treated as Unassign — batch-changing
+     *  status alone wiped every selected row's assignee. */
     const handleBatchApply = async () => {
         if (!batchStatus && !batchAssigneeId) return;
         try {
             await Promise.all([...selectedRows].map(resultId => {
                 const payload: Record<string, any> = {};
                 if (batchStatus) payload.status = batchStatus;
-                if (batchAssigneeId !== undefined) payload.assignee_id = batchAssigneeId ? Number(batchAssigneeId) : null;
+                if (batchAssigneeId === ASSIGNEE_UNASSIGN) {
+                    payload.assignee_id = null;
+                } else if (batchAssigneeId) {
+                    payload.assignee_id = Number(batchAssigneeId);
+                }
+                // ASSIGNEE_KEEP ('') → leave assignee_id out of the payload entirely
                 return api.put(`/results/${resultId}`, payload);
             }));
             setSelectedRows(new Set());
-            setBatchAssigneeId('');
+            setBatchAssigneeId(ASSIGNEE_KEEP);
             setBatchStatus('');
             fetchData();
         } catch (err) {
@@ -377,6 +401,27 @@ export default function TestRunDetails() {
             if (resultListRef.current) resultListRef.current.scrollTop = scrollTop;
         });
     }, [fetchData]);
+
+    // Human-facing run identifier, e.g. "KQT-R230"
+    const runDisplayId = `${RUN_ID_PREFIX}${testRun?.id ?? runId}`;
+
+    const handleCopyRunId = useCallback(async () => {
+        try {
+            await navigator.clipboard.writeText(runDisplayId);
+        } catch {
+            // Fallback for browsers/contexts where the async Clipboard API is unavailable
+            const ta = document.createElement('textarea');
+            ta.value = runDisplayId;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            try { document.execCommand('copy'); } catch { /* ignore */ }
+            document.body.removeChild(ta);
+        }
+        setIdCopied(true);
+        window.setTimeout(() => setIdCopied(false), 1500);
+    }, [runDisplayId]);
 
     const handleCompleteRun = async () => {
         if (!window.confirm('Mark this run as Done?')) return;
@@ -427,6 +472,17 @@ export default function TestRunDetails() {
                     <Link to={fromFolder ? `/runs?folder=${fromFolder}` : testRun?.folder_id ? `/runs?folder=${testRun.folder_id}` : '/runs'} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500 transition-colors">
                         <ArrowLeft className="w-5 h-5" />
                     </Link>
+                    <button
+                        type="button"
+                        onClick={handleCopyRunId}
+                        title={idCopied ? 'Copied!' : `Click to copy ${runDisplayId}`}
+                        className="group inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-sm font-mono font-semibold whitespace-nowrap border bg-primary-50 text-primary-700 border-primary-200 hover:bg-primary-100 hover:border-primary-300 transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary-400"
+                    >
+                        {runDisplayId}
+                        {idCopied
+                            ? <Check className="w-3.5 h-3.5 text-emerald-500" />
+                            : <Copy className="w-3.5 h-3.5 opacity-50 group-hover:opacity-100 transition-opacity" />}
+                    </button>
                     <h1 className="text-2xl font-bold text-slate-900">{testRun?.title || 'Test Run Execution'}</h1>
                     <span className="px-2.5 py-0.5 rounded-full text-xs font-medium border bg-primary-50 text-primary-700 border-primary-200">
                         {testRun?.run_type || 'Feature Test'}
@@ -662,8 +718,8 @@ export default function TestRunDetails() {
                                         onChange={e => setBatchAssigneeId(e.target.value)}
                                         className="text-sm rounded-md border-slate-300 py-1.5 pl-2 pr-8 shadow-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500 bg-white"
                                     >
-                                        <option value="">— Keep —</option>
-                                        <option value="__unassign__">Unassign</option>
+                                        <option value={ASSIGNEE_KEEP}>— Keep —</option>
+                                        <option value={ASSIGNEE_UNASSIGN}>Unassign</option>
                                         {users.map(u => <option key={u.id} value={u.id}>{u.full_name || u.username}</option>)}
                                     </select>
                                 </div>
@@ -676,7 +732,7 @@ export default function TestRunDetails() {
                                     Apply
                                 </button>
                                 <button
-                                    onClick={() => { setSelectedRows(new Set()); setBatchStatus(''); setBatchAssigneeId(''); }}
+                                    onClick={() => { setSelectedRows(new Set()); setBatchStatus(''); setBatchAssigneeId(ASSIGNEE_KEEP); }}
                                     className="px-3 py-1.5 text-sm font-medium text-slate-500 bg-white border border-slate-200 rounded-lg hover:bg-slate-50"
                                 >
                                     Clear

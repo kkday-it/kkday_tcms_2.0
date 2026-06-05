@@ -22,6 +22,8 @@ from app.schemas.test_case import TestCaseCreate, TestCaseResponse, TestCaseUpda
 from app.schemas.test_case_history import TestCaseHistoryResponse
 from app.services.dify_sync import build_case_metadata, build_case_text
 from app.services.priority_normalizer import normalize_priority
+from app.services.status_normalizer import normalize_status, DRAFT
+from app.core.statuses import ARCHIVED
 
 logger = logging.getLogger(__name__)
 
@@ -75,8 +77,8 @@ async def list_cases_by_project(
         exclude_labels_list = [l.strip().lower() for l in exclude_labels.split(',')]
         for label in exclude_labels_list:
             query = query.where((TestCase.labels.is_(None)) | (~TestCase.labels.ilike(f"%{label}%")))
-    query = query.where(TestCase.status != "Archived")
-    query = query.options(with_loader_criteria(TestStep, TestStep.status != "Archived"))
+    query = query.where(TestCase.status != ARCHIVED)
+    query = query.options(with_loader_criteria(TestStep, TestStep.status != ARCHIVED))
     # Stable creation-order: xmind/zephyr import inserts cases depth-first
     # following the source tree, so ordering by id preserves the mindmap order.
     query = query.order_by(TestCase.id)
@@ -101,9 +103,9 @@ async def list_cases_by_suite(suite_id: int, db: AsyncSession = Depends(get_db))
     result = await db.execute(
         select(TestCase)
         .options(selectinload(TestCase.steps))
-        .options(with_loader_criteria(TestStep, TestStep.status != "Archived"))
+        .options(with_loader_criteria(TestStep, TestStep.status != ARCHIVED))
         .where(TestCase.suite_id.in_(select(hierarchy.c.id)))
-        .where(TestCase.status != "Archived")
+        .where(TestCase.status != ARCHIVED)
         .order_by(TestCase.id)
     )
     return result.scalars().all()
@@ -118,6 +120,17 @@ async def create_case(case_in: TestCaseCreate, db: AsyncSession = Depends(get_db
     # at the write boundary, so the dropdown never sees a value it can't render.
     if "priority" in case_data:
         case_data["priority"] = normalize_priority(case_data.get("priority"))
+    # Same hardening for status: fold legacy "Active" into the canonical
+    # Draft/Approved/Deprecated lifecycle. The editor must not reach the
+    # Archived soft-delete sentinel through this path — refuse it explicitly.
+    if "status" in case_data:
+        normalized_status = normalize_status(case_data.get("status"))
+        if normalized_status == ARCHIVED:
+            raise HTTPException(
+                status_code=400,
+                detail="不可將 status 設為 Archived；刪除請走刪除 API",
+            )
+        case_data["status"] = normalized_status
     case = TestCase(**case_data)
 
     try:
@@ -161,7 +174,7 @@ async def create_case(case_in: TestCaseCreate, db: AsyncSession = Depends(get_db
     result = await db.execute(
         select(TestCase)
         .options(selectinload(TestCase.steps))
-        .options(with_loader_criteria(TestStep, TestStep.status != "Archived"))
+        .options(with_loader_criteria(TestStep, TestStep.status != ARCHIVED))
         .where(TestCase.id == case.id)
     )
     return result.scalar_one()
@@ -320,7 +333,7 @@ async def batch_delete_cases(
         raise HTTPException(status_code=404, detail="No matching TestCases found")
 
     for case in cases:
-        case.status = "Archived"
+        case.status = ARCHIVED
         history = TestCaseHistory(
             case_id=case.id,
             user_id=1,
@@ -375,7 +388,7 @@ async def get_case(case_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(TestCase)
         .options(selectinload(TestCase.steps))
-        .options(with_loader_criteria(TestStep, TestStep.status != "Archived"))
+        .options(with_loader_criteria(TestStep, TestStep.status != ARCHIVED))
         .where(TestCase.id == case_id)
     )
     case = result.scalar_one_or_none()
@@ -396,7 +409,7 @@ async def update_case(case_id: int, case_in: TestCaseUpdate, db: AsyncSession = 
     result = await db.execute(
         select(TestCase)
         .options(selectinload(TestCase.steps))
-        .options(with_loader_criteria(TestStep, TestStep.status != "Archived"))
+        .options(with_loader_criteria(TestStep, TestStep.status != ARCHIVED))
         .where(TestCase.id == case_id)
     )
     case = result.scalar_one_or_none()
@@ -422,6 +435,17 @@ async def update_case(case_id: int, case_in: TestCaseUpdate, db: AsyncSession = 
     # silently rewrites the column to a canonical value the dropdown can render.
     if "priority" in update_data:
         update_data["priority"] = normalize_priority(update_data.get("priority"))
+    # Same hardening for status (folds legacy "Active" → Draft on edit). The
+    # editor must never soft-delete by setting status=Archived — refuse it; the
+    # delete endpoint is the only legitimate way to reach Archived.
+    if "status" in update_data:
+        normalized_status = normalize_status(update_data.get("status"))
+        if normalized_status == ARCHIVED:
+            raise HTTPException(
+                status_code=400,
+                detail="不可將 status 設為 Archived；刪除請走刪除 API",
+            )
+        update_data["status"] = normalized_status
 
     # Track changed fields
     changes = {}
@@ -457,7 +481,7 @@ async def update_case(case_id: int, case_in: TestCaseUpdate, db: AsyncSession = 
         # 2. Soft-Delete Orphans
         for step_id, step in existing_steps.items():
             if step_id not in incoming_step_ids:
-                step.status = "Archived"
+                step.status = ARCHIVED
                 # To really "un-link" it from the current case view if needed, 
                 # but we usually just filter it out in the relationship query.
             
@@ -479,7 +503,7 @@ async def update_case(case_id: int, case_in: TestCaseUpdate, db: AsyncSession = 
     result = await db.execute(
         select(TestCase)
         .options(selectinload(TestCase.steps))
-        .options(with_loader_criteria(TestStep, TestStep.status != "Archived"))
+        .options(with_loader_criteria(TestStep, TestStep.status != ARCHIVED))
         .where(TestCase.id == case.id)
     )
     return result.scalar_one()
@@ -495,7 +519,7 @@ async def delete_case(
     if not case:
         raise HTTPException(status_code=404, detail="TestCase not found")
 
-    case.status = "Archived"
+    case.status = ARCHIVED
 
     # Create history record
     history = TestCaseHistory(
@@ -526,17 +550,21 @@ async def restore_case(
     if not case:
         raise HTTPException(status_code=404, detail="TestCase not found")
 
-    if case.status != "Archived":
+    if case.status != ARCHIVED:
         return {"message": "TestCase is not archived"}
 
-    case.status = "Active"
+    # Restore to the canonical entry state (Draft), not the legacy "Active"
+    # value the lifecycle is being folded away from. The original pre-archive
+    # lifecycle isn't recoverable (Archived overwrote it), so Draft is the
+    # safe re-entry point.
+    case.status = DRAFT
 
     # Create history record
     history = TestCaseHistory(
         case_id=case.id,
         user_id=1,
         action="Restored",
-        changed_fields=json.dumps({"status": "Archived -> Active"}, ensure_ascii=False)
+        changed_fields=json.dumps({"status": f"{ARCHIVED} -> {DRAFT}"}, ensure_ascii=False)
     )
     db.add(history)
 

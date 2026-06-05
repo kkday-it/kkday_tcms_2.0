@@ -15,6 +15,7 @@ interface TestStep {
 interface TestCasePreview {
     id: number;
     title: string;
+    status?: string;
     lifecycle_status?: string;
     priority?: string;
     automation_status?: string;
@@ -169,7 +170,7 @@ export default function TestCasePreviewPane({ isOpen, onClose, caseId, onEditCli
                                     <h2 className="text-2xl font-bold text-slate-900 leading-tight mb-4">{testCase.title}</h2>
                                     <div className="flex flex-wrap gap-2 text-xs">
                                         <span className="inline-flex items-baseline px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                                            <span className="font-semibold mr-1">狀態:</span> {testCase.lifecycle_status || 'Draft'}
+                                            <span className="font-semibold mr-1">狀態:</span> {testCase.status || 'Draft'}
                                         </span>
                                         <span className={`inline-flex items-baseline px-2.5 py-1 rounded-full border ${testCase.automation_status === 'Automated' ? 'border-primary-200 text-primary-700 bg-primary-50' : 'border-slate-200 text-slate-600 bg-slate-50'}`}>
                                             <span className="font-semibold mr-1">自動化:</span> {testCase.automation_status || 'Manual'}

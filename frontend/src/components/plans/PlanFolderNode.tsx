@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { Folder, ChevronRight, ChevronDown, Plus, Edit2, Trash2 } from 'lucide-react';
+import { canWrite } from '../../lib/permissions';
 
 interface PlanFolder {
     id: number;
@@ -26,6 +27,8 @@ export default function PlanFolderNode({
     folder, level, isActive, planCount, onSelect, onAddSubFolder, onEdit, onDelete, childrenNodes
 }: PlanFolderNodeProps) {
     const [isExpanded, setIsExpanded] = useState(true);
+    // Hide write actions for non-Admin/QA — backend still enforces (PR-3).
+    const writable = canWrite();
 
     const { attributes, listeners, setNodeRef: setDraggableRef, transform, isDragging } = useDraggable({
         id: `folder-${folder.id}`,
@@ -81,7 +84,7 @@ export default function PlanFolderNode({
                 </div>
 
                 <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-inherit pl-1 pointer-events-auto shrink-0 pr-1">
-                    {onAddSubFolder && (
+                    {writable && onAddSubFolder && (
                         <button
                             onClick={(e) => { e.stopPropagation(); onAddSubFolder(folder.id); setIsExpanded(true); }}
                             className="p-1 text-slate-400 hover:text-primary-600 hover:bg-primary-50 rounded transition-colors"
@@ -90,7 +93,7 @@ export default function PlanFolderNode({
                             <Plus className="w-3.5 h-3.5" />
                         </button>
                     )}
-                    {onEdit && (
+                    {writable && onEdit && (
                         <button
                             onClick={(e) => { e.stopPropagation(); onEdit(folder); }}
                             className="p-1 text-slate-400 hover:text-primary-600 hover:bg-primary-50 rounded transition-colors"
@@ -99,7 +102,7 @@ export default function PlanFolderNode({
                             <Edit2 className="w-3.5 h-3.5" />
                         </button>
                     )}
-                    {onDelete && (
+                    {writable && onDelete && (
                         <button
                             onClick={(e) => { e.stopPropagation(); onDelete(folder.id); }}
                             className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
