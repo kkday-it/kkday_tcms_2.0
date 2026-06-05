@@ -88,7 +88,9 @@ def build_case_metadata(case) -> dict:
         "automation_status": case.automation_status,
         "layer": case.layer,
         "type": case.type,
-        "lifecycle_status": case.lifecycle_status,
+        # Lifecycle now lives on `status` (lifecycle_status is dead); keep the
+        # metadata key for compat but source the live value.
+        "lifecycle_status": case.status,
         "tags": tags,
         "labels": labels,
         "jira_keys": case.jira_keys or "",

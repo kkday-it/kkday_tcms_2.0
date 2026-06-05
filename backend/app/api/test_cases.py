@@ -235,7 +235,10 @@ async def export_cases(
                 "case_id": f"TC-{case.id}",
                 "suite_id": case.suite_id,
                 "title": case.title,
-                "lifecycle_status": case.lifecycle_status,
+                # Lifecycle now lives on `status` (the lifecycle_status column is
+                # dead); keep the export key for downstream compat but source the
+                # live value so exports don't freeze at the stale default.
+                "lifecycle_status": case.status,
                 "priority": case.priority,
                 "automation_status": case.automation_status,
                 "layer": case.layer or "",
@@ -268,7 +271,10 @@ async def export_cases(
                 "id": f"TC-{case.id}",
                 "suite_id": case.suite_id,
                 "title": case.title,
-                "lifecycle_status": case.lifecycle_status,
+                # Lifecycle now lives on `status` (the lifecycle_status column is
+                # dead); keep the export key for downstream compat but source the
+                # live value so exports don't freeze at the stale default.
+                "lifecycle_status": case.status,
                 "priority": case.priority,
                 "automation_status": case.automation_status,
                 "layer": case.layer,
