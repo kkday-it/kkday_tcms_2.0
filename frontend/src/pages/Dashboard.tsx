@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Layers, PlayCircle, Loader2, Bug, AlertTriangle, CheckCircle2, XCircle, Clock, Zap, Target, Activity, Ban } from 'lucide-react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, LabelList } from 'recharts';
 import api from '../lib/api';
+import { runStatusBadgeClasses } from '../lib/runStatus';
 
 // --- Interfaces: Overview ---
 interface SummaryCards {
@@ -226,8 +227,7 @@ export default function Dashboard() {
                                                     <div className="text-xs text-slate-500 mt-1">指派執行 #{run.id}</div>
                                                 </td>
                                                 <td className="px-6 py-5">
-                                                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${run.status === 'Testing' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-slate-100 text-slate-600 border-slate-200'
-                                                        }`}>
+                                                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${runStatusBadgeClasses(run.status)}`}>
                                                         {run.status}
                                                     </span>
                                                 </td>
