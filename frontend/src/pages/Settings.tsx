@@ -193,7 +193,7 @@ function UsersTab({ isAdmin }: { isAdmin: boolean }) {
                     <p className="text-sm text-slate-500 mt-1">Manage team members, roles, and access permissions.</p>
                 </div>
                 <button onClick={() => setIsAddOpen(true)}
-                    className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 transition-colors shadow-sm">
+                    className="btn-primary items-center gap-2">
                     <Plus className="w-4 h-4" /> Add User
                 </button>
             </div>
@@ -368,7 +368,7 @@ function SystemTab() {
                         <button
                             onClick={handleBackup}
                             disabled={isBackingUp}
-                            className="flex items-center gap-2 px-5 py-2.5 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 transition-colors shadow-sm disabled:opacity-70 shrink-0 ml-6"
+                            className="btn-primary items-center gap-2 disabled:opacity-70 shrink-0 ml-6"
                         >
                             {isBackingUp
                                 ? <><Loader2 className="w-4 h-4 animate-spin" /> Backing up...</>
@@ -613,7 +613,7 @@ function ScheduledBackupCard() {
                             Run Now
                         </button>
                         <button onClick={handleSave} disabled={saving}
-                            className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-60 transition-colors">
+                            className="btn-primary items-center gap-1.5 disabled:opacity-60">
                             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                             Save
                         </button>

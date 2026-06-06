@@ -31,7 +31,11 @@ interface TestCaseEditorProps {
 
 export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSaved }: TestCaseEditorProps) {
     const [title, setTitle] = useState('');
-    const [lifecycleStatus, setLifecycleStatus] = useState('Draft');
+    // Binds to the case's `status` column — the load-bearing lifecycle field
+    // (Draft/Approved/Deprecated; backend folds legacy 'Active' → Draft on
+    // save). The old `lifecycle_status` column is effectively unused and no
+    // longer written from here.
+    const [caseStatus, setCaseStatus] = useState('Draft');
     const [defaultOwnerId, setDefaultOwnerId] = useState<number | ''>('');
     const [priority, setPriority] = useState('Medium');
     const [automationStatus, setAutomationStatus] = useState('Manual');
@@ -86,7 +90,7 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
                         };
 
                         setTitle(data.title);
-                        setLifecycleStatus(data.lifecycle_status || 'Draft');
+                        setCaseStatus(data.status || 'Draft');
                         setDefaultOwnerId(data.default_owner_id || '');
                         setPriority(data.priority || 'Medium');
                         setAutomationStatus(data.automation_status || 'Manual');
@@ -137,7 +141,7 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
             } else {
                 // Reset form for new case
                 setTitle('');
-                setLifecycleStatus('Draft');
+                setCaseStatus('Draft');
                 setDefaultOwnerId('');
                 setPriority('Medium');
                 setAutomationStatus('Manual');
@@ -238,7 +242,7 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
             // context where `suiteId` is null — that produced a 500 on TC-4055.
             const basePayload = {
                 title,
-                lifecycle_status: lifecycleStatus,
+                status: caseStatus,
                 default_owner_id: defaultOwnerId ? Number(defaultOwnerId) : null,
                 priority,
                 automation_status: automationStatus,
@@ -320,12 +324,17 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
                                     <div>
                                         <label className="block text-sm font-semibold text-slate-900 mb-1.5">狀態</label>
                                         <select
-                                            value={lifecycleStatus}
-                                            onChange={(e) => setLifecycleStatus(e.target.value)}
+                                            value={caseStatus}
+                                            onChange={(e) => setCaseStatus(e.target.value)}
                                             className="w-full rounded-md border border-slate-200 py-2 px-3 text-slate-900 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 sm:text-sm bg-white"
                                         >
+                                            {/* Canonical lifecycle is Draft/Approved/Deprecated; backend folds
+                                                legacy 'Active' → Draft on save. 'Active' stays listed so editing
+                                                a not-yet-migrated row renders its current value instead of blank. */}
                                             <option value="Draft">Draft</option>
+                                            <option value="Active">Active</option>
                                             <option value="Approved">Approved</option>
+                                            <option value="Deprecated">Deprecated</option>
                                         </select>
                                     </div>
                                     <div>

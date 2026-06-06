@@ -22,6 +22,7 @@ from app.schemas.test_case import TestCaseCreate, TestCaseResponse, TestCaseUpda
 from app.schemas.test_case_history import TestCaseHistoryResponse
 from app.services.dify_sync import build_case_metadata, build_case_text
 from app.services.priority_normalizer import normalize_priority
+from app.services.status_normalizer import normalize_status, DRAFT
 from app.core.statuses import ARCHIVED
 
 logger = logging.getLogger(__name__)
@@ -119,6 +120,17 @@ async def create_case(case_in: TestCaseCreate, db: AsyncSession = Depends(get_db
     # at the write boundary, so the dropdown never sees a value it can't render.
     if "priority" in case_data:
         case_data["priority"] = normalize_priority(case_data.get("priority"))
+    # Same hardening for status: fold legacy "Active" into the canonical
+    # Draft/Approved/Deprecated lifecycle. The editor must not reach the
+    # Archived soft-delete sentinel through this path — refuse it explicitly.
+    if "status" in case_data:
+        normalized_status = normalize_status(case_data.get("status"))
+        if normalized_status == ARCHIVED:
+            raise HTTPException(
+                status_code=400,
+                detail="不可將 status 設為 Archived；刪除請走刪除 API",
+            )
+        case_data["status"] = normalized_status
     case = TestCase(**case_data)
 
     try:
@@ -194,6 +206,8 @@ async def export_cases(
             select(TestCase)
             .options(selectinload(TestCase.steps))
             .where(TestCase.suite_id.in_(select(hierarchy.c.id)))
+            # Don't export soft-deleted cases (mirrors the list endpoints).
+            .where(TestCase.status != ARCHIVED)
         )
     else:
         result = await db.execute(
@@ -201,6 +215,7 @@ async def export_cases(
             .join(TestSuite)
             .options(selectinload(TestCase.steps))
             .where(TestSuite.project_id == project_id)
+            .where(TestCase.status != ARCHIVED)
         )
     cases = result.scalars().all()
 
@@ -223,7 +238,10 @@ async def export_cases(
                 "case_id": f"TC-{case.id}",
                 "suite_id": case.suite_id,
                 "title": case.title,
-                "lifecycle_status": case.lifecycle_status,
+                # Lifecycle now lives on `status` (the lifecycle_status column is
+                # dead); keep the export key for downstream compat but source the
+                # live value so exports don't freeze at the stale default.
+                "lifecycle_status": case.status,
                 "priority": case.priority,
                 "automation_status": case.automation_status,
                 "layer": case.layer or "",
@@ -256,7 +274,10 @@ async def export_cases(
                 "id": f"TC-{case.id}",
                 "suite_id": case.suite_id,
                 "title": case.title,
-                "lifecycle_status": case.lifecycle_status,
+                # Lifecycle now lives on `status` (the lifecycle_status column is
+                # dead); keep the export key for downstream compat but source the
+                # live value so exports don't freeze at the stale default.
+                "lifecycle_status": case.status,
                 "priority": case.priority,
                 "automation_status": case.automation_status,
                 "layer": case.layer,
@@ -423,6 +444,17 @@ async def update_case(case_id: int, case_in: TestCaseUpdate, db: AsyncSession = 
     # silently rewrites the column to a canonical value the dropdown can render.
     if "priority" in update_data:
         update_data["priority"] = normalize_priority(update_data.get("priority"))
+    # Same hardening for status (folds legacy "Active" → Draft on edit). The
+    # editor must never soft-delete by setting status=Archived — refuse it; the
+    # delete endpoint is the only legitimate way to reach Archived.
+    if "status" in update_data:
+        normalized_status = normalize_status(update_data.get("status"))
+        if normalized_status == ARCHIVED:
+            raise HTTPException(
+                status_code=400,
+                detail="不可將 status 設為 Archived；刪除請走刪除 API",
+            )
+        update_data["status"] = normalized_status
 
     # Track changed fields
     changes = {}
@@ -530,14 +562,18 @@ async def restore_case(
     if case.status != ARCHIVED:
         return {"message": "TestCase is not archived"}
 
-    case.status = "Active"
+    # Restore to the canonical entry state (Draft), not the legacy "Active"
+    # value the lifecycle is being folded away from. The original pre-archive
+    # lifecycle isn't recoverable (Archived overwrote it), so Draft is the
+    # safe re-entry point.
+    case.status = DRAFT
 
     # Create history record
     history = TestCaseHistory(
         case_id=case.id,
         user_id=1,
         action="Restored",
-        changed_fields=json.dumps({"status": "Archived -> Active"}, ensure_ascii=False)
+        changed_fields=json.dumps({"status": f"{ARCHIVED} -> {DRAFT}"}, ensure_ascii=False)
     )
     db.add(history)
 

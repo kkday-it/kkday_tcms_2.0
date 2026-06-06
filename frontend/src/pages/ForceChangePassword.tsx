@@ -104,7 +104,7 @@ export default function ForceChangePassword() {
                             <button
                                 type="submit"
                                 disabled={isLoading}
-                                className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-semibold text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {isLoading ? 'Updating...' : 'Change Password & Continue'}
                             </button>

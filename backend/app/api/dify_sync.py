@@ -19,6 +19,7 @@ from app.core.config import settings
 from app.db.database import get_db
 from app.models.test_case import TestCase
 from app.models.test_suite import TestSuite
+from app.core.statuses import ARCHIVED
 from app.services.dify_sync import SYNC_MAP_PATH, _load_sync_map, sync_cases_to_dify
 
 router = APIRouter()
@@ -80,6 +81,8 @@ async def trigger_dify_sync(
             select(TestCase)
             .options(selectinload(TestCase.steps))
             .where(TestCase.suite_id.in_(select(hierarchy.c.id)))
+            # Soft-deleted cases must not be pushed into the Dify knowledge base.
+            .where(TestCase.status != ARCHIVED)
         )
     else:
         result = await db.execute(
@@ -87,6 +90,7 @@ async def trigger_dify_sync(
             .join(TestSuite)
             .options(selectinload(TestCase.steps))
             .where(TestSuite.project_id == project_id)
+            .where(TestCase.status != ARCHIVED)
         )
 
     cases = result.scalars().all()

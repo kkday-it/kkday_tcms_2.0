@@ -692,7 +692,7 @@ export default function EditPlanModal({ plan, folders, runs, cases, caseFolders,
                                                     placeholder="Filter ID…"
                                                     className="w-28 px-2.5 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
                                                 <button type="submit"
-                                                    className="px-3 py-1.5 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700">查詢</button>
+                                                    className="btn-primary !py-1.5 !px-3">查詢</button>
                                                 {chartFilterId && (
                                                     <a href={`https://kkday.atlassian.net/issues/?filter=${chartFilterId}`}
                                                         target="_blank" rel="noreferrer"
