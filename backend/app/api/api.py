@@ -51,3 +51,6 @@ router.include_router(system_router, prefix="/system", tags=["System"])
 
 from app.api.api_tokens import router as api_tokens_router
 router.include_router(api_tokens_router, prefix="/api-tokens", tags=["API Tokens"])
+
+from app.api.presence import router as presence_router
+router.include_router(presence_router, prefix="/presence", tags=["Presence"])

@@ -3,6 +3,7 @@ import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { Presentation, Layers, Activity, Settings as SettingsIcon, User, ClipboardList, LogOut, ChevronLeft, ChevronRight } from 'lucide-react';
 import DatabaseHealthAlert from './DatabaseHealthAlert';
 import LocalDbBadge from './LocalDbBadge';
+import OnlineUsersIndicator from './OnlineUsersIndicator';
 
 export default function MainLayout() {
     const location = useLocation();
@@ -87,6 +88,11 @@ export default function MainLayout() {
                 </nav>
 
                 <div className="mt-auto space-y-1 px-2">
+                    {/* 站上人數 — ambient usage indicator, sits above the
+                        account/settings cluster at the bottom-left. */}
+                    <OnlineUsersIndicator expanded={isSidebarExpanded} />
+                    <div className="border-t border-sidebar-divider my-1" />
+
                     {/* Settings - Admin Only */}
                     {isAdmin && (
                         <Link
