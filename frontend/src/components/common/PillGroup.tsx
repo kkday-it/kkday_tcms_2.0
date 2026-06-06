@@ -113,7 +113,7 @@ export default function PillGroup({ label, type, options, value, onChange }: Pil
                         className={`${base} ${stateClass}`}
                     >
                         {type === 'round' && (
-                            <span className={`w-1.5 h-1.5 rounded-full ${DOT_BG[opt.variant]}`} />
+                            <span className={`w-1.5 h-1.5 rounded-full ${DOT_BG[opt.variant] || 'bg-slate-400'}`} />
                         )}
                         {opt.label}
                     </button>
