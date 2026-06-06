@@ -10,11 +10,11 @@
  * Selected state: bg-{variant}-50 + text-{variant}-800 + ring-{variant}-800
  * (the ring is what calls out "selected" — no extra checkmark/icon needed).
  *
- * Unselected state: bg-slate-100 + text-slate-600 (`neutral` role is fulfilled
- * by slate per audit; we don't introduce a parallel `neutral` ramp). The `round`
- * dot keeps its semantic colour even when unselected, so a Result row reads as a
- * set of coloured status filters at a glance rather than a wall of grey — the
- * feature was getting overlooked when the whole row was monochrome.
+ * Unselected state: an outlined "button" look — white bg + slate-300 border +
+ * subtle shadow + slate-700 text — so the pills read as tappable toggles rather
+ * than a flat grey wall (the filter was getting overlooked). The `round` dot
+ * keeps its semantic colour even when unselected, so a Result row reads as a set
+ * of coloured status filters at a glance.
  *
  * `notset` variant uses a dashed border in default state — flags it as an
  * exception that shouldn't be there once Priority becomes mandatory
@@ -89,15 +89,19 @@ export default function PillGroup({ label, type, options, value, onChange }: Pil
                 const selected = value.has(opt.value);
                 const isDashed = opt.style === 'dashed';
 
+                // `border border-transparent` on the base reserves 1px on every
+                // state so toggling selected↔unselected never shifts layout (the
+                // selected state draws its outline with an inset ring, unselected
+                // with a real border).
                 const base = type === 'round'
-                    ? 'inline-flex items-center gap-1.5 px-2.5 py-0.5 text-xs rounded-full transition'
-                    : 'inline-flex items-center px-2.5 py-0.5 text-xs rounded-md transition';
+                    ? 'inline-flex items-center gap-1.5 px-2.5 py-0.5 text-xs rounded-full border border-transparent transition'
+                    : 'inline-flex items-center px-2.5 py-0.5 text-xs rounded-md border border-transparent transition';
 
                 const stateClass = selected
                     ? `${SELECTED_BG[opt.variant]} ring-[1.5px] ring-inset`
                     : isDashed
-                        ? 'bg-transparent text-slate-400 border border-dashed border-black/[0.15] hover:border-slate-400'
-                        : `bg-slate-100 text-slate-600 hover:bg-slate-200${opt.dimmed ? ' opacity-40' : ''}`;
+                        ? 'bg-transparent text-slate-400 border-dashed border-black/[0.15] hover:border-slate-400'
+                        : `bg-white text-slate-700 border-slate-300 shadow-sm hover:bg-slate-50 hover:border-slate-400${opt.dimmed ? ' opacity-40' : ''}`;
 
                 return (
                     <button
