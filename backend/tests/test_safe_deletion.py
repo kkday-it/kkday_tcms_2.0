@@ -39,7 +39,9 @@ class TestSafeDeletion:
         # 7. 驗證在清單中重新出現
         list_res_final = await client.get(f"/api/v1/cases/suite/{suite_id}")
         assert any(c["id"] == case_id for c in list_res_final.json())
-        assert next(c for c in list_res_final.json() if c["id"] == case_id)["status"] == "Active"
+        # restore_case reinstates to the canonical entry state Draft (not the
+        # legacy "Active"; see status_normalizer + restore_case).
+        assert next(c for c in list_res_final.json() if c["id"] == case_id)["status"] == "Draft"
 
     @allure.title("Test Plan 封存與還原驗證")
     async def test_plan_archive_and_restore(self, client: AsyncClient, project_id: int):

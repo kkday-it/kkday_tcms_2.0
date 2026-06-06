@@ -42,8 +42,8 @@ test('v3: 點 Priority pill 後, 剩下的列全部是該優先級', async ({ pa
     await page.goto(`/runs/${target!.id}`);
     await page.waitForSelector('tbody tr', { timeout: 10_000 });
 
-    // PillGroup renders each pill as a <button role="button" aria-pressed>;
-    // the `[aria-pressed]` qualifier disambiguates it from any incidental
+    // PillGroup renders each pill as a native <button aria-pressed>; the
+    // `[aria-pressed]` qualifier disambiguates it from any incidental
     // <button> with the same label elsewhere on the page.
     const pick = target!.priorities[0];
     await page.locator('button[aria-pressed]').filter({ hasText: new RegExp(`^${pick}$`) }).first().click();

@@ -206,6 +206,8 @@ async def export_cases(
             select(TestCase)
             .options(selectinload(TestCase.steps))
             .where(TestCase.suite_id.in_(select(hierarchy.c.id)))
+            # Don't export soft-deleted cases (mirrors the list endpoints).
+            .where(TestCase.status != ARCHIVED)
         )
     else:
         result = await db.execute(
@@ -213,6 +215,7 @@ async def export_cases(
             .join(TestSuite)
             .options(selectinload(TestCase.steps))
             .where(TestSuite.project_id == project_id)
+            .where(TestCase.status != ARCHIVED)
         )
     cases = result.scalars().all()
 
