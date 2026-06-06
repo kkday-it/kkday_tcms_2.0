@@ -3,6 +3,7 @@ import { useParams, Link, useSearchParams } from 'react-router-dom';
 import { Loader2, ArrowLeft, CheckCircle2, XCircle, SkipForward, Edit2, Search, X, Save, Ban, Copy, Check } from 'lucide-react';
 import api from '../lib/api';
 import { canWrite } from '../lib/permissions';
+import { runStatusBadgeClasses } from '../lib/runStatus';
 import { useUsers } from '../lib/useUsers';
 import TestCaseExecutionPane from '../components/runs/TestCaseExecutionPane';
 import EditRunModal from '../components/runs/EditRunModal';
@@ -492,7 +493,7 @@ export default function TestRunDetails() {
                             <span className="px-2.5 py-0.5 rounded-full text-xs font-medium border bg-primary-50 text-primary-700 border-primary-200">
                                 {testRun?.run_type || 'Feature Test'}
                             </span>
-                            <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium border ${testRun?.status === 'Done' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-primary-50 text-primary-700 border-primary-200'}`}>
+                            <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium border ${runStatusBadgeClasses(testRun?.status)}`}>
                                 {testRun?.status || 'Pending'}
                             </span>
                         </div>
