@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft, Loader2, ClipboardList, PlayCircle, FileText, CheckCircle2, XCircle, Clock, Edit2, ExternalLink, Bug, ListChecks } from 'lucide-react';
 import api from '../lib/api';
+import { runStatusBadgeClasses } from '../lib/runStatus';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend } from 'recharts';
 import EditPlanModal, { CaseFolder } from '../components/plans/EditPlanModal';
 
@@ -762,7 +763,7 @@ export default function TestPlanDetails() {
                                                         </Link>
                                                     </td>
                                                     <td className="px-6 py-4">
-                                                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${STATUS_PILL[run.status] ?? STATUS_PILL.Pending}`}>
+                                                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${runStatusBadgeClasses(run.status)}`}>
                                                             {run.status}
                                                         </span>
                                                     </td>

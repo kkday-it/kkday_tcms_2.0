@@ -5,6 +5,7 @@ import { DndContext, DragEndEvent, closestCenter, useDroppable, useSensor, useSe
 import api from '../lib/api';
 import { canWrite } from '../lib/permissions';
 import { copyToClipboard } from '../lib/clipboard';
+import { runStatusBadgeClasses } from '../lib/runStatus';
 import CreateRunModal from '../components/runs/CreateRunModal';
 import EditRunFolderModal from '../components/runs/EditRunFolderModal';
 import EditRunModal from '../components/runs/EditRunModal';
@@ -74,7 +75,7 @@ function DraggableRunCard({ run, onClick, onEdit, onDuplicate, onDelete }: { run
                     <span className="px-2 py-0.5 rounded text-xs font-medium bg-primary-50 text-primary-700 border border-primary-200 shrink-0">
                         {run.run_type || 'Feature Test'}
                     </span>
-                    <span className={`px-2 py-0.5 rounded text-xs font-medium border shrink-0 ${run.status === 'Active' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
+                    <span className={`px-2 py-0.5 rounded text-xs font-medium border shrink-0 ${runStatusBadgeClasses(run.status)}`}>
                         {run.status}
                     </span>
                 </div>

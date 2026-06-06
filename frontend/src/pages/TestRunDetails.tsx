@@ -3,6 +3,7 @@ import { useParams, Link, useSearchParams } from 'react-router-dom';
 import { Loader2, ArrowLeft, CheckCircle2, XCircle, SkipForward, Edit2, Search, X, Save, Ban, Copy, Check } from 'lucide-react';
 import api from '../lib/api';
 import { canWrite } from '../lib/permissions';
+import { runStatusBadgeClasses } from '../lib/runStatus';
 import { useUsers } from '../lib/useUsers';
 import TestCaseExecutionPane from '../components/runs/TestCaseExecutionPane';
 import EditRunModal from '../components/runs/EditRunModal';
@@ -468,30 +469,38 @@ export default function TestRunDetails() {
         <div className="flex-1 flex flex-col h-full bg-slate-50 relative overflow-hidden">
             {/* ── Header ─────────────────────────────────────────────────────── */}
             <div className="px-8 py-6 border-b border-slate-200 bg-white shadow-sm z-10">
-                <div className="flex items-center gap-4 mb-4">
-                    <Link to={fromFolder ? `/runs?folder=${fromFolder}` : testRun?.folder_id ? `/runs?folder=${testRun.folder_id}` : '/runs'} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500 transition-colors">
+                <div className="flex items-start gap-4 mb-5">
+                    <Link to={fromFolder ? `/runs?folder=${fromFolder}` : testRun?.folder_id ? `/runs?folder=${testRun.folder_id}` : '/runs'} className="mt-0.5 shrink-0 p-1.5 rounded-md hover:bg-slate-100 text-slate-500 transition-colors">
                         <ArrowLeft className="w-5 h-5" />
                     </Link>
-                    <button
-                        type="button"
-                        onClick={handleCopyRunId}
-                        title={idCopied ? 'Copied!' : `Click to copy ${runDisplayId}`}
-                        className="group inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-sm font-mono font-semibold whitespace-nowrap border bg-primary-50 text-primary-700 border-primary-200 hover:bg-primary-100 hover:border-primary-300 transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary-400"
-                    >
-                        {runDisplayId}
-                        {idCopied
-                            ? <Check className="w-3.5 h-3.5 text-emerald-500" />
-                            : <Copy className="w-3.5 h-3.5 opacity-50 group-hover:opacity-100 transition-opacity" />}
-                    </button>
-                    <h1 className="text-2xl font-bold text-slate-900">{testRun?.title || 'Test Run Execution'}</h1>
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-medium border bg-primary-50 text-primary-700 border-primary-200">
-                        {testRun?.run_type || 'Feature Test'}
-                    </span>
-                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium border ${testRun?.status === 'Done' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-primary-50 text-primary-700 border-primary-200'}`}>
-                        {testRun?.status || 'Pending'}
-                    </span>
 
-                    <div className="ml-auto flex items-center gap-3">
+                    {/* Title block — "eyebrow" metadata row (id chip + run-type + status)
+                        sits ABOVE the title, so the title owns a full-width line and can
+                        wrap cleanly without colliding with the badges. */}
+                    <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2 mb-2">
+                            <button
+                                type="button"
+                                onClick={handleCopyRunId}
+                                title={idCopied ? 'Copied!' : `Click to copy ${runDisplayId}`}
+                                className="group inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-mono font-semibold whitespace-nowrap border bg-primary-50 text-primary-700 border-primary-200 hover:bg-primary-100 hover:border-primary-300 transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary-400"
+                            >
+                                {runDisplayId}
+                                {idCopied
+                                    ? <Check className="w-3 h-3 text-emerald-500" />
+                                    : <Copy className="w-3 h-3 opacity-50 group-hover:opacity-100 transition-opacity" />}
+                            </button>
+                            <span className="px-2.5 py-0.5 rounded-full text-xs font-medium border bg-primary-50 text-primary-700 border-primary-200">
+                                {testRun?.run_type || 'Feature Test'}
+                            </span>
+                            <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium border ${runStatusBadgeClasses(testRun?.status)}`}>
+                                {testRun?.status || 'Pending'}
+                            </span>
+                        </div>
+                        <h1 className="text-2xl font-bold text-slate-900 leading-tight">{testRun?.title || 'Test Run Execution'}</h1>
+                    </div>
+
+                    <div className="shrink-0 self-center flex items-center gap-3">
                         {/* Global Save button */}
                         <button
                             onClick={handleSaveAll}
