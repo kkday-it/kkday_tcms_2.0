@@ -10,8 +10,11 @@
  * Selected state: bg-{variant}-50 + text-{variant}-800 + ring-{variant}-800
  * (the ring is what calls out "selected" — no extra checkmark/icon needed).
  *
- * Unselected state: bg-slate-100 + text-slate-500 (`neutral` role is fulfilled
- * by slate per audit; we don't introduce a parallel `neutral` ramp).
+ * Unselected state: bg-slate-100 + text-slate-600 (`neutral` role is fulfilled
+ * by slate per audit; we don't introduce a parallel `neutral` ramp). The `round`
+ * dot keeps its semantic colour even when unselected, so a Result row reads as a
+ * set of coloured status filters at a glance rather than a wall of grey — the
+ * feature was getting overlooked when the whole row was monochrome.
  *
  * `notset` variant uses a dashed border in default state — flags it as an
  * exception that shouldn't be there once Priority becomes mandatory
@@ -81,7 +84,7 @@ export default function PillGroup({ label, type, options, value, onChange }: Pil
 
     return (
         <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-[11px] font-medium tracking-wider uppercase text-slate-400 mr-0.5">{label}</span>
+            <span className="text-[11px] font-semibold tracking-wider uppercase text-slate-500 mr-0.5">{label}</span>
             {options.map(opt => {
                 const selected = value.has(opt.value);
                 const isDashed = opt.style === 'dashed';
@@ -94,7 +97,7 @@ export default function PillGroup({ label, type, options, value, onChange }: Pil
                     ? `${SELECTED_BG[opt.variant]} ring-[1.5px] ring-inset`
                     : isDashed
                         ? 'bg-transparent text-slate-400 border border-dashed border-black/[0.15] hover:border-slate-400'
-                        : `bg-slate-100 text-slate-500 hover:bg-slate-200${opt.dimmed ? ' opacity-40' : ''}`;
+                        : `bg-slate-100 text-slate-600 hover:bg-slate-200${opt.dimmed ? ' opacity-40' : ''}`;
 
                 return (
                     <button
@@ -106,7 +109,7 @@ export default function PillGroup({ label, type, options, value, onChange }: Pil
                         className={`${base} ${stateClass}`}
                     >
                         {type === 'round' && (
-                            <span className={`w-1.5 h-1.5 rounded-full ${selected ? DOT_BG[opt.variant] : 'bg-current'}`} />
+                            <span className={`w-1.5 h-1.5 rounded-full ${DOT_BG[opt.variant]}`} />
                         )}
                         {opt.label}
                     </button>
