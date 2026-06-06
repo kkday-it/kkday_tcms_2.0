@@ -15,8 +15,8 @@ POST /presence/kick/{id}   — Admin-only. Boots a user: expires all their API t
 heartbeat/online require auth via get_current_user (grace-period compatible).
 """
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
 
 from app.api.deps import get_current_user, record_audit, require_role, utcnow
 from app.db.database import get_db
@@ -53,17 +53,17 @@ async def kick(
         raise HTTPException(status_code=404, detail="找不到該使用者")
 
     # Expire (not delete) every token this user holds → next request 401s.
+    # Single bulk UPDATE rather than select-then-loop: avoids loading ORM
+    # objects and keeps it to one round-trip even if the user holds many tokens.
     now = utcnow()
-    tokens = (
-        await db.execute(select(ApiToken).where(ApiToken.user_id == user_id))
-    ).scalars().all()
-    for t in tokens:
-        t.expires_at = now
+    result = await db.execute(
+        update(ApiToken).where(ApiToken.user_id == user_id).values(expires_at=now)
+    )
     await db.commit()
 
     presence.drop(user_id)
     await record_audit(
         db, request, current_user, "presence.kick", "user", user_id,
-        metadata={"target_username": target.username, "tokens_expired": len(tokens)},
+        metadata={"target_username": target.username, "tokens_expired": result.rowcount},
     )
     return presence.snapshot()

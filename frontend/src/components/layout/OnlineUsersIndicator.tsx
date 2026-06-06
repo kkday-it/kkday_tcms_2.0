@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Users, LogOut } from 'lucide-react';
 import api from '../../lib/api';
 
@@ -83,11 +83,27 @@ export default function OnlineUsersIndicator({ expanded }: { expanded: boolean }
         };
     }, [open]);
 
-    const toggle = () => {
+    const computeAnchor = useCallback(() => {
         const rect = btnRef.current?.getBoundingClientRect();
         if (rect) setAnchor({ left: rect.right + 8, bottom: window.innerHeight - rect.bottom });
+    }, []);
+
+    const toggle = () => {
+        computeAnchor();
         setOpen((v) => !v);
     };
+
+    // The sidebar collapse/expand moves the anchor button (w-44 ↔ w-14) with a
+    // CSS transition; rather than chase the moving target, just close the flyout
+    // so it can't drift away from the button.
+    useEffect(() => { setOpen(false); }, [expanded]);
+
+    // Keep the fixed flyout pinned to the button across window resizes.
+    useEffect(() => {
+        if (!open) return;
+        window.addEventListener('resize', computeAnchor);
+        return () => window.removeEventListener('resize', computeAnchor);
+    }, [open, computeAnchor]);
 
     const kick = async (u: OnlineUser) => {
         if (!window.confirm(`確定要把「${u.username}」踢下線嗎？\n對方會被導回登入頁，需重新登入。`)) return;
