@@ -23,9 +23,10 @@
  *   - within a group: OR; across groups: AND (composed by the caller)
  *
  * Accessibility (spec §11):
- *   - role="button" + aria-pressed reflects selection so screen readers
- *     announce toggle state without inferring from the ring styling
- *   - native <button> already handles Space/Enter; no extra key handler
+ *   - aria-pressed reflects selection so screen readers announce toggle
+ *     state without inferring from the ring styling
+ *   - native <button> already handles Space/Enter and the button role; no
+ *     extra key handler or explicit role needed
  */
 
 export type PillType = 'round' | 'square';
@@ -99,7 +100,6 @@ export default function PillGroup({ label, type, options, value, onChange }: Pil
                     <button
                         key={opt.value}
                         type="button"
-                        role="button"
                         aria-pressed={selected}
                         onClick={() => togglePill(opt.value)}
                         title={opt.dimmed ? '此資料集內無此值' : undefined}
