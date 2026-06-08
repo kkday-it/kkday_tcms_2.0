@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { X, Loader2, Search, Folder, ChevronRight, ChevronDown } from 'lucide-react';
 import api from '../../lib/api';
 import { useUsers } from '../../lib/useUsers';
+import { UserMultiSelect } from '../common/UserSelect';
 
 interface TestSuite {
     id: number;
@@ -418,46 +419,12 @@ export default function EditRunModal({ isOpen, onClose, run, folders, onUpdated 
                     {/* Assignee */}
                     <div className="mb-4">
                         <label className="block text-sm font-medium text-slate-700 mb-2">指派給</label>
-                        <div className="flex flex-wrap items-center gap-2 min-h-[36px] p-2 border border-slate-200 rounded-lg bg-white focus-within:ring-2 focus-within:ring-primary-500 focus-within:border-transparent transition-all">
-                            {assigneeIds.map(id => {
-                                const u = users.find(x => x.id === id);
-                                if (!u) return null;
-                                return (
-                                    <span
-                                        key={id}
-                                        className="flex items-center gap-1.5 pl-1.5 pr-1 py-0.5 bg-primary-50 border border-primary-200 text-primary-800 rounded-full text-xs font-medium"
-                                    >
-                                        <span className="w-4 h-4 rounded-full bg-primary-600 text-white flex items-center justify-center text-[9px] font-bold shrink-0">
-                                            {u.username.charAt(0).toUpperCase()}
-                                        </span>
-                                        {u.username}
-                                        <button
-                                            type="button"
-                                            onClick={() => setAssigneeIds(prev => prev.filter(x => x !== id))}
-                                            className="ml-0.5 w-3.5 h-3.5 rounded-full bg-primary-200 hover:bg-primary-400 text-primary-700 hover:text-white flex items-center justify-center transition-colors shrink-0"
-                                            title={`移除 ${u.username}`}
-                                        >
-                                            ×
-                                        </button>
-                                    </span>
-                                );
-                            })}
-                            {users.filter(u => !assigneeIds.includes(u.id)).length > 0 && (
-                                <select
-                                    value=""
-                                    onChange={e => {
-                                        const id = Number(e.target.value);
-                                        if (id) setAssigneeIds(prev => [...prev, id]);
-                                    }}
-                                    className="flex-1 min-w-32 text-sm text-slate-400 border-0 focus:ring-0 outline-none bg-transparent cursor-pointer py-0.5"
-                                >
-                                    <option value="" disabled>+ 新增指派人員...</option>
-                                    {users.filter(u => !assigneeIds.includes(u.id)).map(u => (
-                                        <option key={u.id} value={u.id}>{u.full_name || u.username}</option>
-                                    ))}
-                                </select>
-                            )}
-                        </div>
+                        <UserMultiSelect
+                            users={users}
+                            value={assigneeIds}
+                            onChange={setAssigneeIds}
+                            ariaLabel="指派人員"
+                        />
                     </div>
 
                     {/* Case selection section - Left/Right layout */}

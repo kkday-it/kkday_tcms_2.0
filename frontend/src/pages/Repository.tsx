@@ -10,6 +10,7 @@ import ExportCasesModal from '../components/cases/ExportCasesModal';
 import EditSuiteModal from '../components/suites/EditSuiteModal';
 import SuiteNode from '../components/suites/SuiteNode';
 import SearchableSelect, { SearchableOption } from '../components/common/SearchableSelect';
+import { UserSelect } from '../components/common/UserSelect';
 import PillGroup, { type PillOption } from '../components/common/PillGroup';
 import { useUrlString, useUrlStringList } from '../lib/useUrlState';
 import api from '../lib/api';
@@ -1298,17 +1299,16 @@ export default function Repository() {
                                     />
                                 </div>
 
-                                <select
-                                    value={filterAssignee}
-                                    onChange={(e) => setFilterAssignee(e.target.value)}
-                                    aria-label="Filter by assignee"
-                                    className="flex-1 min-w-[140px] px-2.5 py-2 text-[13px] border border-black/[0.08] rounded-md hover:border-primary-500 bg-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                                >
-                                    <option value="">Assignee: Any</option>
-                                    <option value="unassigned">Unassigned</option>
-                                    {users.length > 0 && <option disabled>──────────</option>}
-                                    {users.map(u => <option key={u.id} value={u.id}>{u.username}</option>)}
-                                </select>
+                                <UserSelect
+                                    users={users}
+                                    sentinels={[{ value: 'unassigned', label: 'Unassigned' }]}
+                                    value={filterAssignee === '' ? null : filterAssignee === 'unassigned' ? 'unassigned' : Number(filterAssignee)}
+                                    onChange={(v) => setFilterAssignee(v === null ? '' : String(v))}
+                                    placeholder="Assignee: Any"
+                                    compact
+                                    ariaLabel="Filter by assignee"
+                                    className="flex-1 min-w-[140px]"
+                                />
 
                                 <input
                                     type="text"

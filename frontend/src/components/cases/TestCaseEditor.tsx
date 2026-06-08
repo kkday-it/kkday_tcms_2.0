@@ -3,6 +3,7 @@ import { X, Plus, Trash2, Save, Loader2, ImagePlus } from 'lucide-react';
 import api from '../../lib/api';
 import { useUsers } from '../../lib/useUsers';
 import TagInput from '../common/TagInput';
+import { UserSelect } from '../common/UserSelect';
 import RichTextEditor from '../common/RichTextEditor';
 
 interface TestStep {
@@ -339,16 +340,13 @@ export default function TestCaseEditor({ isOpen, onClose, caseId, suiteId, onSav
                                     </div>
                                     <div>
                                         <label className="block text-sm font-semibold text-slate-900 mb-1.5">負責人</label>
-                                        <select
-                                            value={defaultOwnerId}
-                                            onChange={(e) => setDefaultOwnerId(e.target.value ? Number(e.target.value) : '')}
-                                            className="w-full rounded-md border border-slate-200 py-2 px-3 text-slate-900 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 sm:text-sm bg-white"
-                                        >
-                                            <option value="">未指定</option>
-                                            {users.map(u => (
-                                                <option key={u.id} value={u.id}>{u.username}</option>
-                                            ))}
-                                        </select>
+                                        <UserSelect
+                                            users={users}
+                                            value={defaultOwnerId === '' ? null : defaultOwnerId}
+                                            onChange={(v) => setDefaultOwnerId(v === null ? '' : Number(v))}
+                                            placeholder="未指定"
+                                            ariaLabel="負責人"
+                                        />
                                     </div>
                                     <div>
                                         <label className="block text-sm font-semibold text-slate-900 mb-1.5">優先級</label>
