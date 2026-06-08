@@ -39,6 +39,22 @@ LEGACY_MOCK_TOKEN = "mock-jwt-token-for-now"
 WEB_SESSION_TTL_DAYS = 7
 GRACE_AUTO_TOKEN_TTL_DAYS = 7
 
+# Idle timeout for *browser sessions only*. A web-session token whose last activity
+# is older than this is treated as expired → 401 → the frontend bounces to /login.
+# API tokens (any other label) are deliberately exempt: bots/CI hold long-lived tokens
+# and must not be logged out for being "idle". 0 disables the idle check entirely.
+WEB_SESSION_IDLE_MINUTES = int(os.environ.get("TCMS_WEB_SESSION_IDLE_MINUTES", "60"))
+# Labels minted for browser logins (see issue_web_session_token + the grace-period
+# auto-migration). Only these are subject to the idle timeout.
+WEB_SESSION_LABELS = {"web-session", "auto-migrated"}
+# Frontend sets `X-TCMS-Activity: background` on timer-driven polls (presence heartbeat,
+# DB health). Those keep the widgets live but must NOT count as user activity — otherwise
+# an open-but-idle tab would refresh `last_used_at` forever and never time out. Such
+# requests still go through the idle check, so the next background ping after the window
+# elapses is what actually 401s an abandoned tab.
+ACTIVITY_HEADER = "x-tcms-activity"
+BACKGROUND_ACTIVITY = "background"
+
 
 def utcnow() -> _dt.datetime:
     """Timezone-aware UTC now. The token columns are `DateTime(timezone=True)`, so on
@@ -70,6 +86,10 @@ _MESSAGES = {
     "expired": (
         "Token 已過期 (web-session token 預設 7 天有效)。\n"
         f"請到 {TOKEN_PAGE} 產生新 token; bot / CI 場景請產 expires_in_days=null 的長效 token。"
+    ),
+    "idle_expired": (
+        f"登入逾時：閒置超過 {WEB_SESSION_IDLE_MINUTES} 分鐘未操作，session 已自動登出。\n"
+        "請重新登入。(此規則僅適用於瀏覽器登入; API token 不受影響。)"
     ),
     "forbidden": (
         "Token 對應的 user 角色不足以執行此操作。\n"
@@ -133,13 +153,27 @@ async def get_current_user(
         ).scalar_one_or_none()
         if not row:
             _raise_auth_error("invalid", request)
-        if row.expires_at and _as_aware_utc(row.expires_at) < utcnow():
+        now = utcnow()
+        if row.expires_at and _as_aware_utc(row.expires_at) < now:
             _raise_auth_error("expired", request)
+        # Idle timeout — browser sessions only. API tokens (other labels) are exempt.
+        if (
+            WEB_SESSION_IDLE_MINUTES > 0
+            and row.label in WEB_SESSION_LABELS
+            and row.last_used_at is not None
+        ):
+            idle_for = now - _as_aware_utc(row.last_used_at)
+            if idle_for > _dt.timedelta(minutes=WEB_SESSION_IDLE_MINUTES):
+                _raise_auth_error("idle_expired", request)
         user = await db.get(User, row.user_id)
         if not user or not user.is_active:
             _raise_auth_error("invalid", request)
-        row.last_used_at = utcnow()
-        await db.commit()
+        # Background polls (presence heartbeat, DB health) keep widgets alive but must
+        # not reset the idle clock — otherwise an open-but-idle tab never times out.
+        is_background = request.headers.get(ACTIVITY_HEADER, "").lower() == BACKGROUND_ACTIVITY
+        if not is_background:
+            row.last_used_at = now
+            await db.commit()
         return user
 
     # Path 2: grace-period legacy mock token + X-User-Id header. Auto-issues a real

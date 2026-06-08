@@ -51,7 +51,11 @@ export default function OnlineUsersIndicator({ expanded }: { expanded: boolean }
 
         const beat = async () => {
             try {
-                const { data } = await api.post<PresenceSnapshot>('/presence/heartbeat');
+                // Timer-driven poll — mark as background so it doesn't reset the
+                // server-side idle clock (see deps.py ACTIVITY_HEADER).
+                const { data } = await api.post<PresenceSnapshot>('/presence/heartbeat', null, {
+                    headers: { 'X-TCMS-Activity': 'background' },
+                });
                 if (!cancelled) setSnapshot(data);
             } catch {
                 // ambient widget — ignore transient failures
