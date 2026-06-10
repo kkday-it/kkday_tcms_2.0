@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from typing import List
@@ -54,12 +55,17 @@ async def login(login_data: UserLogin, db: AsyncSession = Depends(get_db)):
     if not user.is_active:
         raise HTTPException(status_code=401, detail="User account is disabled")
 
+    # Record the successful login. func.now() resolves server-side on flush,
+    # matching how created_at is populated.
+    user.last_login = func.now()
+
     # Transparent password migration: re-hash legacy SHA-256 rows with bcrypt on first
     # successful login. login_data.password is the SHA-256 from the frontend pre-hash;
     # wrapping it with bcrypt keeps verify_password working without changing the client.
     if is_legacy_sha256(user.hashed_password):
         user.hashed_password = hash_password(login_data.password)
-        await db.commit()
+
+    await db.commit()
 
     # Issue a real bearer token (7-day web-session). Replaces the old hardcoded
     # "mock-jwt-token-for-now" — clients should send `Authorization: Bearer <token>`

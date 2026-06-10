@@ -19,6 +19,7 @@ class UserUpdate(BaseModel):
 
 class UserResponse(UserBase):
     id: int
+    last_login: Optional[datetime] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
 
