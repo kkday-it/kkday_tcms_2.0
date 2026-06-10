@@ -22,6 +22,7 @@ interface UserOption {
     value: number;
     label: string;       // primary display: full_name || username
     secondary: string;   // muted line: email (or username when name is shown)
+    search: string;      // pre-lowercased "full_name username email" for filtering
     user: AppUser;
 }
 
@@ -31,7 +32,7 @@ export interface SentinelOption {
     label: string;
 }
 
-type AnyOption = UserOption | (SentinelOption & { secondary?: undefined; user?: undefined });
+type AnyOption = UserOption | (SentinelOption & { secondary?: undefined; search?: undefined; user?: undefined });
 
 const toOption = (u: AppUser): UserOption => ({
     value: u.id,
@@ -39,22 +40,24 @@ const toOption = (u: AppUser): UserOption => ({
     // Prefer email as the muted line; if absent but we showed full_name as the
     // label, fall back to username so the English id is still visible.
     secondary: u.email || (u.full_name ? u.username : ''),
+    // Built once here (not per keystroke) so filterOption is a plain substring
+    // test across name + username + email.
+    search: `${u.full_name ?? ''} ${u.username} ${u.email ?? ''}`.toLowerCase(),
     user: u,
 });
-
-/** True when `needle` (already lower-cased) hits any of name/username/email. */
-const matchUser = (u: AppUser, needle: string): boolean => {
-    const hay = `${u.full_name ?? ''} ${u.username} ${u.email ?? ''}`.toLowerCase();
-    return hay.includes(needle);
-};
 
 const filterOption = (option: FilterOptionOption<AnyOption>, rawInput: string): boolean => {
     if (!rawInput) return true;
     const needle = rawInput.toLowerCase();
     const data = option.data;
-    if (data.user) return matchUser(data.user, needle);
-    return data.label.toLowerCase().includes(needle); // sentinel
+    // user options carry a pre-lowercased search string; sentinels match on label
+    if (data.user) return data.search.includes(needle);
+    return data.label.toLowerCase().includes(needle);
 };
+
+/** value -> option lookup so selected-value resolution is O(1), not O(n·m). */
+const useOptionMap = (options: AnyOption[]) =>
+    useMemo(() => new Map<string | number, AnyOption>(options.map(o => [o.value, o])), [options]);
 
 const buildStyles = (compact: boolean): StylesConfig<AnyOption, boolean> => ({
     control: (base, state) => ({
@@ -171,9 +174,10 @@ export function UserSelect({
         () => [...sentinels, ...users.map(toOption)],
         [sentinels, users],
     );
+    const byValue = useOptionMap(options);
     const selected = useMemo<AnyOption | null>(
-        () => (value === null || value === '' ? null : options.find(o => o.value === value) ?? null),
-        [value, options],
+        () => (value === null || value === '' ? null : byValue.get(value) ?? null),
+        [value, byValue],
     );
 
     return (
@@ -222,9 +226,10 @@ export function UserMultiSelect({
 }: UserMultiSelectProps) {
     const styles = useMemo(() => buildStyles(compact), [compact]);
     const options = useMemo<AnyOption[]>(() => users.map(toOption), [users]);
+    const byValue = useOptionMap(options);
     const selected = useMemo<AnyOption[]>(
-        () => value.map(id => options.find(o => o.value === id)).filter(Boolean) as AnyOption[],
-        [value, options],
+        () => value.map(id => byValue.get(id)).filter(Boolean) as AnyOption[],
+        [value, byValue],
     );
 
     return (
