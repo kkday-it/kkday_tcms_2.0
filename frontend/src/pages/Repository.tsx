@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, Search, Loader2, Upload, Download, RefreshCw, Trash2, FolderOpen, ChevronDown, X, CheckCircle2, AlertCircle, FileCode2, GripVertical } from 'lucide-react';
+import { Plus, Search, Loader2, Upload, Download, RefreshCw, Trash2, FolderOpen, ChevronDown, X, CheckCircle2, AlertCircle, FileCode2, GripVertical, Copy } from 'lucide-react';
 import { canWrite } from '../lib/permissions';
 import { DndContext, DragEndEvent, pointerWithin, closestCenter, useDroppable, useDraggable, useSensor, useSensors, PointerSensor } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
@@ -11,7 +11,8 @@ import EditSuiteModal from '../components/suites/EditSuiteModal';
 import SuiteNode from '../components/suites/SuiteNode';
 import SearchableSelect, { SearchableOption } from '../components/common/SearchableSelect';
 import PillGroup, { type PillOption } from '../components/common/PillGroup';
-import { useUrlString, useUrlStringList } from '../lib/useUrlState';
+import SortableHeader, { type SortDirection } from '../components/common/SortableHeader';
+import { useUrlString, useUrlStringList, useUrlSortState } from '../lib/useUrlState';
 import api from '../lib/api';
 import { useUsers } from '../lib/useUsers';
 import { copyToClipboard } from '../lib/clipboard';
@@ -696,6 +697,25 @@ export default function Repository() {
         }
     };
 
+    // KQT-15586: Zephyr-style clone — duplicate the selected cases (with steps)
+    // into the same folder. Copies come back titled "<title> (Copy)".
+    const [isCloning, setIsCloning] = useState(false);
+    const handleBatchCloneCases = async () => {
+        if (selectedCases.size === 0 || isCloning) return;
+        setIsCloning(true);
+        try {
+            await api.post('/cases/batch-clone', { case_ids: Array.from(selectedCases) });
+            setSelectedCases(new Set());
+            fetchCases();
+            fetchSuites(); // updates folder counts
+        } catch (err) {
+            console.error("Batch clone failed", err);
+            alert("Failed to clone cases");
+        } finally {
+            setIsCloning(false);
+        }
+    };
+
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [isImporting, setIsImporting] = useState(false);
     const [isXmindModalOpen, setIsXmindModalOpen] = useState(false);
@@ -826,6 +846,21 @@ export default function Repository() {
     const [filterType, setFilterType] = useState('');
     const [filterLayer, setFilterLayer] = useState('');
 
+    // KQT-15586: column-header sort (shared SortableHeader + URL-persisted state,
+    // same pattern as TestRunDetails). sortKey null → keep DB order (case id asc).
+    const [sortState, setSortState] = useUrlSortState('sort');
+    const sortKey = sortState.key as 'title' | 'status' | 'priority' | 'automation' | null;
+    const sortDirection: SortDirection = sortState.direction;
+    const handleSort = (key: string, dir: SortDirection) =>
+        setSortState({ key: dir === null ? null : key, direction: dir });
+    // Canonical severity order; Critical ranks smallest so the first (asc) click
+    // reads High→Low, matching the "priority 由 high > low" request.
+    const CASE_PRIORITY_ORDER = ['Critical', 'High', 'Medium', 'Low', 'Not Set'];
+    const casePriorityRank = (p: string | undefined | null) => {
+        const i = CASE_PRIORITY_ORDER.indexOf(p || 'Not Set');
+        return i < 0 ? CASE_PRIORITY_ORDER.length : i;  // off-canonical sinks last
+    };
+
     const activeFilterCount = [
         filterStatus.length > 0, filterPriority.length > 0,
         filterAutomation !== '', filterTags !== '', filterLabels !== '',
@@ -849,7 +884,7 @@ export default function Repository() {
     // on every unrelated re-render.
     const filteredCases = useMemo(() => {
         const q = searchQuery.trim().toLowerCase();
-        return cases.filter(tc => {
+        const filtered = cases.filter(tc => {
             // KQT-15250: also match TCMS id (rendered as `TC-{id}`) so users can
             // search by "TC-443" / "tc-443" / "443" instead of only Jira external_id.
             const tcLabel = `tc-${tc.id}`;
@@ -886,7 +921,18 @@ export default function Repository() {
 
             return true;
         });
-    }, [cases, searchQuery, filterStatus, filterPriority, filterAutomation, filterAssignee, filterTags, filterLabels, filterType, filterLayer]);
+        // KQT-15586: apply the clicked column sort; null key keeps DB order.
+        if (!sortKey) return filtered;
+        const dir = sortDirection === 'desc' ? -1 : 1;
+        return [...filtered].sort((a, b) => {
+            let r = 0;
+            if (sortKey === 'title') r = a.title.localeCompare(b.title, 'zh-Hant');
+            else if (sortKey === 'status') r = (a.status || '').localeCompare(b.status || '');
+            else if (sortKey === 'priority') r = casePriorityRank(a.priority) - casePriorityRank(b.priority);
+            else if (sortKey === 'automation') r = (a.automation_status || '').localeCompare(b.automation_status || '');
+            return (r !== 0 ? r : a.id - b.id) * dir;  // case id as stable tiebreaker
+        });
+    }, [cases, searchQuery, filterStatus, filterPriority, filterAutomation, filterAssignee, filterTags, filterLabels, filterType, filterLayer, sortKey, sortDirection]);
 
     const sensors = useSensors(
         useSensor(PointerSensor, {
@@ -1442,6 +1488,14 @@ export default function Repository() {
                                     {writable && (
                                         <>
                                             <div className="h-4 w-px bg-primary-200 mx-2" />
+                                            {/* KQT-15586: clone selected cases into the same folder */}
+                                            <button
+                                                onClick={handleBatchCloneCases}
+                                                disabled={isCloning}
+                                                className="px-4 py-1.5 text-sm font-semibold text-primary-700 bg-white border border-primary-200 rounded-lg hover:bg-primary-50 transition-colors shadow-sm flex items-center gap-1.5 disabled:opacity-50"
+                                            >
+                                                {isCloning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Copy className="w-4 h-4" />} Clone
+                                            </button>
                                             <button
                                                 onClick={handleBatchDeleteCases}
                                                 className="px-4 py-1.5 text-sm font-semibold text-rose-600 bg-rose-50 border border-rose-200 rounded-lg hover:bg-rose-100 transition-colors shadow-sm flex items-center gap-1.5"
@@ -1485,10 +1539,10 @@ export default function Repository() {
                                                     className="size-4 rounded border-slate-300 text-primary-600 focus:ring-primary-600"
                                                 />
                                             </th>
-                                            <th className="py-3 font-semibold px-4 border-b border-slate-200">Case Title</th>
-                                            <th className="py-3 font-semibold px-4 w-32 border-b border-slate-200">Status</th>
-                                            <th className="py-3 font-semibold px-4 w-32 border-b border-slate-200">Priority</th>
-                                            <th className="py-3 font-semibold px-4 w-32 border-b border-slate-200">Automation</th>
+                                            <SortableHeader label="Case Title" sortKey="title" currentKey={sortKey} currentDirection={sortDirection} onSort={handleSort} className="px-4 text-left" />
+                                            <SortableHeader label="Status" sortKey="status" currentKey={sortKey} currentDirection={sortDirection} onSort={handleSort} className="px-4 w-32 text-left" />
+                                            <SortableHeader label="Priority" sortKey="priority" currentKey={sortKey} currentDirection={sortDirection} onSort={handleSort} className="px-4 w-32 text-left" />
+                                            <SortableHeader label="Automation" sortKey="automation" currentKey={sortKey} currentDirection={sortDirection} onSort={handleSort} className="px-4 w-32 text-left" />
                                             <th className="py-3 font-semibold px-8 w-24 text-right border-b border-slate-200">Actions</th>
                                         </tr>
                                     </thead>

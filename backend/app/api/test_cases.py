@@ -18,7 +18,7 @@ from app.models.test_case_history import TestCaseHistory
 from app.models.test_step import TestStep
 from app.models.test_suite import TestSuite
 from app.models.user import User
-from app.schemas.test_case import TestCaseCreate, TestCaseResponse, TestCaseUpdate, TestCaseBatchDelete, TestCaseBatchMove
+from app.schemas.test_case import TestCaseCreate, TestCaseResponse, TestCaseUpdate, TestCaseBatchDelete, TestCaseBatchMove, TestCaseBatchClone
 from app.schemas.test_case_history import TestCaseHistoryResponse
 from app.services.dify_sync import build_case_metadata, build_case_text
 from app.services.priority_normalizer import normalize_priority
@@ -390,6 +390,99 @@ async def batch_move_cases(payload: TestCaseBatchMove, db: AsyncSession = Depend
 
     await db.commit()
     return {"message": f"Successfully moved {len(cases)} TestCases to folder {payload.suite_id}"}
+
+
+# Fields copied verbatim when cloning. Excludes id/created_at/updated_at (auto),
+# external_id (unique — re-generated below) and version (reset to 0 on the copy).
+_CLONE_FIELDS = (
+    "suite_id", "status", "lifecycle_status", "description", "severity",
+    "priority", "type", "layer", "behavior", "automation_status",
+    "is_flaky", "muted", "preconditions", "postconditions",
+    "default_owner_id", "tags", "labels", "jira_keys",
+)
+
+
+@router.post("/batch-clone", response_model=List[TestCaseResponse])
+async def batch_clone_cases(
+    request: Request,
+    payload: TestCaseBatchClone,
+    db: AsyncSession = Depends(get_db),
+    actor: User = Depends(require_role("Admin", "QA")),
+):
+    """KQT-15586: duplicate selected cases (incl. their steps) into the same
+    folder, Zephyr-style. Each copy gets a "(Copy)" title suffix and a fresh
+    auto-generated external_id; version resets to 0."""
+    if not payload.case_ids:
+        return []
+
+    result = await db.execute(
+        select(TestCase)
+        .options(selectinload(TestCase.steps))
+        .where(TestCase.id.in_(payload.case_ids))
+        .where(TestCase.status != ARCHIVED)
+    )
+    originals = result.scalars().all()
+    if not originals:
+        raise HTTPException(status_code=404, detail="No matching TestCases found")
+
+    # Preserve the caller's selection order so the clones land predictably.
+    by_id = {c.id: c for c in originals}
+    ordered = [by_id[cid] for cid in payload.case_ids if cid in by_id]
+
+    clones: list[TestCase] = []
+    for original in ordered:
+        clone = TestCase(
+            title=f"{original.title} (Copy)",
+            **{f: getattr(original, f) for f in _CLONE_FIELDS},
+        )
+        clone.version = 0
+        clone.external_id = None  # re-generated after flush so it stays unique
+        db.add(clone)
+        await db.flush()  # assign clone.id
+        clone.external_id = f"{EXTERNAL_ID_PREFIX}{EXTERNAL_ID_OFFSET + clone.id}"
+
+        for step in sorted(original.steps, key=lambda s: s.order):
+            if step.status == ARCHIVED:
+                continue
+            db.add(TestStep(
+                test_case_id=clone.id,
+                order=step.order,
+                action=step.action,
+                data=step.data,
+                expected_result=step.expected_result,
+                status=step.status,
+            ))
+
+        db.add(TestCaseHistory(
+            case_id=clone.id,
+            user_id=1,
+            action="Created",
+            changed_fields=json.dumps(
+                {"cloned_from": original.id, "title": clone.title},
+                ensure_ascii=False,
+            ),
+        ))
+        clones.append(clone)
+
+    await db.commit()
+    await record_audit(
+        db, request, actor,
+        action="clone_case_batch",
+        resource_type="test_case",
+        resource_id=None,
+        metadata={"source_case_ids": [c.id for c in ordered], "clone_count": len(clones)},
+    )
+
+    # Reload with steps for the response (avoids lazy-load on the detached clones).
+    clone_ids = [c.id for c in clones]
+    reload_res = await db.execute(
+        select(TestCase)
+        .options(selectinload(TestCase.steps))
+        .options(with_loader_criteria(TestStep, TestStep.status != ARCHIVED))
+        .where(TestCase.id.in_(clone_ids))
+    )
+    reloaded = {c.id: c for c in reload_res.scalars().all()}
+    return [reloaded[cid] for cid in clone_ids if cid in reloaded]
 
 
 @router.get("/{case_id}", response_model=TestCaseResponse)
