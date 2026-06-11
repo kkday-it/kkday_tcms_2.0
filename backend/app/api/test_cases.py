@@ -455,7 +455,10 @@ async def batch_clone_cases(
 
         db.add(TestCaseHistory(
             case_id=clone.id,
-            user_id=1,
+            # Record the real actor (PR #916 review). The other TestCaseHistory
+            # sites still hardcode user_id=1 pending the wider auth integration;
+            # this endpoint already resolves `actor`, so use it.
+            user_id=actor.id,
             action="Created",
             changed_fields=json.dumps(
                 {"cloned_from": original.id, "title": clone.title},
