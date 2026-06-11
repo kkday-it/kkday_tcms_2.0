@@ -33,9 +33,11 @@ export default function IdleLogout() {
     const navigate = useNavigate();
     const lastActivityRef = useRef<number>(Date.now());
     const [warnRemaining, setWarnRemaining] = useState<number | null>(null);
-    // Runtime idle window in ms; 0 = disabled. Start from the env fallback, then
-    // refine from the backend so the countdown matches the real 401 gate.
-    const [idleMs, setIdleMs] = useState<number>(ENV_IDLE_MINUTES * 60_000);
+    // Runtime idle window in ms; 0 = disabled. Held in a ref (not state) so the
+    // backend value can land without rebuilding the ticker — the 1s tick reads
+    // it live. Starts from the env fallback, then is refined from the backend so
+    // the countdown matches the real 401 gate.
+    const idleMsRef = useRef<number>(ENV_IDLE_MINUTES * 60_000);
 
     // Align with the backend's authoritative idle window. Background header so
     // this config read doesn't itself count as user activity on the session.
@@ -45,7 +47,7 @@ export default function IdleLogout() {
             .then((res) => {
                 const mins = res?.data?.web_session?.idle_minutes;
                 if (cancelled || typeof mins !== 'number') return;
-                setIdleMs(mins * 60_000); // 0 → disabled, handled in the ticker
+                idleMsRef.current = mins * 60_000; // 0 → disabled, handled in the ticker
             })
             .catch(() => { /* keep the env fallback */ });
         return () => { cancelled = true; };
@@ -74,6 +76,7 @@ export default function IdleLogout() {
         // Single 1s ticker drives both the warning and the final logout, so there's
         // no per-event timer churn.
         const tick = setInterval(() => {
+            const idleMs = idleMsRef.current;
             if (idleMs <= 0) return; // backend disabled idle → never auto-logout
             const idleFor = Date.now() - lastActivityRef.current;
             if (idleFor >= idleMs) {
@@ -87,7 +90,7 @@ export default function IdleLogout() {
             ACTIVITY_EVENTS.forEach((evt) => window.removeEventListener(evt, markActivity));
             clearInterval(tick);
         };
-    }, [navigate, idleMs]);
+    }, [navigate]);
 
     if (warnRemaining === null) return null;
 
