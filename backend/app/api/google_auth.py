@@ -11,6 +11,7 @@ import httpx
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import RedirectResponse
+from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
@@ -163,6 +164,9 @@ async def google_oauth_callback(
 
     if not user.is_active:
         return RedirectResponse(url=f"{frontend_base}/login?error=account_disabled")
+
+    # Record the successful login (same semantics as /users/login).
+    user.last_login = func.now()
 
     await db.commit()
     await db.refresh(user)
