@@ -320,6 +320,8 @@ async def get_plan_runs(plan_id: int, db: AsyncSession = Depends(get_db)):
             func.sum(case((TestResult.status == "Passed", 1), else_=0)).label("passed"),
             func.sum(case((TestResult.status == "Failed", 1), else_=0)).label("failed"),
             func.sum(case((TestResult.status == "Blocked", 1), else_=0)).label("blocked"),
+            # KQT-15524: Skipped is a recorded outcome, excluded from untested.
+            func.sum(case((TestResult.status == "Skipped", 1), else_=0)).label("skipped"),
             func.count(TestResult.id).label("total"),
         )
         .outerjoin(TestResult, TestRun.id == TestResult.run_id)
@@ -329,8 +331,8 @@ async def get_plan_runs(plan_id: int, db: AsyncSession = Depends(get_db)):
     )
     rows = (await db.execute(query)).all()
     result = []
-    for run_obj, passed, failed, blocked, total in rows:
-        passed, failed, blocked, total = (v or 0 for v in (passed, failed, blocked, total))
+    for run_obj, passed, failed, blocked, skipped, total in rows:
+        passed, failed, blocked, skipped, total = (v or 0 for v in (passed, failed, blocked, skipped, total))
         result.append({
             "id": run_obj.id,
             "title": run_obj.title,
@@ -338,7 +340,8 @@ async def get_plan_runs(plan_id: int, db: AsyncSession = Depends(get_db)):
             "passed": passed,
             "failed": failed,
             "blocked": blocked,
-            "untested": total - passed - failed - blocked,
+            "skipped": skipped,
+            "untested": total - passed - failed - blocked - skipped,
         })
     return result
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { X, CheckCircle2, XCircle, Ban, Clock, FileWarning, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { X, CheckCircle2, XCircle, Ban, SkipForward, Clock, FileWarning, Image as ImageIcon, Loader2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
 import remarkGfm from 'remark-gfm';
@@ -244,6 +244,16 @@ export default function TestCaseExecutionPane({ resultId, onClose, onUpdated }: 
                                     }`}
                             >
                                 <Ban className="w-4 h-4" /> Blocked
+                            </button>
+                            {/* KQT-15381: Skip — mark a case intentionally not executed.
+                                Result value is "Skipped" to match the backend enum and the
+                                run-detail dropdown / progress accounting (KQT-15524). */}
+                            <button
+                                onClick={() => handleCaseUpdate('Skipped')}
+                                className={`px-4 py-2 rounded-md font-medium text-sm flex items-center gap-2 transition-colors ${detail.status === 'Skipped' ? 'bg-slate-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                    }`}
+                            >
+                                <SkipForward className="w-4 h-4" /> Skip
                             </button>
                         </div>
                     )}

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Play, CheckCircle2, XCircle, SkipForward, Clock, Loader2, Trash2, Copy, Search, Plus, Folder as FolderIcon, Pencil, Ban, Download, ChevronDown, CalendarDays, Link2, Check, X } from 'lucide-react';
+import { Play, CheckCircle2, XCircle, SkipForward, Circle, Clock, Loader2, Trash2, Copy, Search, Plus, Folder as FolderIcon, Pencil, Ban, Download, ChevronDown, CalendarDays, Link2, Check, X } from 'lucide-react';
 import { DndContext, DragEndEvent, closestCenter, useDroppable, useSensor, useSensors, PointerSensor, useDraggable } from '@dnd-kit/core';
 import api from '../lib/api';
 import { canWrite } from '../lib/permissions';
@@ -39,13 +39,17 @@ function DraggableRunCard({ run, onClick, onEdit, onDuplicate, onDelete }: { run
     const passed = run.passed || 0;
     const failed = run.failed || 0;
     const blocked = run.blocked || 0;
+    // KQT-15524: Skip is a processed outcome, not Untested. Count it on its own
+    // so it shows in the bar and isn't lumped into the grey "untested" tail.
+    const skipped = run.skipped || 0;
     const unt = run.untested || 0;
-    const total = run.total || (passed + failed + blocked + unt);
+    const total = run.total || (passed + failed + blocked + skipped + unt);
 
     // Use float for CSS width to avoid rounding gaps
     const passPct = total > 0 ? (passed / total) * 100 : 0;
     const failPct = total > 0 ? (failed / total) * 100 : 0;
     const blockedPct = total > 0 ? (blocked / total) * 100 : 0;
+    const skipPct = total > 0 ? (skipped / total) * 100 : 0;
 
     return (
         <div
@@ -101,13 +105,15 @@ function DraggableRunCard({ run, onClick, onEdit, onDuplicate, onDelete }: { run
                     <span className="text-emerald-600 flex items-center gap-0.5"><CheckCircle2 className="w-3 h-3" /> {passed}</span>
                     <span className="text-rose-500 flex items-center gap-0.5"><XCircle className="w-3 h-3" /> {failed}</span>
                     <span className="text-amber-500 flex items-center gap-0.5"><Ban className="w-3 h-3" /> {blocked}</span>
-                    <span className="text-slate-400 flex items-center gap-0.5"><SkipForward className="w-3 h-3" /> {unt}</span>
+                    {skipped > 0 && <span className="text-slate-500 flex items-center gap-0.5"><SkipForward className="w-3 h-3" /> {skipped}</span>}
+                    <span className="text-slate-400 flex items-center gap-0.5"><Circle className="w-3 h-3" /> {unt}</span>
                 </div>
                 <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden flex">
                     <div style={{ width: `${passPct}%` }} className="bg-emerald-500 h-full transition-all"></div>
                     <div style={{ width: `${failPct}%` }} className="bg-rose-500 h-full transition-all"></div>
                     <div style={{ width: `${blockedPct}%` }} className="bg-amber-400 h-full transition-all"></div>
-                    <div style={{ width: `${(100 - passPct - failPct - blockedPct)}%` }} className="bg-slate-200 h-full transition-all"></div>
+                    <div style={{ width: `${skipPct}%` }} className="bg-slate-400 h-full transition-all"></div>
+                    <div style={{ width: `${(100 - passPct - failPct - blockedPct - skipPct)}%` }} className="bg-slate-200 h-full transition-all"></div>
                 </div>
             </div>
 
@@ -125,7 +131,18 @@ function DraggableRunCard({ run, onClick, onEdit, onDuplicate, onDelete }: { run
                         // KQT-15399: SIT is plain HTTP so navigator.clipboard is
                         // unavailable; the helper falls back to execCommand so the
                         // icon does what its tooltip says.
-                        const ok = await copyToClipboard(`${window.location.origin}/runs/${run.id}`);
+                        //
+                        // KQT-15399 follow-up: the copied URL must match what the
+                        // app actually routes to. Two bugs the reporter hit:
+                        //   1. missing the router basename (e.g. "/tcms") → 404
+                        //   2. missing ?from_folder=<id> → lands outside the folder
+                        // BASE_URL carries the deploy basename ("/tcms/" on SIT,
+                        // "/" locally); strip the trailing slash so we don't double
+                        // it. Use the run's own folder so the link is self-contained
+                        // regardless of which folder the sharer was browsing.
+                        const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+                        const folderQuery = run.folder_id != null ? `?from_folder=${run.folder_id}` : '';
+                        const ok = await copyToClipboard(`${window.location.origin}${base}/runs/${run.id}${folderQuery}`);
                         if (!ok) return;
                         setCopied(true);
                         setTimeout(() => setCopied(false), 1500);
@@ -156,6 +173,7 @@ interface TestRun {
     passed?: number;
     failed?: number;
     blocked?: number;
+    skipped?: number;
     untested?: number;
     total?: number;
     unt?: number; // Keep for backward compat during mapping

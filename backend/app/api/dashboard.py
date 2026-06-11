@@ -98,16 +98,18 @@ async def get_dashboard_summary(db: AsyncSession = Depends(get_db)):
             func.sum(case((TestResult.status == 'Passed', 1), else_=0)).label('p'),
             func.sum(case((TestResult.status == 'Failed', 1), else_=0)).label('f'),
             func.sum(case((TestResult.status == 'Blocked', 1), else_=0)).label('b'),
+            # KQT-15524: Skipped is a recorded outcome, excluded from untested.
+            func.sum(case((TestResult.status == 'Skipped', 1), else_=0)).label('s'),
             func.count(TestResult.id).label('tot')
         ).where(TestResult.run_id.in_(run_ids)).group_by(TestResult.run_id)
         stats_res = await db.execute(stats_query)
         stats_map = {
-            row[0]: (row[1] or 0, row[2] or 0, row[3] or 0, row[4] or 0)
+            row[0]: (row[1] or 0, row[2] or 0, row[3] or 0, row[4] or 0, row[5] or 0)
             for row in stats_res.all()
         }
     recent_runs = []
     for run in runs:
-        p, f, b, tot = stats_map.get(run.id, (0, 0, 0, 0))
+        p, f, b, s, tot = stats_map.get(run.id, (0, 0, 0, 0, 0))
         recent_runs.append({
             "id": run.id,
             "title": run.title,
@@ -116,7 +118,8 @@ async def get_dashboard_summary(db: AsyncSession = Depends(get_db)):
             "passed": p,
             "failed": f,
             "blocked": b,
-            "untested": tot - p - f - b,
+            "skipped": s,
+            "untested": tot - p - f - b - s,
             "total": tot,
         })
 

@@ -74,3 +74,6 @@ class TestCaseBatchDelete(BaseModel):
 class TestCaseBatchMove(BaseModel):
     case_ids: List[int]
     suite_id: int
+
+class TestCaseBatchClone(BaseModel):
+    case_ids: List[int]
