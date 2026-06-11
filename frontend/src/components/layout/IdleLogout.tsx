@@ -1,19 +1,22 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import api from '../../lib/api';
 
 /**
  * 閒置自動登出 — UX 層。
  *
- * 監聽鍵盤/滑鼠/捲動等「真實互動」，閒置超過 IDLE_MINUTES 即清除 token 並導回
+ * 監聽鍵盤/滑鼠/捲動等「真實互動」，閒置超過 idle 門檻即清除 token 並導回
  * /login;逾時前 WARN_SECONDS 秒先跳提示讓使用者可以續用。
  *
  * 注意:這層只是體驗優化(只在這個分頁生效、且可被改 JS 繞過)。真正的把關在後端
  * deps.py 的 idle 閘門:web-session token 閒置過久會直接 401,API token 不受影響。
- * 兩者用同一個 60 分鐘門檻(後端可用 TCMS_WEB_SESSION_IDLE_MINUTES 覆寫,前端用
- * VITE_IDLE_TIMEOUT_MINUTES;兩邊要對齊)。
+ *
+ * idle 門檻以「後端」為準:mount 時讀 GET /system/status 的 web_session.idle_minutes
+ * (後端用 TCMS_WEB_SESSION_IDLE_MINUTES 設定),讓警告倒數與伺服器 401 的時機對齊。
+ * 後端回 0 代表停用 idle 檢查 → 前端也不自動登出。讀取失敗才退回 build-time 的
+ * VITE_IDLE_TIMEOUT_MINUTES。
  */
-const IDLE_MINUTES = Number(import.meta.env.VITE_IDLE_TIMEOUT_MINUTES) || 60;
-const IDLE_MS = IDLE_MINUTES * 60_000;
+const ENV_IDLE_MINUTES = Number(import.meta.env.VITE_IDLE_TIMEOUT_MINUTES) || 60;
 const WARN_SECONDS = 60;
 const WARN_MS = WARN_SECONDS * 1000;
 
@@ -30,6 +33,23 @@ export default function IdleLogout() {
     const navigate = useNavigate();
     const lastActivityRef = useRef<number>(Date.now());
     const [warnRemaining, setWarnRemaining] = useState<number | null>(null);
+    // Runtime idle window in ms; 0 = disabled. Start from the env fallback, then
+    // refine from the backend so the countdown matches the real 401 gate.
+    const [idleMs, setIdleMs] = useState<number>(ENV_IDLE_MINUTES * 60_000);
+
+    // Align with the backend's authoritative idle window. Background header so
+    // this config read doesn't itself count as user activity on the session.
+    useEffect(() => {
+        let cancelled = false;
+        api.get('/system/status', { headers: { 'X-TCMS-Activity': 'background' } })
+            .then((res) => {
+                const mins = res?.data?.web_session?.idle_minutes;
+                if (cancelled || typeof mins !== 'number') return;
+                setIdleMs(mins * 60_000); // 0 → disabled, handled in the ticker
+            })
+            .catch(() => { /* keep the env fallback */ });
+        return () => { cancelled = true; };
+    }, []);
 
     useEffect(() => {
         // Activity → reset the clock. Throttled to once/sec so mousemove storms
@@ -54,11 +74,12 @@ export default function IdleLogout() {
         // Single 1s ticker drives both the warning and the final logout, so there's
         // no per-event timer churn.
         const tick = setInterval(() => {
+            if (idleMs <= 0) return; // backend disabled idle → never auto-logout
             const idleFor = Date.now() - lastActivityRef.current;
-            if (idleFor >= IDLE_MS) {
+            if (idleFor >= idleMs) {
                 logout();
-            } else if (idleFor >= IDLE_MS - WARN_MS) {
-                setWarnRemaining(Math.ceil((IDLE_MS - idleFor) / 1000));
+            } else if (idleFor >= idleMs - WARN_MS) {
+                setWarnRemaining(Math.ceil((idleMs - idleFor) / 1000));
             }
         }, 1000);
 
@@ -66,7 +87,7 @@ export default function IdleLogout() {
             ACTIVITY_EVENTS.forEach((evt) => window.removeEventListener(evt, markActivity));
             clearInterval(tick);
         };
-    }, [navigate]);
+    }, [navigate, idleMs]);
 
     if (warnRemaining === null) return null;
 

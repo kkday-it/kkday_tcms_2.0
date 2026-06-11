@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import bindparam, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import WEB_SESSION_IDLE_MINUTES
 from app.core.config import use_local_db
 from app.db.database import engine, get_db
 from app.db.health import check_schema_health
@@ -31,6 +32,13 @@ async def get_system_status():
             "mode": "local" if use_local_db() else "remote",
             "dialect": engine.dialect.name,
             "url_redacted": url_redacted,
+        },
+        # KQT-15399 review follow-up: expose the authoritative idle window so the
+        # frontend IdleLogout can align its countdown with the backend 401 gate
+        # instead of relying on a separately-configured VITE_IDLE_TIMEOUT_MINUTES.
+        # 0 means the backend idle check is disabled.
+        "web_session": {
+            "idle_minutes": WEB_SESSION_IDLE_MINUTES,
         },
     }
 
