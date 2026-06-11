@@ -4,6 +4,7 @@ import { Presentation, Layers, Activity, Settings as SettingsIcon, User, Clipboa
 import DatabaseHealthAlert from './DatabaseHealthAlert';
 import LocalDbBadge from './LocalDbBadge';
 import OnlineUsersIndicator from './OnlineUsersIndicator';
+import IdleLogout from './IdleLogout';
 
 export default function MainLayout() {
     const location = useLocation();
@@ -30,6 +31,7 @@ export default function MainLayout() {
 
     return (
         <div className="flex h-screen bg-white">
+            <IdleLogout />
             {/* Global Sidebar — spec filter-spec-v3 §3: navy bg + cyan accent.
                 Active state is a cyan-tinted bg (10% opacity) over navy with
                 cyan text, not a full primary fill — keeps the brand color as

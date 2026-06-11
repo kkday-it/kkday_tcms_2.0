@@ -11,7 +11,10 @@ export default function DatabaseHealthAlert() {
 
     const checkHealth = async () => {
         try {
-            const response = await api.get('/system/status');
+            // Background poll — don't reset the server-side idle clock (deps.py).
+            const response = await api.get('/system/status', {
+                headers: { 'X-TCMS-Activity': 'background' },
+            });
             setHealth(response.data.database);
         } catch (error) {
             console.error('Failed to check DB health:', error);

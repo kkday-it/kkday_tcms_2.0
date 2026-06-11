@@ -21,7 +21,8 @@ export default function LocalDbBadge() {
     useEffect(() => {
         let alive = true;
         const fetchMode = () => {
-            api.get('/system/status')
+            // Background poll — don't reset the server-side idle clock (deps.py).
+            api.get('/system/status', { headers: { 'X-TCMS-Activity': 'background' } })
                 .then(res => { if (alive) setDbMode(res.data.db_mode ?? null); })
                 .catch(err => console.error('Failed to fetch db_mode:', err));
         };
