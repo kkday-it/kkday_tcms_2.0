@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useParams, Link, useSearchParams } from 'react-router-dom';
-import { Loader2, ArrowLeft, CheckCircle2, XCircle, SkipForward, Edit2, Search, X, Save, Ban, Copy, Check } from 'lucide-react';
+import { Loader2, ArrowLeft, CheckCircle2, XCircle, SkipForward, Circle, Edit2, Search, X, Save, Ban, Copy, Check } from 'lucide-react';
 import api from '../lib/api';
 import { canWrite } from '../lib/permissions';
 import { runStatusBadgeClasses } from '../lib/runStatus';
@@ -69,6 +69,9 @@ const STATUS_SELECT_STYLES: Record<string, string> = {
     Passed: 'border-green-300 bg-green-50 text-green-700',
     Failed: 'border-red-300 bg-red-50 text-red-700',
     Blocked: 'border-amber-300 bg-amber-50 text-amber-700',
+    // KQT-15524: Skipped gets its own (filled slate) chip so it reads as a
+    // deliberate outcome, distinct from the near-white Untested default.
+    Skipped: 'border-slate-300 bg-slate-100 text-slate-700',
     Untested: 'border-slate-200 bg-white text-slate-600',
 };
 
@@ -458,12 +461,18 @@ export default function TestRunDetails() {
     const passed = results.filter(r => r.status === 'Passed').length;
     const failed = results.filter(r => r.status === 'Failed').length;
     const blocked = results.filter(r => r.status === 'Blocked').length;
+    // KQT-15524: Skipped is an executed outcome — count it separately and keep
+    // it OUT of untested, so a run where every case is Skipped still reads 100%.
+    const skipped = results.filter(r => r.status === 'Skipped').length;
     const total = results.length;
-    // Calculate untested as anything not P/F/B to ensure consistency
-    const unt = total - (passed + failed + blocked);
+    // Untested = anything not P/F/B/Skip (the genuinely not-yet-touched rows).
+    const unt = total - (passed + failed + blocked + skipped);
     const passPct = total > 0 ? (passed / total) * 100 : 0;
     const failPct = total > 0 ? (failed / total) * 100 : 0;
     const blockedPct = total > 0 ? (blocked / total) * 100 : 0;
+    const skipPct = total > 0 ? (skipped / total) * 100 : 0;
+    // Progress = share of cases with any recorded outcome (incl. Skip).
+    const progressPct = total > 0 ? Math.round(((passed + failed + blocked + skipped) / total) * 100) : 0;
 
     return (
         <div className="flex-1 flex flex-col h-full bg-slate-50 relative overflow-hidden">
@@ -558,20 +567,24 @@ export default function TestRunDetails() {
                             <Ban className="w-4 h-4 text-amber-500" /> <span className="font-semibold text-amber-600">{blocked}</span> Blocked
                         </div>
                         <div className="flex items-center gap-2">
-                            <SkipForward className="w-4 h-4 text-slate-400" /> <span className="font-semibold text-slate-500">{unt}</span> Untested
+                            <SkipForward className="w-4 h-4 text-slate-500" /> <span className="font-semibold text-slate-600">{skipped}</span> Skipped
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Circle className="w-4 h-4 text-slate-400" /> <span className="font-semibold text-slate-500">{unt}</span> Untested
                         </div>
                     </div>
 
                     <div className="w-full md:w-96">
                         <div className="flex items-center justify-between text-xs font-medium text-slate-500 mb-1.5">
                             <span>Progress</span>
-                            <span>{Math.round(((passed + failed + blocked) / total) * 100) || 0}% Completed</span>
+                            <span>{progressPct}% Completed</span>
                         </div>
                         <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden flex shadow-inner border border-slate-200/30">
                             <div style={{ width: `${passPct}%` }} className="bg-emerald-500 h-full transition-all duration-500 ease-out"></div>
                             <div style={{ width: `${failPct}%` }} className="bg-rose-500 h-full transition-all duration-500 ease-out border-l border-white/10"></div>
                             <div style={{ width: `${blockedPct}%` }} className="bg-amber-400 h-full transition-all duration-500 ease-out border-l border-white/10"></div>
-                            <div style={{ width: `${(100 - passPct - failPct - blockedPct)}%` }} className="bg-slate-200 h-full transition-all duration-500 ease-out border-l border-white/10"></div>
+                            <div style={{ width: `${skipPct}%` }} className="bg-slate-400 h-full transition-all duration-500 ease-out border-l border-white/10"></div>
+                            <div style={{ width: `${(100 - passPct - failPct - blockedPct - skipPct)}%` }} className="bg-slate-200 h-full transition-all duration-500 ease-out border-l border-white/10"></div>
                         </div>
                     </div>
                 </div>

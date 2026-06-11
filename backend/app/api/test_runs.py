@@ -60,12 +60,13 @@ async def _sync_assignees(run: TestRun, assignee_ids: List[int] | None, db: Asyn
     run.assignees = list(users_result.scalars().all())
 
 
-def _build_response(run: TestRun, passed: int = 0, failed: int = 0, blocked: int = 0, untested: int = 0, total: int = 0) -> dict:
+def _build_response(run: TestRun, passed: int = 0, failed: int = 0, blocked: int = 0, skipped: int = 0, untested: int = 0, total: int = 0) -> dict:
     """Build a response dict from a TestRun ORM object."""
     d = {c.name: getattr(run, c.name) for c in run.__table__.columns}
     d['passed'] = passed
     d['failed'] = failed
     d['blocked'] = blocked
+    d['skipped'] = skipped
     d['untested'] = untested
     d['total'] = total
     d['assignees'] = run.assignees if run.assignees else []
@@ -206,6 +207,9 @@ async def list_runs_by_project(project_id: int, db: AsyncSession = Depends(get_d
             func.sum(case((TestResult.status == 'Passed', 1), else_=0)).label("passed"),
             func.sum(case((TestResult.status == 'Failed', 1), else_=0)).label("failed"),
             func.sum(case((TestResult.status == 'Blocked', 1), else_=0)).label("blocked"),
+            # KQT-15524: Skipped is a recorded outcome — surface it so the run
+            # card can show it and exclude it from the untested remainder.
+            func.sum(case((TestResult.status == 'Skipped', 1), else_=0)).label("skipped"),
             func.count(TestResult.id).label("total")
         )
         .options(selectinload(TestRun.assignees))
@@ -219,13 +223,14 @@ async def list_runs_by_project(project_id: int, db: AsyncSession = Depends(get_d
     rows = result.all()
 
     response_list = []
-    for run_obj, passed, failed, blocked, total in rows:
+    for run_obj, passed, failed, blocked, skipped, total in rows:
         passed = passed or 0
         failed = failed or 0
         blocked = blocked or 0
+        skipped = skipped or 0
         total = total or 0
-        untested = total - passed - failed - blocked
-        response_list.append(_build_response(run_obj, passed=passed, failed=failed, blocked=blocked, untested=untested, total=total))
+        untested = total - passed - failed - blocked - skipped
+        response_list.append(_build_response(run_obj, passed=passed, failed=failed, blocked=blocked, skipped=skipped, untested=untested, total=total))
 
     return response_list
 
@@ -278,6 +283,8 @@ async def get_run(run_id: int, db: AsyncSession = Depends(get_db)):
             func.sum(case((TestResult.status == 'Passed', 1), else_=0)).label("passed"),
             func.sum(case((TestResult.status == 'Failed', 1), else_=0)).label("failed"),
             func.sum(case((TestResult.status == 'Blocked', 1), else_=0)).label("blocked"),
+            # KQT-15524: Skipped counts as processed (kept out of untested below).
+            func.sum(case((TestResult.status == 'Skipped', 1), else_=0)).label("skipped"),
             func.count(TestResult.id).label("total")
         )
         .join(TestCase, TestResult.case_id == TestCase.id)
@@ -285,14 +292,15 @@ async def get_run(run_id: int, db: AsyncSession = Depends(get_db)):
         .where(TestCase.status != ARCHIVED)
     )
     stats_res = await db.execute(stats_query)
-    passed, failed, blocked, total = stats_res.one()
+    passed, failed, blocked, skipped, total = stats_res.one()
     passed = passed or 0
     failed = failed or 0
     blocked = blocked or 0
+    skipped = skipped or 0
     total = total or 0
-    untested = total - passed - failed - blocked
+    untested = total - passed - failed - blocked - skipped
 
-    return _build_response(run, passed=passed, failed=failed, blocked=blocked, untested=untested, total=total)
+    return _build_response(run, passed=passed, failed=failed, blocked=blocked, skipped=skipped, untested=untested, total=total)
 
 
 @router.put("/{run_id}", response_model=TestRunResponse)
@@ -366,19 +374,22 @@ async def update_run(run_id: int, run_in: TestRunUpdate, db: AsyncSession = Depe
             func.sum(case((TestResult.status == 'Passed', 1), else_=0)),
             func.sum(case((TestResult.status == 'Failed', 1), else_=0)),
             func.sum(case((TestResult.status == 'Blocked', 1), else_=0)),
+            # KQT-15524: Skipped counts as processed (kept out of untested below).
+            func.sum(case((TestResult.status == 'Skipped', 1), else_=0)),
             func.count(TestResult.id),
         )
         .join(TestCase, TestResult.case_id == TestCase.id)
         .where(TestResult.run_id == run_id)
         .where(TestCase.status != ARCHIVED)
     )
-    passed, failed, blocked, total = counts_result.one()
+    passed, failed, blocked, skipped, total = counts_result.one()
     passed = passed or 0
     failed = failed or 0
     blocked = blocked or 0
+    skipped = skipped or 0
     total = total or 0
-    untested = total - passed - failed - blocked
-    return _build_response(run, passed=passed, failed=failed, blocked=blocked, untested=untested, total=total)
+    untested = total - passed - failed - blocked - skipped
+    return _build_response(run, passed=passed, failed=failed, blocked=blocked, skipped=skipped, untested=untested, total=total)
 
 
 @router.delete("/{run_id}")

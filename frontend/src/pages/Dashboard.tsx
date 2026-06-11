@@ -28,6 +28,7 @@ interface RecentRun {
     passed: number;
     failed: number;
     blocked: number;
+    skipped?: number; // KQT-15524
     untested: number; // Added
     total: number;
 }
@@ -419,6 +420,7 @@ export default function Dashboard() {
                                             const passPct = run.total > 0 ? (run.passed / run.total) * 100 : 0;
                                             const failPct = run.total > 0 ? (run.failed / run.total) * 100 : 0;
                                             const blockedPct = run.total > 0 ? (run.blocked / run.total) * 100 : 0;
+                                            const skipPct = run.total > 0 ? ((run.skipped || 0) / run.total) * 100 : 0;
                                             const untestedPct = run.total > 0 ? ((run.untested || 0) / run.total) * 100 : 0;
                                             return (
                                                 <tr key={run.id} onClick={() => navigate(`/runs/${run.id}`)} className="hover:bg-slate-50 cursor-pointer transition-colors border-b border-slate-50 last:border-0">
@@ -441,6 +443,7 @@ export default function Dashboard() {
                                                             <div style={{ width: `${passPct}%` }} className="bg-emerald-500 h-full"></div>
                                                             <div style={{ width: `${failPct}%` }} className="bg-rose-500 h-full"></div>
                                                             <div style={{ width: `${blockedPct}%` }} className="bg-amber-400 h-full"></div>
+                                                            <div style={{ width: `${skipPct}%` }} className="bg-slate-400 h-full"></div>
                                                             <div style={{ width: `${untestedPct}%` }} className="bg-slate-200 h-full"></div>
                                                         </div>
                                                     </td>

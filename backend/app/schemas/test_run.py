@@ -70,6 +70,7 @@ class TestRunResponse(TestRunBase):
     passed: Optional[int] = 0
     failed: Optional[int] = 0
     blocked: Optional[int] = 0
+    skipped: Optional[int] = 0
     untested: Optional[int] = 0
     total: Optional[int] = 0
     # Resolved assignee info
