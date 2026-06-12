@@ -1,4 +1,6 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi.responses import FileResponse
+import mimetypes
 import shutil
 import os
 import uuid
@@ -34,3 +36,42 @@ async def upload_file(file: UploadFile = File(...)) -> Dict[str, str]:
         
     # Return the URL path
     return {"url": f"/api/v1/uploads/static/{unique_filename}"}
+
+
+@router.get("/static/{filename}")
+async def serve_upload(filename: str):
+    """Serve an uploaded file (image / .xmind).
+
+    Replaces the previous `app.mount("/api/v1/uploads/static", StaticFiles(...))`:
+    with root_path="/tcms" set, the Starlette mount stopped matching behind the
+    reverse proxy (regular routes still worked), so every stored
+    `/api/v1/uploads/static/<file>` URL returned 404 while the file sat untouched
+    on disk. A normal route shares the same routing path as the rest of the API,
+    so it resolves correctly. Stored mindmap_url / image URLs are unchanged.
+    """
+    # Reject any path-traversal attempt: only a bare filename is allowed.
+    if filename != os.path.basename(filename) or os.path.sep in filename or (os.path.altsep and os.path.altsep in filename):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    file_path = os.path.join(UPLOAD_DIR, filename)
+    # Defensive: ensure the resolved path stays inside UPLOAD_DIR.
+    real_root = os.path.realpath(UPLOAD_DIR)
+    real_path = os.path.realpath(file_path)
+    if os.path.commonpath([real_root, real_path]) != real_root:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    if not os.path.isfile(real_path):
+        raise HTTPException(status_code=404, detail="File not found")
+
+    # Explicit media_type: Starlette's FileResponse falls back to text/plain for
+    # unknown extensions (e.g. .xmind), which mislabels a binary file. Guess from
+    # the name and default to octet-stream. No `filename=` → inline disposition,
+    # matching the previous StaticFiles behavior (images render inline, .xmind
+    # downloads via the browser's own octet-stream handling).
+    media_type, _ = mimetypes.guess_type(filename)
+    return FileResponse(
+        real_path,
+        media_type=media_type or "application/octet-stream",
+        # uuid filenames are immutable, so the content can be cached aggressively.
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
