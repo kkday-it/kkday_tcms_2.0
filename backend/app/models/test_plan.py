@@ -23,6 +23,8 @@ class TestPlan(Base):
     __tablename__ = "tcms_test_plans"
 
     id = Column(Integer, primary_key=True, index=True)
+    # Human-facing identifier, e.g. "KQT-P42". Assigned on create from the row id.
+    external_id = Column(String, nullable=True, unique=True)
     project_id = Column(Integer, ForeignKey("tcms_projects.id"), nullable=False)
     title = Column(String, index=True, nullable=False)
     description = Column(String, nullable=True)

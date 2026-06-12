@@ -406,8 +406,10 @@ export default function TestRunDetails() {
         });
     }, [fetchData]);
 
-    // Human-facing run identifier, e.g. "KQT-R230"
-    const runDisplayId = `${RUN_ID_PREFIX}${testRun?.id ?? runId}`;
+    // Human-facing run identifier, e.g. "KQT-R230". Prefer the backend-assigned
+    // external_id; fall back to deriving it from the id for runs created before
+    // the external_id rollout / backfill.
+    const runDisplayId = testRun?.external_id || `${RUN_ID_PREFIX}${testRun?.id ?? runId}`;
 
     const handleCopyRunId = useCallback(async () => {
         try {

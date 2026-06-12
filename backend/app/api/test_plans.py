@@ -11,6 +11,7 @@ from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import record_audit, require_role
+from app.core.external_id import plan_external_id
 from app.db.database import get_db
 from app.models.test_case import TestCase
 from app.models.test_plan import TestPlan, plan_cases, plan_runs
@@ -48,6 +49,7 @@ async def _load_plan(db: AsyncSession, plan_id: int) -> TestPlan:
 def _plan_to_response(plan: TestPlan) -> dict:
     return {
         "id": plan.id,
+        "external_id": getattr(plan, "external_id", None),
         "project_id": plan.project_id,
         "title": plan.title,
         "description": plan.description,
@@ -289,6 +291,10 @@ async def create_test_plan(plan_in: TestPlanCreate, db: AsyncSession = Depends(g
     db.add(db_plan)
     await db.flush()
 
+    # Assign human-facing external_id (KQT-P{id}) now that the row id exists.
+    if not (db_plan.external_id and db_plan.external_id.strip()):
+        db_plan.external_id = plan_external_id(db_plan.id)
+
     await _set_runs(db, db_plan.id, plan_in.run_ids or [])
     await _set_cases(db, db_plan.id, plan_in.case_ids or [])
 
@@ -433,6 +439,10 @@ async def clone_test_plan(plan_id: int, db: AsyncSession = Depends(get_db), acto
     )
     db.add(new_plan)
     await db.flush()
+
+    # Cloned plan is a new entity → mint its own KQT-P id.
+    if not (new_plan.external_id and new_plan.external_id.strip()):
+        new_plan.external_id = plan_external_id(new_plan.id)
 
     run_ids = [r.id for r in (original.linked_runs or [])]
     case_ids = [c.id for c in (original.linked_cases or [])]

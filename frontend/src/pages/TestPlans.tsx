@@ -31,6 +31,7 @@ interface TestCase {
 
 interface TestPlan {
     id: number;
+    external_id?: string;
     title: string;
     description?: string;
     status: string;
@@ -79,7 +80,7 @@ function DraggablePlanCard({ plan, onEdit, onDelete, onClone }: { plan: TestPlan
                         <span className={`shrink-0 px-2 py-0.5 rounded-full text-xs font-medium border ${statusColor}`}>{plan.status}</span>
                     </div>
                     <p className="text-sm text-slate-500 mb-3">{plan.description || 'No description provided.'}</p>
-                    <p className="text-xs text-slate-400 font-mono">Plan ID: #{plan.id}</p>
+                    <p className="text-xs text-slate-400 font-mono">{plan.external_id || `KQT-P${plan.id}`}</p>
                 </div>
 
                 <div className="flex items-center gap-1 pointer-events-auto ml-4 shrink-0">

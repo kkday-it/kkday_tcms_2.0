@@ -62,6 +62,7 @@ class BulkCopyRunsRequest(BaseModel):
 
 class TestRunResponse(TestRunBase):
     id: int
+    external_id: Optional[str] = None
     project_id: int
     folder_id: Optional[int] = None
     test_plan_id: Optional[int] = None

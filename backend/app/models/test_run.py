@@ -15,6 +15,8 @@ class TestRun(Base):
     __tablename__ = "tcms_test_runs"
 
     id = Column(Integer, primary_key=True, index=True)
+    # Human-facing identifier, e.g. "KQT-R230". Assigned on create from the row id.
+    external_id = Column(String, nullable=True, unique=True)
     project_id = Column(Integer, ForeignKey("tcms_projects.id"), nullable=False)
     folder_id = Column(Integer, ForeignKey("tcms_test_run_folders.id"), nullable=True)
     test_plan_id = Column(Integer, ForeignKey("tcms_test_plans.id"), nullable=True)

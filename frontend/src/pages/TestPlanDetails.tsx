@@ -182,6 +182,7 @@ function GanttTimeline({ rows }: { rows: TimelineRow[] }) {
 
 interface TestPlan {
     id: number;
+    external_id?: string;
     project_id: number;
     title: string;
     description: string;
@@ -521,6 +522,9 @@ export default function TestPlanDetails() {
                         <ClipboardList className="w-5 h-5 text-teal-600" />
                     </div>
                     <div className="flex-1 min-w-0">
+                        <span className="inline-block mb-1 px-1.5 py-0.5 rounded text-xs font-mono font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                            {plan.external_id || `KQT-P${plan.id}`}
+                        </span>
                         <h1 className="text-3xl font-extrabold text-slate-900 flex-1 truncate tracking-tight">{plan.title}</h1>
                         {plan.description ? (
                             <div className="text-base text-slate-500 mt-1 prose-description">

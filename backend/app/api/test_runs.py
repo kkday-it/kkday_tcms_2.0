@@ -12,6 +12,7 @@ from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import record_audit, require_role
+from app.core.external_id import run_external_id
 from app.db.database import get_db
 from app.models.test_case import TestCase
 from app.models.test_result import TestResult
@@ -247,6 +248,10 @@ async def create_run(run_in: TestRunCreate, db: AsyncSession = Depends(get_db), 
 
     db.add(run)
     await db.flush()  # get run.id without full commit
+
+    # Assign human-facing external_id (KQT-R{id}) now that the row id exists.
+    if not (run.external_id and run.external_id.strip()):
+        run.external_id = run_external_id(run.id)
 
     # Fetch matching cases
     cases_query = select(TestCase).join(TestSuite).where(TestSuite.project_id == run.project_id)
@@ -492,6 +497,12 @@ async def bulk_copy_runs(body: BulkCopyRunsRequest, db: AsyncSession = Depends(g
     # Single flush to obtain all new run IDs at once
     await db.flush()
 
+    # Each copy is a brand-new run → mint its own KQT-R id (external_id is not in
+    # _COPY_FIELDS, so it is never inherited from the source).
+    for new_run, _ in new_runs_with_meta:
+        if not (new_run.external_id and new_run.external_id.strip()):
+            new_run.external_id = run_external_id(new_run.id)
+
     # Add all results now that IDs are available
     for new_run, source_results in new_runs_with_meta:
         if source_results:
@@ -569,6 +580,10 @@ async def duplicate_run(run_id: int, db: AsyncSession = Depends(get_db), _actor:
     new_run = TestRun(**run_data)
     db.add(new_run)
     await db.flush()
+
+    # Duplicated run is a new entity → mint its own KQT-R id.
+    if not (new_run.external_id and new_run.external_id.strip()):
+        new_run.external_id = run_external_id(new_run.id)
 
     # Sync assignees only when there are IDs to assign (new_run starts with no assignees)
     if assignee_ids:

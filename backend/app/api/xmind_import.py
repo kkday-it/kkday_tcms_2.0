@@ -32,6 +32,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
+from app.core.external_id import case_external_id
 from app.db.database import get_db
 from app.models.test_case import TestCase
 from app.models.test_step import TestStep
@@ -489,6 +490,14 @@ async def process_xmind(
                 to_case = xmind_id_to_case[to_id]
                 dep_note = f"\n--- 依賴測試案例：{from_case.title}（id: {from_case.id}）"
                 to_case.preconditions = (to_case.preconditions or "") + dep_note
+
+    # 回填 external_id（KQT-T{50000+id}）。XMind 匯入過去從未指派 external_id，
+    # 導致整批匯入的 case 在 repository 只顯示 TC-{id} 而沒有 KQT-T；此處比照單筆
+    # create_case 的規則補上。先 flush 確保所有 case.id 已配發。
+    await db.flush()
+    for case in xmind_id_to_case.values():
+        if not (case.external_id and case.external_id.strip()):
+            case.external_id = case_external_id(case.id)
 
     await db.commit()
 

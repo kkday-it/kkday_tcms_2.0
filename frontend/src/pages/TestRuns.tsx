@@ -75,6 +75,9 @@ function DraggableRunCard({ run, onClick, onEdit, onDuplicate, onDelete }: { run
             {/* Title + badges */}
             <div className="flex-1 min-w-0 relative z-10 pointer-events-none">
                 <div className="flex items-center gap-2 flex-wrap">
+                    <span className="px-1.5 py-0.5 rounded text-xs font-mono font-medium bg-slate-100 text-slate-600 border border-slate-200 shrink-0">
+                        {run.external_id || `KQT-R${run.id}`}
+                    </span>
                     <span className="text-sm font-semibold text-slate-900 truncate">{run.title}</span>
                     <span className="px-2 py-0.5 rounded text-xs font-medium bg-primary-50 text-primary-700 border border-primary-200 shrink-0">
                         {run.run_type || 'Feature Test'}
@@ -164,6 +167,7 @@ function DraggableRunCard({ run, onClick, onEdit, onDuplicate, onDelete }: { run
 
 interface TestRun {
     id: number;
+    external_id?: string;
     project_id: number;
     title: string;
     description?: string;

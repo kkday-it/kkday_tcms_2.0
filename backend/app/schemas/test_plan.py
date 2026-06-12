@@ -72,6 +72,7 @@ class TestPlanUpdate(BaseModel):
 
 class TestPlanResponse(TestPlanBase):
     id: int
+    external_id: Optional[str] = None
     project_id: int
     folder_id: Optional[int] = None
     run_ids: List[int] = []

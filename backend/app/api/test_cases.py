@@ -30,9 +30,13 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # external_id 格式：KQT-T{EXTERNAL_ID_OFFSET + case.id}
-# offset 50000 確保與 Zephyr Scale 現有編號（上限約 38000）不重疊
-EXTERNAL_ID_PREFIX = "KQT-T"
-EXTERNAL_ID_OFFSET = 50000
+# offset 50000 確保與 Zephyr Scale 現有編號（上限約 38000）不重疊。
+# 實際前綴/offset 與產生邏輯集中在 app.core.external_id，這裡保留別名供既有引用使用。
+from app.core.external_id import (
+    CASE_PREFIX as EXTERNAL_ID_PREFIX,
+    CASE_OFFSET as EXTERNAL_ID_OFFSET,
+    case_external_id,
+)
 
 @router.get("/labels/all", response_model=List[str])
 async def get_all_labels(db: AsyncSession = Depends(get_db)):
@@ -144,7 +148,7 @@ async def create_case(case_in: TestCaseCreate, db: AsyncSession = Depends(get_db
         )
 
     if not (case.external_id and case.external_id.strip()):
-        case.external_id = f"{EXTERNAL_ID_PREFIX}{EXTERNAL_ID_OFFSET + case.id}"
+        case.external_id = case_external_id(case.id)
 
     for step_in in case_in.steps:
         step = TestStep(**step_in.model_dump(), test_case_id=case.id)
@@ -439,7 +443,7 @@ async def batch_clone_cases(
         clone.external_id = None  # re-generated after flush so it stays unique
         db.add(clone)
         await db.flush()  # assign clone.id
-        clone.external_id = f"{EXTERNAL_ID_PREFIX}{EXTERNAL_ID_OFFSET + clone.id}"
+        clone.external_id = case_external_id(clone.id)
 
         for step in sorted(original.steps, key=lambda s: s.order):
             if step.status == ARCHIVED:
