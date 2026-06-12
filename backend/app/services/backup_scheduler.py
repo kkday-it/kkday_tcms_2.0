@@ -132,6 +132,18 @@ async def run_backup_job():
         filename = f"{SCHEDULED_BACKUP_PREFIX}project{project_id}_{timestamp}.zip"
         filepath = BACKUP_DIR / filename
 
+        # Collect uploaded files (mindmaps / images) so scheduled backups carry
+        # the same payload as the manual GET /backup. Previously run_backup_job
+        # packed only the JSON exports, so the daily auto-backup gave uploads no
+        # protection — a restore could never recover a lost mindmap/image.
+        uploads_dir = "uploads"
+        upload_files: list[str] = []
+        if os.path.isdir(uploads_dir):
+            upload_files = [
+                f for f in os.listdir(uploads_dir)
+                if os.path.isfile(os.path.join(uploads_dir, f))
+            ]
+
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
             zf.writestr("suites.json",    json.dumps(suites_data,     ensure_ascii=False, indent=2))
@@ -149,8 +161,13 @@ async def run_backup_job():
                     "cases": len(cases_full_data),
                     "runs": len(runs_data),
                     "plans": len(plans_data),
+                    "uploads": len(upload_files),
                 },
             }, ensure_ascii=False, indent=2))
+            # Pack uploaded files under uploads/ so a restore can recover them
+            # (restore_backup already extracts uploads/ entries).
+            for fname in upload_files:
+                zf.write(os.path.join(uploads_dir, fname), arcname=f"uploads/{fname}")
         buf.seek(0)
         filepath.write_bytes(buf.read())
 
