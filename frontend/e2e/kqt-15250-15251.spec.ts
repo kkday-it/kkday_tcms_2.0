@@ -8,6 +8,12 @@ type CaseRow = {
     labels?: string | null;
 };
 
+// The UI now shows the KQT external_id and hides the internal TC-{id}
+// (mirrors frontend lib/caseLabel.ts). Fall back to TC-{id} when a case has
+// no external_id so assertions match exactly what's rendered.
+const caseLabel = (c: { external_id?: string | null; id: number }): string =>
+    c.external_id?.trim() ? c.external_id.trim() : `TC-${c.id}`;
+
 // Pull the first case from the API so tests don't hardcode an id that may not
 // exist in the target env. Mirrors the pattern used in the /plans regression
 // test at the bottom of kqt14156.spec.ts.
@@ -72,8 +78,9 @@ test('KQT-15250: 案例庫輸入 "TC-{id}" 可命中對應 case', async ({ page 
     await expect(searchInput).toBeVisible();
     await searchInput.fill(`TC-${targetId}`);
 
-    // After filtering, the queried TC must still be present.
-    await expect(page.locator(`text=TC-${targetId}`).first()).toBeVisible({ timeout: 3000 });
+    // Search still accepts the TC-{id} keyword; the row now renders the KQT
+    // external_id label, so assert against that.
+    await expect(page.locator(`text=${caseLabel(sample!)}`).first()).toBeVisible({ timeout: 3000 });
 
     // And the per-suite header reflects the narrowed result set.
     const countHeader = page.locator('text=/\\d+ test cases in this suite/');
@@ -105,7 +112,7 @@ test('KQT-15250 extended: 用 labels 內容能搜到 case', async ({ page }) => 
     await expect(searchInput).toBeVisible();
     await searchInput.fill(token!);
 
-    await expect(page.locator(`text=TC-${withLabel!.id}`).first()).toBeVisible({ timeout: 3000 });
+    await expect(page.locator(`text=${caseLabel(withLabel!)}`).first()).toBeVisible({ timeout: 3000 });
 });
 
 // ─── KQT-15251: Test Run case 列表依 case_id 升冪排序 ────────────────────────
@@ -119,16 +126,15 @@ test('KQT-15251: Test Run case 列表依 TC 編號由小到大', async ({ page }
     await page.waitForLoadState('networkidle');
     await page.waitForSelector('tbody tr', { timeout: 10000 });
 
-    // Each row's case-id badge — uses the same `.font-mono` marker that the
-    // KQT-14496 stability test already relies on, so we know it's stable.
-    const labels = await page.locator('tbody tr td:nth-child(2) span.font-mono').allInnerTexts();
-    expect(labels.length).toBeGreaterThanOrEqual(2);
-
-    const ids = labels
-        .map(s => s.match(/TC-(\d+)/)?.[1])
-        .filter((v): v is string => v != null)
-        .map(Number);
-    expect(ids.length).toBe(labels.length); // every row must have a parseable id
+    // Read the internal case_id from the row's data-case-id attribute rather
+    // than the visible label: the UI now shows the KQT external_id, whose
+    // number is NOT order-equivalent to case_id (Zephyr keys are small, backfilled
+    // ones are 50000+id), so parsing the label would misjudge the ordering.
+    const ids = await page
+        .locator('tbody tr td:nth-child(2) span.font-mono[data-case-id]')
+        .evaluateAll(els => els.map(e => Number(e.getAttribute('data-case-id'))));
+    expect(ids.length).toBeGreaterThanOrEqual(2);
+    expect(ids.every(n => Number.isFinite(n))).toBe(true);
 
     for (let i = 1; i < ids.length; i++) {
         expect(ids[i]).toBeGreaterThanOrEqual(ids[i - 1]);
@@ -171,9 +177,8 @@ test('external_id badge: 點 Test Run 內 case 時詳細 pane 顯示 external_id
     await expect(targetRow).toBeVisible();
     await targetRow.click();
 
-    // Detail pane should show the same external_id alongside TC-{case_id}.
-    // Wait for the pane heading first.
-    await page.waitForSelector('text=/^TC-\\d+/', { timeout: 5000 });
+    // Detail pane should show the external_id. Wait for a case-id row marker first.
+    await page.waitForSelector('span.font-mono[data-case-id]', { timeout: 5000 });
     const badge = page.locator(`text=${expectedExtId}`);
     await expect(badge.first()).toBeVisible();
 });
@@ -200,7 +205,7 @@ test('external_id badge: 編輯 case 時 modal header 顯示 external_id', async
     await expect(searchInput).toBeVisible();
     await searchInput.fill(`TC-${target!.id}`);
 
-    const row = page.locator('tbody tr, [class*="cursor-pointer"]').filter({ hasText: `TC-${target!.id}` }).first();
+    const row = page.locator('tbody tr, [class*="cursor-pointer"]').filter({ hasText: caseLabel(target!) }).first();
     await expect(row).toBeVisible();
     await row.click();
 
@@ -210,10 +215,9 @@ test('external_id badge: 編輯 case 時 modal header 顯示 external_id', async
     await expect(editBtn).toBeVisible({ timeout: 5000 });
     await editBtn.click();
 
-    // Editor opens — header now shows "編輯 TC-{id}" plus the external_id badge.
-    const heading = page.locator(`h2:has-text("編輯 TC-${target!.id}")`);
+    // Editor opens — header now shows "編輯 {external_id}" (TC-{id} hidden).
+    const heading = page.locator(`h2:has-text("編輯 ${caseLabel(target!)}")`);
     await expect(heading).toBeVisible({ timeout: 5000 });
-    await expect(page.locator(`text=${target!.external_id}`).first()).toBeVisible();
 });
 
 // ─── TestRuns: 新搜尋框可實際過濾 Run 列表 ───────────────────────────────────

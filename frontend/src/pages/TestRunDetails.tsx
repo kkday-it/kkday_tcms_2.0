@@ -846,8 +846,8 @@ export default function TestRunDetails() {
                                         {/* Case title */}
                                         <td className="py-3.5 px-6 font-medium text-slate-900">
                                             <div className="flex flex-col gap-0.5">
-                                                <span className="text-xs font-mono text-slate-400">
-                                                    {/* Show the KQT external_id (deep-links to the case in Repository); the internal TC id is hidden but still used by the ?case= link. */}
+                                                <span className="text-xs font-mono text-slate-400" data-case-id={res.case_id}>
+                                                    {/* Show the KQT external_id (deep-links to the case in Repository); the internal TC id is hidden but still used by the ?case= link and the data-case-id attr (for e2e ordering checks). */}
                                                     <Link
                                                         to={`/repository?case=${res.case_id}`}
                                                         target="_blank"

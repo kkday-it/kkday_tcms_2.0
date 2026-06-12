@@ -119,7 +119,7 @@ function DraggableCaseRow({ tc, isSelected, onToggle, onPreview, onDelete }: Dra
                         <GripVertical className="w-4 h-4" />
                     </div>
                     <div className="flex flex-col gap-1 min-w-0 max-w-[400px]">
-                        <span className="text-xs font-mono text-slate-400">
+                        <span className="text-xs font-mono text-slate-400" data-case-id={tc.id}>
                             {caseLabel(tc)}
                         </span>
                         <span className="text-sm font-semibold text-slate-900 truncate" title={tc.title}>{tc.title}</span>
