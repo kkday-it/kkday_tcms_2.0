@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useParams, Link, useSearchParams } from 'react-router-dom';
 import { Loader2, ArrowLeft, CheckCircle2, XCircle, SkipForward, Circle, Edit2, Search, X, Save, Ban, Copy, Check } from 'lucide-react';
 import api from '../lib/api';
+import { caseLabel } from '../lib/caseLabel';
 import { canWrite } from '../lib/permissions';
 import { runStatusBadgeClasses } from '../lib/runStatus';
 import { useUsers } from '../lib/useUsers';
@@ -846,7 +847,7 @@ export default function TestRunDetails() {
                                         <td className="py-3.5 px-6 font-medium text-slate-900">
                                             <div className="flex flex-col gap-0.5">
                                                 <span className="text-xs font-mono text-slate-400">
-                                                    {/* KQT-15330: TC-{id} and external_id (e.g. KQT-xxxx) both deep-link to the case in Repository. */}
+                                                    {/* Show the KQT external_id (deep-links to the case in Repository); the internal TC id is hidden but still used by the ?case= link. */}
                                                     <Link
                                                         to={`/repository?case=${res.case_id}`}
                                                         target="_blank"
@@ -854,19 +855,8 @@ export default function TestRunDetails() {
                                                         onClick={e => e.stopPropagation()}
                                                         className="text-primary-600 hover:underline"
                                                     >
-                                                        TC-{res.case_id}
+                                                        {caseLabel({ external_id: res.test_case?.external_id, id: res.case_id })}
                                                     </Link>
-                                                    {res.test_case?.external_id && (
-                                                        <Link
-                                                            to={`/repository?case=${res.case_id}`}
-                                                            target="_blank"
-                                                            rel="noreferrer"
-                                                            onClick={e => e.stopPropagation()}
-                                                            className="ml-1 px-1.5 py-0.5 bg-primary-50 text-primary-600 rounded whitespace-nowrap hover:bg-primary-100"
-                                                        >
-                                                            {res.test_case.external_id}
-                                                        </Link>
-                                                    )}
                                                 </span>
                                                 <span>{res.test_case?.title || 'Unknown Case'}</span>
                                             </div>

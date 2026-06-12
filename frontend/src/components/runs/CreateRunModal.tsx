@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { X, Loader2, Search, Folder, ChevronRight, ChevronDown } from 'lucide-react';
 import api from '../../lib/api';
+import { caseLabel } from '../../lib/caseLabel';
 import { useUsers } from '../../lib/useUsers';
 import { UserMultiSelect } from '../common/UserSelect';
 
@@ -12,6 +13,7 @@ interface TestSuite {
 
 interface TestCase {
     id: number;
+    external_id?: string;
     title: string;
     suite_id: number;
     status: string;
@@ -334,7 +336,7 @@ export default function CreateRunModal({ isOpen, onClose, projectId, initialTitl
                                     onChange={(e) => toggleCaseSelection(e, c.id)}
                                     className="w-4 h-4 text-primary-600 rounded border-slate-300 focus:ring-primary-500 mr-3"
                                 />
-                                <span className="text-xs text-slate-400 font-mono w-14">TC-{c.id}</span>
+                                <span className="text-xs text-slate-400 font-mono whitespace-nowrap shrink-0">{caseLabel(c)}</span>
                                 <span className="text-sm text-slate-700 truncate">{c.title}</span>
                             </label>
                         ))}
@@ -569,7 +571,7 @@ export default function CreateRunModal({ isOpen, onClose, projectId, initialTitl
                                                     onChange={(e) => toggleCaseSelection(e, c.id)}
                                                     className="w-4 h-4 text-primary-600 rounded border-slate-300 focus:ring-primary-500 mr-3"
                                                 />
-                                                <span className="text-xs text-slate-400 font-mono w-14">TC-{c.id}</span>
+                                                <span className="text-xs text-slate-400 font-mono whitespace-nowrap shrink-0">{caseLabel(c)}</span>
                                                 <span className="text-sm text-slate-700 truncate">{c.title}</span>
                                             </label>
                                         ))}

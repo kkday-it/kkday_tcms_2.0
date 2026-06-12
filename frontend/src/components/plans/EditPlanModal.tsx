@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { Loader2, Search, Plus, X, UploadCloud, ExternalLink } from 'lucide-react';
 import api from '../../lib/api';
+import { caseLabel } from '../../lib/caseLabel';
 
 interface DocEntry {
     title?: string;
@@ -27,6 +28,7 @@ export interface CaseFolder {
 
 export interface TestCase {
     id: number;
+    external_id?: string;
     title: string;
     suite_id: number;
 }
@@ -782,7 +784,7 @@ export default function EditPlanModal({ plan, folders, runs, cases, caseFolders,
                                                             <button key={tc.id} type="button" onClick={() => toggleCase(tc.id)}
                                                                 className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-primary-50 text-left transition-colors group">
                                                                 <Plus className="w-3.5 h-3.5 text-slate-300 group-hover:text-primary-500 shrink-0 transition-colors" />
-                                                                <span className="text-[11px] font-mono text-slate-400 shrink-0 w-10">TC-{tc.id}</span>
+                                                                <span className="text-[11px] font-mono text-slate-400 shrink-0 whitespace-nowrap">{caseLabel(tc)}</span>
                                                                 <span className="text-xs text-slate-700 truncate">{tc.title}</span>
                                                             </button>
                                                         ))
@@ -812,7 +814,7 @@ export default function EditPlanModal({ plan, folders, runs, cases, caseFolders,
                                                     ) : (
                                                         cases.filter(c => selectedCaseIds.includes(c.id)).map(tc => (
                                                             <div key={tc.id} className="flex items-center gap-2 px-3 py-2.5 group hover:bg-slate-50 transition-colors">
-                                                                <span className="text-[11px] font-mono text-slate-400 shrink-0 w-10">TC-{tc.id}</span>
+                                                                <span className="text-[11px] font-mono text-slate-400 shrink-0 whitespace-nowrap">{caseLabel(tc)}</span>
                                                                 <span className="text-xs text-slate-700 truncate flex-1">{tc.title}</span>
                                                                 <button type="button" onClick={() => toggleCase(tc.id)}
                                                                     className="shrink-0 p-0.5 text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all">
