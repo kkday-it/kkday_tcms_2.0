@@ -4,7 +4,6 @@ import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.db.database import engine, Base
@@ -139,8 +138,11 @@ app.add_middleware(
 async def health_check():
     return {"status": "ok", "project": settings.PROJECT_NAME}
 
-# Mount static files for user uploads
+# Ensure the upload directory exists at startup. Files are *served* by a normal
+# route (GET /api/v1/uploads/static/{filename} in app.api.uploads), NOT a
+# Starlette StaticFiles mount: with root_path="/tcms" set, app.mount() sub-apps
+# fail to match behind the reverse proxy (regular routes work, mounts 404), which
+# made every uploaded mindmap/image return 404 even though the file was on disk.
 os.makedirs("uploads", exist_ok=True)
-app.mount("/api/v1/uploads/static", StaticFiles(directory="uploads"), name="uploads_static")
 
 app.include_router(api_router, prefix="/api/v1")
