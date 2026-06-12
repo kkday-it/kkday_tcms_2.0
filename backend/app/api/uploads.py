@@ -1,5 +1,6 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi.responses import FileResponse
+import mimetypes
 import shutil
 import os
 import uuid
@@ -62,4 +63,15 @@ async def serve_upload(filename: str):
     if not os.path.isfile(real_path):
         raise HTTPException(status_code=404, detail="File not found")
 
-    return FileResponse(real_path, filename=filename)
+    # Explicit media_type: Starlette's FileResponse falls back to text/plain for
+    # unknown extensions (e.g. .xmind), which mislabels a binary file. Guess from
+    # the name and default to octet-stream. No `filename=` → inline disposition,
+    # matching the previous StaticFiles behavior (images render inline, .xmind
+    # downloads via the browser's own octet-stream handling).
+    media_type, _ = mimetypes.guess_type(filename)
+    return FileResponse(
+        real_path,
+        media_type=media_type or "application/octet-stream",
+        # uuid filenames are immutable, so the content can be cached aggressively.
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
