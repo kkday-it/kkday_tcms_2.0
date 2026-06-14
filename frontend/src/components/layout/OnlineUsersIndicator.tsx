@@ -7,6 +7,8 @@ const HEARTBEAT_INTERVAL_MS = 30_000;
 interface OnlineUser {
     id: number;
     username: string;
+    // Online but no real activity within the server's idle window → amber dot.
+    idle?: boolean;
 }
 
 interface PresenceSnapshot {
@@ -172,10 +174,14 @@ export default function OnlineUsersIndicator({ expanded }: { expanded: boolean }
                                         key={u.id}
                                         className="group flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
                                     >
-                                        <span className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" />
+                                        <span
+                                            className={`w-1.5 h-1.5 rounded-full shrink-0 ${u.idle ? 'bg-amber-500' : 'bg-green-500'}`}
+                                            title={u.idle ? '閒置中' : '上線中'}
+                                        />
                                         <span className="truncate flex-1">
                                             {u.username}
                                             {isSelf && <span className="text-gray-400">（我）</span>}
+                                            {u.idle && <span className="ml-1 text-amber-500 text-xs">閒置</span>}
                                         </span>
                                         {isAdmin && !isSelf && (
                                             <button

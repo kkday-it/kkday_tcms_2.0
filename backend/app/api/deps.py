@@ -174,6 +174,10 @@ async def get_current_user(
         if not is_background:
             row.last_used_at = now
             await db.commit()
+            # Real activity also refreshes the presence idle clock (background
+            # heartbeats keep the user online but must not clear "idle").
+            from app.services import presence
+            presence.mark_active(user.id, user.username)
         return user
 
     # Path 2: grace-period legacy mock token + X-User-Id header. Auto-issues a real
