@@ -4,6 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
 import remarkGfm from 'remark-gfm';
 import api from '../../lib/api';
+import { caseLabel } from '../../lib/caseLabel';
 import { useUsers } from '../../lib/useUsers';
 
 interface TestStep {
@@ -121,9 +122,8 @@ export default function TestCasePreviewPane({ isOpen, onClose, caseId, onEditCli
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50">
                     <div className="flex items-center gap-3">
-                        <span className="text-sm font-mono text-slate-500 bg-white px-2 py-1 border border-slate-200 rounded">TC-{caseId}</span>
-                        {testCase?.external_id && (
-                            <span className="text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-1 rounded border border-emerald-100">{testCase.external_id}</span>
+                        {caseId != null && (
+                            <span className="text-sm font-mono text-slate-500 bg-white px-2 py-1 border border-slate-200 rounded">{caseLabel({ external_id: testCase?.external_id, id: caseId })}</span>
                         )}
                     </div>
                     <div className="flex items-center gap-2">

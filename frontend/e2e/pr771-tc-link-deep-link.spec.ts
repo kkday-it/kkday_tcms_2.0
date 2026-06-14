@@ -13,7 +13,7 @@ test('PR #771: TC-{id} link from a run row opens Repository preview', async ({ p
 
     // Find any run that has at least one result with a case_id we can deep-link to.
     type Run = { id: number; project_id: number };
-    type Result = { case_id: number };
+    type Result = { case_id: number; test_case?: { external_id?: string | null } };
     const runsRes = await page.request.get('/api/v1/runs/project/1');
     expect(runsRes.status()).toBe(200);
     const runs: Run[] = await runsRes.json();
@@ -21,12 +21,20 @@ test('PR #771: TC-{id} link from a run row opens Repository preview', async ({ p
 
     let targetRunId: number | null = null;
     let targetCaseId: number | null = null;
+    // The UI shows the KQT external_id (TC-{id} hidden); locate the link by that
+    // label, falling back to TC-{id} for any case without an external_id.
+    let targetLabel: string | null = null;
     for (const r of runs.slice(0, 10)) {
         const rr = await page.request.get(`/api/v1/results/run/${r.id}`);
         if (rr.status() !== 200) continue;
         const results: Result[] = await rr.json();
         const first = results.find(x => Number.isFinite(x.case_id) && x.case_id > 0);
-        if (first) { targetRunId = r.id; targetCaseId = first.case_id; break; }
+        if (first) {
+            targetRunId = r.id;
+            targetCaseId = first.case_id;
+            targetLabel = first.test_case?.external_id?.trim() || `TC-${first.case_id}`;
+            break;
+        }
     }
     test.skip(!targetRunId || !targetCaseId, 'No run with results found — cannot exercise TC-link');
 
@@ -35,7 +43,7 @@ test('PR #771: TC-{id} link from a run row opens Repository preview', async ({ p
     await page.goto(`/runs/${targetRunId}`);
     await page.waitForLoadState('networkidle');
 
-    const tcLink = page.getByRole('link', { name: `TC-${targetCaseId}` }).first();
+    const tcLink = page.getByRole('link', { name: targetLabel! }).first();
     await expect(tcLink).toBeVisible();
 
     const [popup] = await Promise.all([
@@ -47,7 +55,7 @@ test('PR #771: TC-{id} link from a run row opens Repository preview', async ({ p
     await popup.waitForLoadState('domcontentloaded');
     expect(popup.url()).toContain(`/repository?case=${targetCaseId}`);
 
-    // The preview pane renders an inline TC label — assert it appears so we know
-    // the ?case= effect actually fired (not just that the URL is right).
-    await expect(popup.getByText(`TC-${targetCaseId}`).first()).toBeVisible({ timeout: 10_000 });
+    // The preview pane renders the case label (KQT external_id) — assert it
+    // appears so we know the ?case= effect actually fired (not just the URL).
+    await expect(popup.getByText(targetLabel!).first()).toBeVisible({ timeout: 10_000 });
 });

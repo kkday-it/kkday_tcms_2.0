@@ -129,8 +129,11 @@ test('v3: 預設 sort 仍是 case_id 升冪 (KQT-15251 regression)', async ({ pa
     // No header clicked → URL has no ?sort=. Rows go by case_id asc.
     expect(page.url()).not.toMatch(/[?&]sort=/);
 
-    const labels = await page.locator('tbody tr td:nth-child(2) span.font-mono').allInnerTexts();
-    const ids = labels.map(s => s.match(/TC-(\d+)/)?.[1]).filter((v): v is string => !!v).map(Number);
+    // Read case_id from data-case-id (the UI now shows the KQT external_id, whose
+    // number is not order-equivalent to case_id), then assert case_id ascending.
+    const ids = await page
+        .locator('tbody tr td:nth-child(2) span.font-mono[data-case-id]')
+        .evaluateAll(els => els.map(e => Number(e.getAttribute('data-case-id'))));
     expect(ids.length).toBeGreaterThan(1);
     for (let i = 1; i < ids.length; i++) {
         expect(ids[i]).toBeGreaterThanOrEqual(ids[i - 1]);
@@ -162,7 +165,7 @@ test('v3: Repository — Priority pill 過濾 case', async ({ page }) => {
     await ensureLoggedIn(page);
     await page.goto('/repository');
     // Wait for any case row to appear; if project has zero cases we skip.
-    const firstCase = page.locator('text=/^TC-\\d+/').first();
+    const firstCase = page.locator('span.font-mono[data-case-id]').first();
     const hasCases = await firstCase.isVisible({ timeout: 5_000 }).catch(() => false);
     test.skip(!hasCases, 'project has no test cases — filter cannot be exercised');
 

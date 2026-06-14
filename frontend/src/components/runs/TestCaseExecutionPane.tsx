@@ -4,6 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
 import remarkGfm from 'remark-gfm';
 import api from '../../lib/api';
+import { caseLabel } from '../../lib/caseLabel';
 import { useUsers } from '../../lib/useUsers';
 
 // Types
@@ -270,13 +271,8 @@ export default function TestCaseExecutionPane({ resultId, onClose, onUpdated }: 
                             <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
                                 <div className="flex items-center gap-2 mb-3">
                                     <span className="px-2.5 py-1 bg-primary-50 text-primary-700 text-xs font-semibold rounded uppercase tracking-wider">
-                                        TC-{detail.case_id}
+                                        {caseLabel({ external_id: detail.test_case.external_id, id: detail.case_id })}
                                     </span>
-                                    {detail.test_case.external_id && (
-                                        <span className="px-2.5 py-1 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-100 rounded">
-                                            {detail.test_case.external_id}
-                                        </span>
-                                    )}
                                     <span className={`px-2.5 py-1 text-xs font-semibold rounded uppercase tracking-wider ${detail.test_case.priority === 'High' ? 'bg-orange-50 text-orange-700' : 'bg-slate-100 text-slate-700'}`}>
                                         {detail.test_case.priority} priority
                                     </span>

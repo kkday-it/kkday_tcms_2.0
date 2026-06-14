@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Plus, Search, Loader2, Upload, Download, RefreshCw, Trash2, FolderOpen, ChevronDown, X, CheckCircle2, AlertCircle, FileCode2, GripVertical, Copy } from 'lucide-react';
 import { canWrite } from '../lib/permissions';
+import { caseLabel } from '../lib/caseLabel';
 import { DndContext, DragEndEvent, pointerWithin, closestCenter, useDroppable, useDraggable, useSensor, useSensors, PointerSensor } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import TestCaseEditor from '../components/cases/TestCaseEditor';
@@ -118,8 +119,8 @@ function DraggableCaseRow({ tc, isSelected, onToggle, onPreview, onDelete }: Dra
                         <GripVertical className="w-4 h-4" />
                     </div>
                     <div className="flex flex-col gap-1 min-w-0 max-w-[400px]">
-                        <span className="text-xs font-mono text-slate-400">
-                            TC-{tc.id}{tc.external_id && <span className="ml-1 px-1.5 py-0.5 bg-primary-50 text-primary-600 rounded whitespace-nowrap">{tc.external_id}</span>}
+                        <span className="text-xs font-mono text-slate-400" data-case-id={tc.id}>
+                            {caseLabel(tc)}
                         </span>
                         <span className="text-sm font-semibold text-slate-900 truncate" title={tc.title}>{tc.title}</span>
                     </div>
