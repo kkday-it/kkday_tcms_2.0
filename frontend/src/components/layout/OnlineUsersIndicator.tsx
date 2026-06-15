@@ -8,7 +8,9 @@ interface OnlineUser {
     id: number;
     username: string;
     // Online but no real activity within the server's idle window → amber dot.
-    idle?: boolean;
+    // Required: the backend snapshot always emits this flag (see presence.snapshot),
+    // so the UI never has to disambiguate undefined-vs-false.
+    idle: boolean;
 }
 
 interface PresenceSnapshot {
