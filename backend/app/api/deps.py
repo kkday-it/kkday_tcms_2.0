@@ -43,7 +43,9 @@ GRACE_AUTO_TOKEN_TTL_DAYS = 7
 # is older than this is treated as expired → 401 → the frontend bounces to /login.
 # API tokens (any other label) are deliberately exempt: bots/CI hold long-lived tokens
 # and must not be logged out for being "idle". 0 disables the idle check entirely.
-WEB_SESSION_IDLE_MINUTES = int(os.environ.get("TCMS_WEB_SESSION_IDLE_MINUTES", "60"))
+# Default is one working day (8h): long enough that meetings/lunch don't bounce an
+# active user to /login, short enough that a tab left on a shared machine dies overnight.
+WEB_SESSION_IDLE_MINUTES = int(os.environ.get("TCMS_WEB_SESSION_IDLE_MINUTES", "480"))
 # Labels minted for browser logins (see issue_web_session_token + the grace-period
 # auto-migration). Only these are subject to the idle timeout.
 WEB_SESSION_LABELS = {"web-session", "auto-migrated"}
@@ -173,6 +175,13 @@ async def get_current_user(
         is_background = request.headers.get(ACTIVITY_HEADER, "").lower() == BACKGROUND_ACTIVITY
         if not is_background:
             row.last_used_at = now
+            # Sliding expiration: every real interaction pushes the hard 7-day TTL
+            # forward, so anyone who keeps using TCMS never hits the wall and gets
+            # bounced to /login mid-work. Only web-session labels slide — long-lived
+            # API tokens (bots/CI) keep whatever expires_at they were minted with
+            # (often null = never), so we must not stomp it here.
+            if row.label in WEB_SESSION_LABELS:
+                row.expires_at = now + _dt.timedelta(days=WEB_SESSION_TTL_DAYS)
             await db.commit()
             # Real activity also refreshes the presence idle clock (background
             # heartbeats keep the user online but must not clear "idle").
