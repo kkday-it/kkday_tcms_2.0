@@ -99,7 +99,8 @@ class TestPresenceHeartbeat:
         assert res.status_code == 200, res.text
         body = res.json()
         assert body["online"] == 1
-        assert body["users"] == [{"id": uid, "username": "alice"}]
+        # 剛 heartbeat → 立即活躍,idle=False (snapshot 含 idle 旗標供前端上橘點)
+        assert body["users"] == [{"id": uid, "username": "alice", "idle": False}]
 
     async def test_heartbeat_is_idempotent_per_user(self, client: AsyncClient):
         uid = await _make_user("bob")
