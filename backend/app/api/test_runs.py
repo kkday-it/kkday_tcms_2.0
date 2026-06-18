@@ -61,8 +61,13 @@ async def _sync_assignees(run: TestRun, assignee_ids: List[int] | None, db: Asyn
     run.assignees = list(users_result.scalars().all())
 
 
-def _build_response(run: TestRun, passed: int = 0, failed: int = 0, blocked: int = 0, skipped: int = 0, untested: int = 0, total: int = 0) -> dict:
-    """Build a response dict from a TestRun ORM object."""
+def _build_response(run: TestRun, passed: int = 0, failed: int = 0, blocked: int = 0, skipped: int = 0, untested: int = 0, total: int = 0, derived_assignees: Optional[List[User]] = None) -> dict:
+    """Build a response dict from a TestRun ORM object.
+
+    When the run has no run-level assignees, fall back to ``derived_assignees``
+    (the distinct case executors of the run) and flag the result as derived so
+    the UI can distinguish "assigned to this run" from "executing its cases".
+    """
     d = {c.name: getattr(run, c.name) for c in run.__table__.columns}
     d['passed'] = passed
     d['failed'] = failed
@@ -70,7 +75,12 @@ def _build_response(run: TestRun, passed: int = 0, failed: int = 0, blocked: int
     d['skipped'] = skipped
     d['untested'] = untested
     d['total'] = total
-    d['assignees'] = run.assignees if run.assignees else []
+    if run.assignees:
+        d['assignees'] = run.assignees
+        d['assignees_derived'] = False
+    else:
+        d['assignees'] = derived_assignees or []
+        d['assignees_derived'] = bool(derived_assignees)
     return d
 
 
@@ -223,6 +233,22 @@ async def list_runs_by_project(project_id: int, db: AsyncSession = Depends(get_d
     result = await db.execute(query)
     rows = result.all()
 
+    # Derive each run's distinct case executors (TestResult.assignee_id) so runs
+    # without a run-level assignee still surface who is working on them. One
+    # query for the whole project, grouped in Python to avoid N+1.
+    derived_query = (
+        select(TestResult.run_id, User)
+        .join(User, TestResult.assignee_id == User.id)
+        .join(TestRun, TestRun.id == TestResult.run_id)
+        .where(TestRun.project_id == project_id)
+        .where(TestRun.status != ARCHIVED)
+        .distinct()
+    )
+    derived_rows = await db.execute(derived_query)
+    derived_map: dict[int, list[User]] = {}
+    for run_id, user in derived_rows.all():
+        derived_map.setdefault(run_id, []).append(user)
+
     response_list = []
     for run_obj, passed, failed, blocked, skipped, total in rows:
         passed = passed or 0
@@ -231,7 +257,11 @@ async def list_runs_by_project(project_id: int, db: AsyncSession = Depends(get_d
         skipped = skipped or 0
         total = total or 0
         untested = total - passed - failed - blocked - skipped
-        response_list.append(_build_response(run_obj, passed=passed, failed=failed, blocked=blocked, skipped=skipped, untested=untested, total=total))
+        response_list.append(_build_response(
+            run_obj, passed=passed, failed=failed, blocked=blocked,
+            skipped=skipped, untested=untested, total=total,
+            derived_assignees=derived_map.get(run_obj.id, []),
+        ))
 
     return response_list
 
