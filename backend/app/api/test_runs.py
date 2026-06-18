@@ -234,20 +234,29 @@ async def list_runs_by_project(project_id: int, db: AsyncSession = Depends(get_d
     rows = result.all()
 
     # Derive each run's distinct case executors (TestResult.assignee_id) so runs
-    # without a run-level assignee still surface who is working on them. One
-    # query for the whole project, grouped in Python to avoid N+1.
-    derived_query = (
-        select(TestResult.run_id, User)
-        .join(User, TestResult.assignee_id == User.id)
+    # without a run-level assignee still surface who is working on them. Pull the
+    # distinct (run_id, assignee_id) pairs first — a narrow DISTINCT over two int
+    # columns — then fetch each User once by id, instead of DISTINCT-ing over all
+    # User columns and re-loading the same user per run.
+    pair_query = (
+        select(TestResult.run_id, TestResult.assignee_id)
         .join(TestRun, TestRun.id == TestResult.run_id)
         .where(TestRun.project_id == project_id)
         .where(TestRun.status != ARCHIVED)
+        .where(TestResult.assignee_id.isnot(None))
         .distinct()
     )
-    derived_rows = await db.execute(derived_query)
+    pair_rows = (await db.execute(pair_query)).all()
+    user_ids = {assignee_id for _, assignee_id in pair_rows}
+    users_by_id: dict[int, User] = {}
+    if user_ids:
+        users_res = await db.execute(select(User).where(User.id.in_(user_ids)))
+        users_by_id = {u.id: u for u in users_res.scalars().all()}
     derived_map: dict[int, list[User]] = {}
-    for run_id, user in derived_rows.all():
-        derived_map.setdefault(run_id, []).append(user)
+    for run_id, assignee_id in pair_rows:
+        user = users_by_id.get(assignee_id)
+        if user is not None:
+            derived_map.setdefault(run_id, []).append(user)
 
     response_list = []
     for run_obj, passed, failed, blocked, skipped, total in rows:
