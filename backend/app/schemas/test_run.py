@@ -76,6 +76,9 @@ class TestRunResponse(TestRunBase):
     total: Optional[int] = 0
     # Resolved assignee info
     assignees: Optional[List[AssigneeInfo]] = []
+    # True when `assignees` was derived from the run's case executors
+    # (default_owner per result) because no run-level assignee was set.
+    assignees_derived: bool = False
 
     class Config:
         from_attributes = True

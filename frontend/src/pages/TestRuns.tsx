@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Play, CheckCircle2, XCircle, SkipForward, Circle, Clock, Loader2, Trash2, Copy, Search, Plus, Folder as FolderIcon, Pencil, Ban, Download, ChevronDown, CalendarDays, Link2, Check, X } from 'lucide-react';
+import { Play, CheckCircle2, XCircle, SkipForward, Circle, Clock, Loader2, Trash2, Copy, Search, Plus, Folder as FolderIcon, Pencil, Ban, Download, ChevronDown, CalendarDays, Link2, Check, X, User as UserIcon, Users as UsersIcon } from 'lucide-react';
 import { DndContext, DragEndEvent, closestCenter, useDroppable, useSensor, useSensors, PointerSensor, useDraggable } from '@dnd-kit/core';
 import api from '../lib/api';
 import { canWrite } from '../lib/permissions';
@@ -51,6 +51,12 @@ function DraggableRunCard({ run, onClick, onEdit, onDuplicate, onDelete }: { run
     const blockedPct = total > 0 ? (blocked / total) * 100 : 0;
     const skipPct = total > 0 ? (skipped / total) * 100 : 0;
 
+    // Overall summary: completion = processed (any recorded outcome) / total,
+    // pass = passed / total. Skipped counts as processed, matching the bar.
+    const executed = passed + failed + blocked + skipped;
+    const completionRate = total > 0 ? Math.round((executed / total) * 100) : 0;
+    const passRate = total > 0 ? Math.round((passed / total) * 100) : 0;
+
     return (
         <div
             ref={setNodeRef}
@@ -90,9 +96,20 @@ function DraggableRunCard({ run, onClick, onEdit, onDuplicate, onDelete }: { run
                     <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {new Date(run.created_at).toLocaleDateString()}</span>
                     <span>{total} 個案例</span>
                     {run.assignees && run.assignees.length > 0 && (
-                        <div className="flex items-center gap-1 flex-wrap">
+                        <div
+                            className="flex items-center gap-1 flex-wrap"
+                            title={run.assignees_derived
+                                ? `case 執行人（此 run 未指派負責人）：${run.assignees.map(a => a.full_name || a.username).join('、')}`
+                                : `Run 負責人：${run.assignees.map(a => a.full_name || a.username).join('、')}`}
+                        >
+                            {run.assignees_derived
+                                ? <UsersIcon className="w-3 h-3 text-slate-400" />
+                                : <UserIcon className="w-3 h-3 text-primary-500" />}
                             {run.assignees.slice(0, 3).map(a => (
-                                <span key={a.id} className="px-1.5 py-0.5 rounded bg-primary-100 text-primary-800 text-[11px] font-medium leading-none">
+                                <span
+                                    key={a.id}
+                                    className={`px-1.5 py-0.5 rounded text-[11px] font-medium leading-none ${run.assignees_derived ? 'bg-slate-100 text-slate-600' : 'bg-primary-100 text-primary-800'}`}
+                                >
                                     {a.full_name || a.username}
                                 </span>
                             ))}
@@ -104,6 +121,10 @@ function DraggableRunCard({ run, onClick, onEdit, onDuplicate, onDelete }: { run
 
             {/* Progress bar */}
             <div className="w-40 shrink-0 relative z-10 pointer-events-none">
+                <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 mb-0.5">
+                    <span>完成 <span className="text-slate-700">{completionRate}%</span></span>
+                    <span>通過 <span className={passRate >= 80 ? 'text-emerald-600' : passRate >= 50 ? 'text-amber-600' : 'text-rose-600'}>{passRate}%</span></span>
+                </div>
                 <div className="flex items-center justify-between text-xs font-medium mb-1">
                     <span className="text-emerald-600 flex items-center gap-0.5"><CheckCircle2 className="w-3 h-3" /> {passed}</span>
                     <span className="text-rose-500 flex items-center gap-0.5"><XCircle className="w-3 h-3" /> {failed}</span>
@@ -183,6 +204,7 @@ interface TestRun {
     unt?: number; // Keep for backward compat during mapping
     folder_id?: number | null;
     assignees?: { id: number; username: string; full_name?: string }[];
+    assignees_derived?: boolean;
 }
 
 interface TestRunFolder {
