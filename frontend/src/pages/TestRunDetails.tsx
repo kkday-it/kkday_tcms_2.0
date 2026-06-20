@@ -833,8 +833,12 @@ export default function TestRunDetails() {
                                         onClick={() => setSelectedResultId(res.id)}
                                         className={`hover:bg-slate-50/80 transition-colors cursor-pointer ${selectedRows.has(res.id) ? 'bg-primary-50/40' : ''} ${isDirty ? 'border-l-2 border-l-amber-400' : ''}`}
                                     >
-                                        {/* Checkbox */}
-                                        <td className="py-3.5 px-4 w-10" onClick={e => { e.stopPropagation(); toggleRow(res.id); }}>
+                                        {/* Checkbox — the cell only stops the row's onClick (row select);
+                                            the input's own onChange performs the toggle. Previously the
+                                            cell ALSO called toggleRow, so clicking the checkbox fired the
+                                            toggle twice (input onChange + bubbled cell onClick), cancelling
+                                            out and leaving the box unchecked. (KQT-15670) */}
+                                        <td className="py-3.5 px-4 w-10" onClick={e => e.stopPropagation()}>
                                             <input
                                                 type="checkbox"
                                                 checked={selectedRows.has(res.id)}

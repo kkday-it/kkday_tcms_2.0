@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import func
+from sqlalchemy import and_, func
 from typing import List
 
 from app.api.deps import record_audit, require_role
+from app.core.statuses import ARCHIVED
 from app.db.database import get_db
 from app.models.test_suite import TestSuite
 from app.models.test_case import TestCase
@@ -19,12 +20,20 @@ async def list_suites_by_project(project_id: int, db: AsyncSession = Depends(get
     # were inserted by xmind_import / zephyr_import, which matches the source
     # mindmap/XML traversal order. Without this PostgreSQL returns an
     # unspecified order and the suite tree in the UI reshuffles every refresh.
+    # Count only non-archived cases so the folder badge matches the case list
+    # the user sees on the right (GET /cases/suite/{id} also excludes Archived).
+    # The status filter lives in the JOIN condition, not WHERE, so suites whose
+    # only cases are archived still appear with a 0 count instead of dropping
+    # out of the tree entirely. (KQT-15621)
     stmt = (
         select(
             TestSuite,
             func.count(TestCase.id).label("cases")
         )
-        .outerjoin(TestCase, TestCase.suite_id == TestSuite.id)
+        .outerjoin(
+            TestCase,
+            and_(TestCase.suite_id == TestSuite.id, TestCase.status != ARCHIVED),
+        )
         .where(TestSuite.project_id == project_id)
         .group_by(TestSuite.id)
         .order_by(TestSuite.id)
@@ -79,7 +88,10 @@ async def get_suite(suite_id: int, db: AsyncSession = Depends(get_db)):
             TestSuite,
             func.count(TestCase.id).label("cases")
         )
-        .outerjoin(TestCase, TestCase.suite_id == TestSuite.id)
+        .outerjoin(
+            TestCase,
+            and_(TestCase.suite_id == TestSuite.id, TestCase.status != ARCHIVED),
+        )
         .where(TestSuite.id == suite_id)
         .group_by(TestSuite.id)
     )
@@ -107,8 +119,11 @@ async def update_suite(suite_id: int, suite_in: TestSuiteUpdate, db: AsyncSessio
     await db.commit()
     await db.refresh(suite)
     
-    # get cases count
-    cases_result = await db.execute(select(func.count(TestCase.id)).where(TestCase.suite_id == suite.id))
+    # get cases count (non-archived only, to match the folder badge — KQT-15621)
+    cases_result = await db.execute(
+        select(func.count(TestCase.id))
+        .where(TestCase.suite_id == suite.id, TestCase.status != ARCHIVED)
+    )
     case_count = cases_result.scalar() or 0
     
     suite_dict = suite.__dict__.copy()
