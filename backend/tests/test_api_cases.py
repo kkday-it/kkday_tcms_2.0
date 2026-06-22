@@ -5,11 +5,29 @@ Test Cases API 測試
 
 import allure
 import pytest
+import pytest_asyncio
 from httpx import AsyncClient
 
 from app.api.test_cases import EXTERNAL_ID_OFFSET, EXTERNAL_ID_PREFIX
 
 pytestmark = pytest.mark.asyncio
+
+
+@pytest_asyncio.fixture
+async def admin_auth():
+    """Satisfy the Bearer-token auth on write endpoints (require_role) without a
+    real token: override get_current_user to return an in-memory Admin user for
+    the duration of the test. Scoped per-test so it never leaks to other tests."""
+    from main import app
+    from app.api.deps import get_current_user
+    from app.models.user import User
+
+    async def _fake_admin() -> User:
+        return User(id=1, username="ci-admin", email="ci@test", role="Admin", is_active=True)
+
+    app.dependency_overrides[get_current_user] = _fake_admin
+    yield
+    app.dependency_overrides.pop(get_current_user, None)
 
 
 @allure.epic("TCMS API")
@@ -64,6 +82,50 @@ class TestSuitesAPI:
         res = await client.get(f"/api/v1/suites/project/{project_id}")
         assert res.status_code == 200
         assert any(s["id"] == suite_id for s in res.json())
+
+    @allure.title("資料夾 case 數排除 Archived，與右側 case 列表一致（KQT-15621）")
+    @allure.severity(allure.severity_level.CRITICAL)
+    async def test_suite_count_excludes_archived(self, client: AsyncClient, admin_auth):
+        pid = (await client.post("/api/v1/projects/", json={"name": "Count Proj"})).json()["id"]
+        sid = (await client.post("/api/v1/suites/", json={"name": "Count Suite", "project_id": pid})).json()["id"]
+        case_ids = []
+        for title in ("A", "B", "C"):
+            r = await client.post("/api/v1/cases/", json={"title": title, "suite_id": sid})
+            assert r.status_code == 200
+            case_ids.append(r.json()["id"])
+        # Soft-delete one case (DELETE sets status=Archived)
+        assert (await client.delete(f"/api/v1/cases/{case_ids[0]}")).status_code == 200
+
+        suites = (await client.get(f"/api/v1/suites/project/{pid}")).json()
+        badge = next(s["cases"] for s in suites if s["id"] == sid)
+        listed = (await client.get(f"/api/v1/cases/suite/{sid}")).json()
+
+        # Badge must drop the archived case and match the list the folder opens.
+        assert badge == 2
+        assert len(listed) == 2
+        assert badge == len(listed)
+
+    @allure.title("資料夾累計 case 數含子資料夾、且排除已 Archived 的子資料夾 case（KQT-15621）")
+    async def test_suite_cumulative_count_excludes_archived_in_children(self, client: AsyncClient, admin_auth):
+        pid = (await client.post("/api/v1/projects/", json={"name": "Cum Proj"})).json()["id"]
+        parent = (await client.post("/api/v1/suites/", json={"name": "Parent", "project_id": pid})).json()["id"]
+        child = (await client.post("/api/v1/suites/", json={
+            "name": "Child Suite", "project_id": pid, "parent_suite_id": parent,
+        })).json()["id"]
+
+        await client.post("/api/v1/cases/", json={"title": "Parent Case", "suite_id": parent})
+        c1 = (await client.post("/api/v1/cases/", json={"title": "Child Case 1", "suite_id": child})).json()["id"]
+        await client.post("/api/v1/cases/", json={"title": "Child Case 2", "suite_id": child})
+        assert (await client.delete(f"/api/v1/cases/{c1}")).status_code == 200  # archive a child case
+
+        suites = (await client.get(f"/api/v1/suites/project/{pid}")).json()
+        parent_badge = next(s["cases"] for s in suites if s["id"] == parent)
+        listed = (await client.get(f"/api/v1/cases/suite/{parent}")).json()
+
+        # parent(1) + child non-archived(1) = 2; recursive list excludes the archived child case too.
+        assert parent_badge == 2
+        assert len(listed) == 2
+        assert parent_badge == len(listed)
 
 
 @allure.epic("TCMS API")
