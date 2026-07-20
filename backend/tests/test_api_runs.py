@@ -5,9 +5,28 @@ Test Runs API 測試
 
 import allure
 import pytest
+import pytest_asyncio
 from httpx import AsyncClient
 
 pytestmark = pytest.mark.asyncio
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def admin_auth():
+    """Satisfy the Bearer-token auth on write endpoints (require_role) without a
+    real token: override get_current_user to return an in-memory Admin user for
+    the duration of each test. Mirrors the fixture in test_api_cases.py; applied
+    module-wide (autouse) since every run test hits at least one write endpoint."""
+    from main import app
+    from app.api.deps import get_current_user
+    from app.models.user import User
+
+    async def _fake_admin() -> User:
+        return User(id=1, username="ci-admin", email="ci@test", role="Admin", is_active=True)
+
+    app.dependency_overrides[get_current_user] = _fake_admin
+    yield
+    app.dependency_overrides.pop(get_current_user, None)
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -24,12 +43,17 @@ async def _create_run(client: AsyncClient, project_id: int, title: str = "Test R
     return res.json()
 
 
-async def _create_case(client: AsyncClient, suite_id: int, title: str = "TC") -> dict:
+async def _create_case(
+    client: AsyncClient,
+    suite_id: int,
+    title: str = "TC",
+    automation_status: str = "Manual",
+) -> dict:
     res = await client.post("/api/v1/cases/", json={
         "title": title,
         "suite_id": suite_id,
         "priority": "High",
-        "automation_status": "Manual",
+        "automation_status": automation_status,
         "steps": [{"action": "Step", "data": "", "expected_result": "OK", "order": 1}],
     })
     assert res.status_code == 200, res.text
@@ -105,6 +129,26 @@ class TestRunsCRUD:
         run = await _create_run(client, project_id)
         # total 應包含 cases（實際上 create_run 會自動抓 project 下所有 cases）
         assert run["total"] >= 0
+
+    async def test_list_runs_reports_automated_count(self, client: AsyncClient, project_id: int, suite_id: int):
+        """外層 Run list（GET /runs/project/{id}）應回傳每個 run 的 automated 數，
+        供列表頁顯示自動化 %。2 automated + 1 manual → automated=2, total=3。"""
+        await _create_case(client, suite_id, "Auto A", automation_status="Automated")
+        await _create_case(client, suite_id, "Auto B", automation_status="Automated")
+        await _create_case(client, suite_id, "Manual C", automation_status="Manual")
+        run = await _create_run(client, project_id, "Automation Run")
+
+        rows = (await client.get(f"/api/v1/runs/project/{project_id}")).json()
+        row = next(r for r in rows if r["id"] == run["id"])
+        assert row["automated"] == 2
+        assert row["total"] == 3
+
+    async def test_list_runs_automated_defaults_zero_when_no_cases(self, client: AsyncClient, project_id: int):
+        """沒有任何 case 的 run，automated 應為 0（而非 null），前端才能安全算 %。"""
+        run = await _create_run(client, project_id, "Empty Run")
+        rows = (await client.get(f"/api/v1/runs/project/{project_id}")).json()
+        row = next(r for r in rows if r["id"] == run["id"])
+        assert row["automated"] == 0
 
 
 # ── Duplicate ─────────────────────────────────────────────────────────────────
@@ -301,6 +345,18 @@ class TestResultsAPI:
         res = await client.get(f"/api/v1/results/run/{run['id']}")
         assert res.status_code == 200
         assert isinstance(res.json(), list)
+
+    async def test_results_include_automation_status(self, client: AsyncClient, project_id: int, suite_id: int):
+        """GET /results/run/{id} 的 test_case 應帶出 automation_status，
+        供 Run case list 顯示自動化欄位並在前端計算自動化 %。"""
+        await _create_case(client, suite_id, "Automated Case", automation_status="Automated")
+        await _create_case(client, suite_id, "Manual Case", automation_status="Manual")
+        run = await _create_run(client, project_id)
+        results = (await client.get(f"/api/v1/results/run/{run['id']}")).json()
+        assert len(results) == 2
+        by_title = {r["test_case"]["title"]: r["test_case"] for r in results}
+        assert by_title["Automated Case"]["automation_status"] == "Automated"
+        assert by_title["Manual Case"]["automation_status"] == "Manual"
 
     async def test_results_initial_status_is_untested(self, client: AsyncClient, project_id: int, suite_id: int):
         await _create_case(client, suite_id, "Untested Case")

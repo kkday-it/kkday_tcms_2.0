@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Play, CheckCircle2, XCircle, SkipForward, Circle, Clock, Loader2, Trash2, Copy, Search, Plus, Folder as FolderIcon, Pencil, Ban, Download, ChevronDown, CalendarDays, Link2, Check, X, User as UserIcon, Users as UsersIcon } from 'lucide-react';
+import { Play, CheckCircle2, XCircle, SkipForward, Circle, Clock, Loader2, Trash2, Copy, Search, Plus, Folder as FolderIcon, Pencil, Ban, Download, ChevronDown, CalendarDays, Link2, Check, X, User as UserIcon, Users as UsersIcon, Bot } from 'lucide-react';
 import { DndContext, DragEndEvent, closestCenter, useDroppable, useSensor, useSensors, PointerSensor, useDraggable } from '@dnd-kit/core';
 import api from '../lib/api';
 import { canWrite } from '../lib/permissions';
@@ -56,6 +56,9 @@ function DraggableRunCard({ run, onClick, onEdit, onDuplicate, onDelete }: { run
     const executed = passed + failed + blocked + skipped;
     const completionRate = total > 0 ? Math.round((executed / total) * 100) : 0;
     const passRate = total > 0 ? Math.round((passed / total) * 100) : 0;
+    // Automation coverage of this run's cases (backend-aggregated count / total).
+    const automated = run.automated || 0;
+    const autoRate = total > 0 ? Math.round((automated / total) * 100) : 0;
 
     return (
         <div
@@ -95,6 +98,12 @@ function DraggableRunCard({ run, onClick, onEdit, onDuplicate, onDelete }: { run
                 <div className="flex items-center gap-3 mt-0.5 text-xs text-slate-400">
                     <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {new Date(run.created_at).toLocaleDateString()}</span>
                     <span>{total} 個案例</span>
+                    <span
+                        className="flex items-center gap-1 text-primary-600"
+                        title={`${automated} / ${total} 個案例已自動化`}
+                    >
+                        <Bot className="w-3 h-3" /> 自動化 {autoRate}%
+                    </span>
                     {run.assignees && run.assignees.length > 0 && (
                         <div
                             className="flex items-center gap-1 flex-wrap"
@@ -201,6 +210,7 @@ interface TestRun {
     skipped?: number;
     untested?: number;
     total?: number;
+    automated?: number;
     unt?: number; // Keep for backward compat during mapping
     folder_id?: number | null;
     assignees?: { id: number; username: string; full_name?: string }[];
@@ -338,7 +348,8 @@ export default function TestRuns() {
                 failed: r.failed ?? 0,
                 blocked: r.blocked ?? 0,
                 untested: r.untested ?? 0,
-                total: r.total ?? 0
+                total: r.total ?? 0,
+                automated: r.automated ?? 0
             }));
             setRuns(mappedRuns);
         } catch (error) {

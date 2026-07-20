@@ -74,6 +74,9 @@ class TestRunResponse(TestRunBase):
     skipped: Optional[int] = 0
     untested: Optional[int] = 0
     total: Optional[int] = 0
+    # Count of this run's cases whose TestCase.automation_status == 'Automated'.
+    # The run-list card renders automated/total as the "自動化 %".
+    automated: Optional[int] = 0
     # Resolved assignee info
     assignees: Optional[List[AssigneeInfo]] = []
     # True when `assignees` was derived from the run's case executors
