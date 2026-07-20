@@ -6,6 +6,7 @@ import api from '../lib/api';
 import { canWrite } from '../lib/permissions';
 import { copyToClipboard } from '../lib/clipboard';
 import { runStatusBadgeClasses } from '../lib/runStatus';
+import { pct } from '../lib/automation';
 import CreateRunModal from '../components/runs/CreateRunModal';
 import EditRunFolderModal from '../components/runs/EditRunFolderModal';
 import EditRunModal from '../components/runs/EditRunModal';
@@ -58,7 +59,7 @@ function DraggableRunCard({ run, onClick, onEdit, onDuplicate, onDelete }: { run
     const passRate = total > 0 ? Math.round((passed / total) * 100) : 0;
     // Automation coverage of this run's cases (backend-aggregated count / total).
     const automated = run.automated || 0;
-    const autoRate = total > 0 ? Math.round((automated / total) * 100) : 0;
+    const autoRate = pct(automated, total);
 
     return (
         <div

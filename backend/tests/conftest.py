@@ -35,6 +35,26 @@ async def override_get_db():
 app.dependency_overrides[get_db] = override_get_db
 
 
+@pytest.fixture
+def admin_auth():
+    """Override get_current_user with an in-memory Admin so tests can hit write
+    endpoints (require_role) without a real Bearer token.
+
+    Shared by all test modules — request it as a param on a single test, or apply
+    it module-wide via ``pytestmark = [..., pytest.mark.usefixtures("admin_auth")]``.
+    NOT autouse: modules that exercise real auth (e.g. test_auth_idle) must keep
+    get_current_user intact. Scoped per-test so the override never leaks."""
+    from app.api.deps import get_current_user
+    from app.models.user import User
+
+    async def _fake_admin() -> User:
+        return User(id=1, username="ci-admin", email="ci@test", role="Admin", is_active=True)
+
+    app.dependency_overrides[get_current_user] = _fake_admin
+    yield
+    app.dependency_overrides.pop(get_current_user, None)
+
+
 @pytest_asyncio.fixture
 async def client():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:

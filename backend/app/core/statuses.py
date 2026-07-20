@@ -15,3 +15,9 @@ from typing import Final
 
 ACTIVE: Final[str] = "Active"
 ARCHIVED: Final[str] = "Archived"
+
+# TestCase.automation_status canonical values. Centralised for the same reason as
+# the archive statuses above: the "Automated" literal is matched in several
+# aggregate queries (run list, dashboard) and shown in the UI.
+AUTOMATED: Final[str] = "Automated"
+MANUAL: Final[str] = "Manual"

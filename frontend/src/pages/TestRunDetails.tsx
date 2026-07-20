@@ -11,6 +11,7 @@ import EditRunModal from '../components/runs/EditRunModal';
 import PillGroup, { type PillOption } from '../components/common/PillGroup';
 import SortableHeader, { type SortDirection } from '../components/common/SortableHeader';
 import { useUrlString, useUrlStringList, useUrlSortState } from '../lib/useUrlState';
+import { AUTOMATED, pct, countAutomated } from '../lib/automation';
 
 interface TestResult {
     id: number;
@@ -264,7 +265,7 @@ export default function TestRunDetails() {
                 if (cmp !== 0) return cmp;
             } else if (sortKey === 'automation') {
                 // Automated sorts before Manual on ascending (rank 0 vs 1).
-                const rank = (s?: string) => (s === 'Automated' ? 0 : 1);
+                const rank = (s?: string) => (s === AUTOMATED ? 0 : 1);
                 const r = rank(a.test_case?.automation_status) - rank(b.test_case?.automation_status);
                 const cmp = sortDirection === 'desc' ? -r : r;
                 if (cmp !== 0) return cmp;
@@ -485,8 +486,8 @@ export default function TestRunDetails() {
     const progressPct = total > 0 ? Math.round(((passed + failed + blocked + skipped) / total) * 100) : 0;
     // Automation coverage — computed FE-side from the per-case automation_status
     // the run case-list API now returns (no extra backend call on this page).
-    const automated = results.filter(r => r.test_case?.automation_status === 'Automated').length;
-    const autoPct = total > 0 ? Math.round((automated / total) * 100) : 0;
+    const automated = countAutomated(results);
+    const autoPct = pct(automated, total);
 
     return (
         <div className="flex-1 flex flex-col h-full bg-slate-50 relative overflow-hidden">
@@ -895,8 +896,8 @@ export default function TestRunDetails() {
 
                                         {/* Automation status */}
                                         <td className="py-3.5 px-4">
-                                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${res.test_case?.automation_status === 'Automated' ? 'border-primary-200 text-primary-700 bg-primary-50' : 'border-slate-200 text-slate-500 bg-slate-50'}`}>
-                                                {res.test_case?.automation_status === 'Automated' && <Bot className="w-3 h-3" />}
+                                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${res.test_case?.automation_status === AUTOMATED ? 'border-primary-200 text-primary-700 bg-primary-50' : 'border-slate-200 text-slate-500 bg-slate-50'}`}>
+                                                {res.test_case?.automation_status === AUTOMATED && <Bot className="w-3 h-3" />}
                                                 {res.test_case?.automation_status || 'Manual'}
                                             </span>
                                         </td>

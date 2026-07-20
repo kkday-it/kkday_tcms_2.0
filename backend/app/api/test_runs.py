@@ -13,6 +13,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import record_audit, require_role
 from app.core.external_id import run_external_id
+from app.core.query_helpers import automated_count
 from app.db.database import get_db
 from app.models.test_case import TestCase
 from app.models.test_result import TestResult
@@ -213,21 +214,27 @@ async def export_runs(
 
 @router.get("/project/{project_id}", response_model=List[TestRunResponse])
 async def list_runs_by_project(project_id: int, db: AsyncSession = Depends(get_db)):
+    # Exclude soft-archived cases from every aggregate so the run-list card matches
+    # the run detail header (get_run / get_results_by_run also filter archived).
+    # Archived rows can't be a plain WHERE here: the outerjoin keeps runs that have
+    # no results at all (TestCase IS NULL), and `NULL != ARCHIVED` would drop them
+    # from the list. So the guard lives inside each aggregate's CASE instead.
+    not_archived = TestCase.status != ARCHIVED
     query = (
         select(
             TestRun,
-            func.sum(case((TestResult.status == 'Passed', 1), else_=0)).label("passed"),
-            func.sum(case((TestResult.status == 'Failed', 1), else_=0)).label("failed"),
-            func.sum(case((TestResult.status == 'Blocked', 1), else_=0)).label("blocked"),
+            func.sum(case(((TestResult.status == 'Passed') & not_archived, 1), else_=0)).label("passed"),
+            func.sum(case(((TestResult.status == 'Failed') & not_archived, 1), else_=0)).label("failed"),
+            func.sum(case(((TestResult.status == 'Blocked') & not_archived, 1), else_=0)).label("blocked"),
             # KQT-15524: Skipped is a recorded outcome — surface it so the run
             # card can show it and exclude it from the untested remainder.
-            func.sum(case((TestResult.status == 'Skipped', 1), else_=0)).label("skipped"),
-            func.count(TestResult.id).label("total"),
-            # Automation coverage: how many of this run's cases are marked
+            func.sum(case(((TestResult.status == 'Skipped') & not_archived, 1), else_=0)).label("skipped"),
+            func.sum(case((not_archived, 1), else_=0)).label("total"),
+            # Automation coverage: how many of this run's non-archived cases are
             # Automated. The run-list card divides this by total to show the
             # "自動化 %" without loading per-case rows. Requires the TestCase join
             # below (a 1:1 on case_id, so it doesn't inflate the counts above).
-            func.sum(case((TestCase.automation_status == 'Automated', 1), else_=0)).label("automated"),
+            automated_count(only_active=True).label("automated"),
         )
         .options(selectinload(TestRun.assignees))
         .outerjoin(TestResult, TestRun.id == TestResult.run_id)

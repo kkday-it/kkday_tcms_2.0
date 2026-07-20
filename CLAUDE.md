@@ -55,9 +55,14 @@
     測試模組時記得比照。
   - pytest 跑完偶爾會**卡在結束不 return**（背景 scheduler / async engine 沒收乾淨），這是
     既有現象、非測試失敗；本地可用 `timeout 90 pytest ...` 包起來看結果。
-- Frontend：**沒有 unit test runner**（只有 Playwright e2e：`npm run test:e2e`）。型別把關用
-  `npm run typecheck`（`tsc -b --noEmit`）。在 git worktree 裡跑需要 `node_modules`，可 symlink
-  主 checkout 的：`ln -s <main>/frontend/node_modules <worktree>/frontend/node_modules`。
+- Frontend：
+  - 單元測試用 **vitest**：`npm run test:unit`（設定在 `vitest.config.ts`，node 環境、只收 `src/**/*.test.ts`）。
+    純函式邏輯抽到 `src/lib/` 再測（範例 `src/lib/automation.ts` + `automation.test.ts`）。
+    `*.test.ts` 已在 `tsconfig.app.json` exclude，所以 production build (`tsc -b`) 不依賴 vitest 型別。
+  - 端對端用 Playwright e2e：`npm run test:e2e`。型別把關用 `npm run typecheck`（`tsc -b --noEmit`）。
+  - 在 git worktree 裡跑，node_modules 可 symlink 主 checkout 的
+    （`ln -s <main>/frontend/node_modules <worktree>/frontend/node_modules`）；但若要 `npm install`
+    新增套件（會寫入 lock），請改用 worktree 自己的 `npm install`，別 symlink 以免污染主 checkout。
 
 ## Schema 變更
 一律走 alembic（`backend/alembic/versions/`）。`ai_worker` 沒有 DDL 權限，migration 的

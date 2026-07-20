@@ -5,28 +5,11 @@ Test Runs API 測試
 
 import allure
 import pytest
-import pytest_asyncio
 from httpx import AsyncClient
 
-pytestmark = pytest.mark.asyncio
-
-
-@pytest_asyncio.fixture(autouse=True)
-async def admin_auth():
-    """Satisfy the Bearer-token auth on write endpoints (require_role) without a
-    real token: override get_current_user to return an in-memory Admin user for
-    the duration of each test. Mirrors the fixture in test_api_cases.py; applied
-    module-wide (autouse) since every run test hits at least one write endpoint."""
-    from main import app
-    from app.api.deps import get_current_user
-    from app.models.user import User
-
-    async def _fake_admin() -> User:
-        return User(id=1, username="ci-admin", email="ci@test", role="Admin", is_active=True)
-
-    app.dependency_overrides[get_current_user] = _fake_admin
-    yield
-    app.dependency_overrides.pop(get_current_user, None)
+# Every run test hits at least one write endpoint, so apply the shared admin_auth
+# fixture (defined in conftest.py) module-wide to satisfy Bearer-token auth.
+pytestmark = [pytest.mark.asyncio, pytest.mark.usefixtures("admin_auth")]
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -149,6 +132,32 @@ class TestRunsCRUD:
         rows = (await client.get(f"/api/v1/runs/project/{project_id}")).json()
         row = next(r for r in rows if r["id"] == run["id"])
         assert row["automated"] == 0
+
+    async def test_list_runs_automated_and_total_exclude_archived_cases(self, client: AsyncClient, project_id: int, suite_id: int):
+        """archived (軟刪除) 的 case 不應算進 run list 的 automated / total，才能與詳情頁
+        (get_results_by_run 預設排除 archived) 的自動化 % 口徑一致 (code-review Spec 發現)。"""
+        await _create_case(client, suite_id, "Auto keep", automation_status="Automated")
+        archived = await _create_case(client, suite_id, "Auto archived", automation_status="Automated")
+        await _create_case(client, suite_id, "Manual keep", automation_status="Manual")
+        run = await _create_run(client, project_id, "Archived-mix Run")
+
+        # 初始: 2 automated / 3 total
+        row = next(r for r in (await client.get(f"/api/v1/runs/project/{project_id}")).json() if r["id"] == run["id"])
+        assert (row["automated"], row["total"]) == (2, 3)
+
+        # 軟刪除其中一個 automated case
+        del_res = await client.delete(f"/api/v1/cases/{archived['id']}")
+        assert del_res.status_code == 200, del_res.text
+
+        # list 頁應排除 archived → 1 automated / 2 total
+        row = next(r for r in (await client.get(f"/api/v1/runs/project/{project_id}")).json() if r["id"] == run["id"])
+        assert row["automated"] == 1
+        assert row["total"] == 2
+
+        # 且與詳情頁 (results 預設排除 archived) 口徑一致: 2 筆、其中 1 筆 automated
+        results = (await client.get(f"/api/v1/results/run/{run['id']}")).json()
+        assert len(results) == 2
+        assert sum(1 for r in results if r["test_case"]["automation_status"] == "Automated") == 1
 
 
 # ── Duplicate ─────────────────────────────────────────────────────────────────
