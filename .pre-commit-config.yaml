@@ -1,0 +1,29 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: pretty-format-json
+        args:
+          - --indent
+          - '4'
+          - --autofix
+          - --no-ensure-ascii
+          - --no-sort
+  - repo: https://github.com/facebook/usort
+    rev: v1.0.7
+    hooks:
+      - id: usort
+        files: ^backend/
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.11.2
+    hooks:
+      # Run the linter.
+      - id: ruff
+        args: [--fix]
+        files: ^backend/
+      # Run the formatter.
+      - id: ruff-format
+        files: ^backend/

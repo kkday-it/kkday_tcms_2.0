@@ -60,7 +60,7 @@ KKday 測試案例管理系統（Test Case Management System），提供 Test Ca
 ### 1. 啟動 Backend
 
 ```bash
-cd kk_tcms_1.5/backend
+cd backend
 source .venv/bin/activate
 pip install -r requirements.txt
 uvicorn main:app --reload --host 0.0.0.0 --port 19425
@@ -69,7 +69,7 @@ uvicorn main:app --reload --host 0.0.0.0 --port 19425
 ### 2. 啟動 Frontend
 
 ```bash
-cd kk_tcms_1.5/frontend
+cd frontend
 npm install
 npm run dev
 ```
@@ -376,7 +376,7 @@ alembic stamp 43b3c73328ee
 ```yaml
 # GitHub Actions 範例
 - name: Run backend unit tests
-  working-directory: kk_tcms_1.5/backend
+  working-directory: backend
   run: |
     python -m venv .venv
     source .venv/bin/activate
@@ -387,7 +387,7 @@ alembic stamp 43b3c73328ee
 或 shell 版本：
 
 ```bash
-cd kk_tcms_1.5/backend
+cd backend
 python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt

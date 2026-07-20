@@ -43,7 +43,7 @@ if ! command -v allure &> /dev/null; then
 fi
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  🧪  kk_tcms_1.5 — Unit Test + Allure Report"
+echo "  🧪  kkday_tcms_2.0 — Unit Test + Allure Report"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 # 清除舊結果

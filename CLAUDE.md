@@ -1,7 +1,7 @@
 # CLAUDE.md — KK TCMS 1.5 開發指引 (給 AI)
 
 這是 KKday TCMS（Test Case Management System）。FastAPI (async) + React/Vite 的 mono
-子專案，位於 `kkday-qa-ai/kk_tcms_1.5`。這份文件記錄「不看程式碼不會知道」的本地開發知識；
+子專案，位於 `kkday-qa-ai/kkday_tcms_2.0`。這份文件記錄「不看程式碼不會知道」的本地開發知識；
 一般啟動步驟看 [`README.md`](./README.md)，DB 安全紅線看 [`.ai_rules.md`](./.ai_rules.md)。
 
 ## 服務 Port

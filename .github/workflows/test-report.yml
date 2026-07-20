@@ -1,0 +1,124 @@
+name: 🧪 Unit Tests + Allure Report
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'backend/**'
+  pull_request:
+    branches:
+      - master
+    paths:
+      - 'backend/**'
+  workflow_dispatch:   # 允許手動觸發
+
+permissions:
+  contents: write      # 推 gh-pages 分支需要
+  pages: write
+  id-token: write
+
+jobs:
+  test:
+    name: Run Tests & Publish Report
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      # ── 1. 取得程式碼 ──────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── 2. 取出上一次的 Allure history（讓趨勢圖有歷史資料）──────────
+      - name: Restore previous Allure history
+        uses: actions/checkout@v4
+        continue-on-error: true
+        with:
+          ref: gh-pages
+          path: gh-pages-previous
+
+      - name: Copy previous history into results
+        run: |
+          mkdir -p allure-results
+          if [ -d "../gh-pages-previous/history" ]; then
+            cp -r ../gh-pages-previous/history allure-results/history
+            echo "✅ History restored"
+          else
+            echo "ℹ️ No previous history found (first run)"
+          fi
+
+      # ── 3. 設定 Python ────────────────────────────────────────────
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: backend/requirements.txt
+
+      # ── 4. 安裝依賴 ──────────────────────────────────────────────
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio httpx aiosqlite pydantic-settings email-validator greenlet allure-pytest
+
+      # ── 5. 執行測試 ──────────────────────────────────────────────
+      - name: Run pytest
+        run: |
+          pytest tests/ -v \
+            --alluredir=allure-results \
+            --tb=short \
+            -q
+        env:
+          PYTHONPATH: .
+          USE_QA_DATABASE_SECRET: "false"
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+
+      # ── 6. 安裝 Allure CLI ────────────────────────────────────────
+      - name: Install Allure CLI
+        run: |
+          ALLURE_VERSION=2.30.0
+          wget -q https://github.com/allure-framework/allure2/releases/download/${ALLURE_VERSION}/allure-${ALLURE_VERSION}.tgz
+          tar -zxf allure-${ALLURE_VERSION}.tgz
+          sudo mv allure-${ALLURE_VERSION} /opt/allure
+          sudo ln -s /opt/allure/bin/allure /usr/local/bin/allure
+          allure --version
+
+      # ── 7. 產生 HTML Report ───────────────────────────────────────
+      - name: Generate Allure Report
+        run: allure generate allure-results -o allure-report --clean
+
+      # ── 8. 加上首頁重導向（讓根目錄 / 直接跳到 index.html）──────────
+      - name: Add index redirect
+        run: |
+          cat > allure-report/redirect.html << 'EOF'
+          <!DOCTYPE html>
+          <html>
+          <head><meta http-equiv="refresh" content="0; url=index.html"></head>
+          <body><a href="index.html">Go to report</a></body>
+          </html>
+          EOF
+
+      # ── 9. 將 Report 發佈到 gh-pages 分支 ─────────────────────────
+      - name: Deploy to GitHub Pages (gh-pages branch)
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: backend/allure-report
+          destination_dir: tcms-report   # 報告放在 /tcms-report/ 路徑下
+          keep_files: true               # 不刪除 gh-pages 上其他目錄
+
+      # ── 10. 在 Summary 顯示結果連結 ──────────────────────────────
+      - name: Print report URL
+        run: |
+          REPO="${{ github.repository }}"
+          OWNER=$(echo "$REPO" | cut -d'/' -f1)
+          REPO_NAME=$(echo "$REPO" | cut -d'/' -f2)
+          echo "## 📊 Allure Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "🔗 **Report URL:** https://${OWNER}.github.io/${REPO_NAME}/tcms-report/" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "每次推送後約 1 分鐘後可瀏覽。" >> $GITHUB_STEP_SUMMARY
