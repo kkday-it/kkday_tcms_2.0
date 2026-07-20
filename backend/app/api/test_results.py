@@ -35,7 +35,8 @@ async def get_results_by_run(
     # along; backend just wasn't honouring it.
     query = (
         select(TestResult, TestCase.title, TestCase.external_id, TestCase.priority,
-               TestCase.labels, TestCase.tags, TestCase.suite_id)
+               TestCase.labels, TestCase.tags, TestCase.suite_id,
+               TestCase.automation_status)
         .join(TestCase, TestResult.case_id == TestCase.id)
         .where(TestResult.run_id == run_id)
         .order_by(TestResult.id)
@@ -46,7 +47,7 @@ async def get_results_by_run(
     rows = result.all()
 
     response_list = []
-    for test_result, title, external_id, priority, labels, tags, suite_id in rows:
+    for test_result, title, external_id, priority, labels, tags, suite_id, automation_status in rows:
         response_list.append({
             "id": test_result.id,
             "run_id": test_result.run_id,
@@ -63,6 +64,9 @@ async def get_results_by_run(
                 "labels": labels,
                 "tags": tags,
                 "suite_id": suite_id,
+                # Manual / Automated — feeds the run case-list "自動化" column and
+                # the FE-computed automation % on the run detail header.
+                "automation_status": automation_status,
             }
         })
 

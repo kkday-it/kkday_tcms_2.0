@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from app.core.statuses import ARCHIVED
+from app.core.query_helpers import automated_count
 from app.db.database import get_db
 from app.models.test_case import TestCase
 from app.models.test_result import TestResult
@@ -204,7 +205,7 @@ async def get_my_dashboard(user_id: int, db: AsyncSession = Depends(get_db)):
     # Cases owned by this user
     my_cases_query = select(
         func.count(TestCase.id).label("total"),
-        func.sum(case((TestCase.automation_status == 'Automated', 1), else_=0)).label("automated")
+        automated_count().label("automated")
     ).where(TestCase.default_owner_id == user_id)
     
     my_cases_res = await db.execute(my_cases_query)

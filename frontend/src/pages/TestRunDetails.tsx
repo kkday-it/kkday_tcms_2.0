@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useParams, Link, useSearchParams } from 'react-router-dom';
-import { Loader2, ArrowLeft, CheckCircle2, XCircle, SkipForward, Circle, Edit2, Search, X, Save, Ban, Copy, Check } from 'lucide-react';
+import { Loader2, ArrowLeft, CheckCircle2, XCircle, SkipForward, Circle, Edit2, Search, X, Save, Ban, Copy, Check, Bot } from 'lucide-react';
 import api from '../lib/api';
 import { caseLabel } from '../lib/caseLabel';
 import { canWrite } from '../lib/permissions';
@@ -11,6 +11,7 @@ import EditRunModal from '../components/runs/EditRunModal';
 import PillGroup, { type PillOption } from '../components/common/PillGroup';
 import SortableHeader, { type SortDirection } from '../components/common/SortableHeader';
 import { useUrlString, useUrlStringList, useUrlSortState } from '../lib/useUrlState';
+import { AUTOMATED, pct, countAutomated } from '../lib/automation';
 
 interface TestResult {
     id: number;
@@ -28,6 +29,7 @@ interface TestResult {
         labels?: string;
         tags?: string;
         folder_id?: number;
+        automation_status?: string;  // "Manual" | "Automated"
     };
 }
 
@@ -128,7 +130,7 @@ export default function TestRunDetails() {
     // Sort: header click cycles asc→desc→null. null means "fall back to the
     // canonical default" — case_id ascending, set by the filteredResults
     // comparator below. (Spec v3 §5.2 cycle: unsorted → asc → desc → default.)
-    type SortKey = 'case' | 'priority' | 'result' | 'assignee';
+    type SortKey = 'case' | 'priority' | 'result' | 'assignee' | 'automation';
     const [sortState, setSortState] = useUrlSortState('sort');
     const sortKey = sortState.key as SortKey | null;
     const sortDirection: SortDirection = sortState.direction;
@@ -259,6 +261,12 @@ export default function TestRunDetails() {
                 if (cmp !== 0) return cmp;
             } else if (sortKey === 'case') {
                 const r = a.case_id - b.case_id;
+                const cmp = sortDirection === 'desc' ? -r : r;
+                if (cmp !== 0) return cmp;
+            } else if (sortKey === 'automation') {
+                // Automated sorts before Manual on ascending (rank 0 vs 1).
+                const rank = (s?: string) => (s === AUTOMATED ? 0 : 1);
+                const r = rank(a.test_case?.automation_status) - rank(b.test_case?.automation_status);
                 const cmp = sortDirection === 'desc' ? -r : r;
                 if (cmp !== 0) return cmp;
             }
@@ -476,6 +484,10 @@ export default function TestRunDetails() {
     const skipPct = total > 0 ? (skipped / total) * 100 : 0;
     // Progress = share of cases with any recorded outcome (incl. Skip).
     const progressPct = total > 0 ? Math.round(((passed + failed + blocked + skipped) / total) * 100) : 0;
+    // Automation coverage — computed FE-side from the per-case automation_status
+    // the run case-list API now returns (no extra backend call on this page).
+    const automated = countAutomated(results);
+    const autoPct = pct(automated, total);
 
     return (
         <div className="flex-1 flex flex-col h-full bg-slate-50 relative overflow-hidden">
@@ -574,6 +586,9 @@ export default function TestRunDetails() {
                         </div>
                         <div className="flex items-center gap-2">
                             <Circle className="w-4 h-4 text-slate-400" /> <span className="font-semibold text-slate-500">{unt}</span> Untested
+                        </div>
+                        <div className="flex items-center gap-2 pl-4 border-l border-slate-200" title={`${automated} / ${total} 個案例已自動化`}>
+                            <Bot className="w-4 h-4 text-primary-500" /> <span className="font-semibold text-primary-600">{autoPct}%</span> 自動化
                         </div>
                     </div>
 
@@ -802,6 +817,14 @@ export default function TestRunDetails() {
                                     className="px-4 text-left"
                                 />
                                 <SortableHeader
+                                    label="Automation"
+                                    sortKey="automation"
+                                    currentKey={sortKey}
+                                    currentDirection={sortDirection}
+                                    onSort={handleSort}
+                                    className="px-4 text-left"
+                                />
+                                <SortableHeader
                                     label="Result"
                                     sortKey="result"
                                     currentKey={sortKey}
@@ -869,6 +892,14 @@ export default function TestRunDetails() {
                                         {/* Priority */}
                                         <td className="py-3.5 px-4 text-sm text-slate-600">
                                             {res.test_case?.priority || 'Unknown'}
+                                        </td>
+
+                                        {/* Automation status */}
+                                        <td className="py-3.5 px-4">
+                                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${res.test_case?.automation_status === AUTOMATED ? 'border-primary-200 text-primary-700 bg-primary-50' : 'border-slate-200 text-slate-500 bg-slate-50'}`}>
+                                                {res.test_case?.automation_status === AUTOMATED && <Bot className="w-3 h-3" />}
+                                                {res.test_case?.automation_status || 'Manual'}
+                                            </span>
                                         </td>
 
                                         {/* Result dropdown */}

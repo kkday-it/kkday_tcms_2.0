@@ -6,6 +6,8 @@ logs/
 backend/tcms_1_5.db
 *.db
 *.db-journal
+# 本地 SQLite 快照 (由 scripts/sync_remote_to_local.py 從 SIT 現拉，勿 commit — 見 CLAUDE.md)
+*.db.bak
 
 # Temporary files
 backend/*.txt

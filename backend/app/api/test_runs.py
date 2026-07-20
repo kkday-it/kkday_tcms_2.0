@@ -13,6 +13,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import record_audit, require_role
 from app.core.external_id import run_external_id
+from app.core.query_helpers import automated_count
 from app.db.database import get_db
 from app.models.test_case import TestCase
 from app.models.test_result import TestResult
@@ -61,7 +62,7 @@ async def _sync_assignees(run: TestRun, assignee_ids: List[int] | None, db: Asyn
     run.assignees = list(users_result.scalars().all())
 
 
-def _build_response(run: TestRun, passed: int = 0, failed: int = 0, blocked: int = 0, skipped: int = 0, untested: int = 0, total: int = 0, derived_assignees: Optional[List[User]] = None) -> dict:
+def _build_response(run: TestRun, passed: int = 0, failed: int = 0, blocked: int = 0, skipped: int = 0, untested: int = 0, total: int = 0, automated: int = 0, derived_assignees: Optional[List[User]] = None) -> dict:
     """Build a response dict from a TestRun ORM object.
 
     When the run has no run-level assignees, fall back to ``derived_assignees``
@@ -75,6 +76,7 @@ def _build_response(run: TestRun, passed: int = 0, failed: int = 0, blocked: int
     d['skipped'] = skipped
     d['untested'] = untested
     d['total'] = total
+    d['automated'] = automated
     if run.assignees:
         d['assignees'] = run.assignees
         d['assignees_derived'] = False
@@ -212,19 +214,31 @@ async def export_runs(
 
 @router.get("/project/{project_id}", response_model=List[TestRunResponse])
 async def list_runs_by_project(project_id: int, db: AsyncSession = Depends(get_db)):
+    # Exclude soft-archived cases from every aggregate so the run-list card matches
+    # the run detail header (get_run / get_results_by_run also filter archived).
+    # Archived rows can't be a plain WHERE here: the outerjoin keeps runs that have
+    # no results at all (TestCase IS NULL), and `NULL != ARCHIVED` would drop them
+    # from the list. So the guard lives inside each aggregate's CASE instead.
+    not_archived = TestCase.status != ARCHIVED
     query = (
         select(
             TestRun,
-            func.sum(case((TestResult.status == 'Passed', 1), else_=0)).label("passed"),
-            func.sum(case((TestResult.status == 'Failed', 1), else_=0)).label("failed"),
-            func.sum(case((TestResult.status == 'Blocked', 1), else_=0)).label("blocked"),
+            func.sum(case(((TestResult.status == 'Passed') & not_archived, 1), else_=0)).label("passed"),
+            func.sum(case(((TestResult.status == 'Failed') & not_archived, 1), else_=0)).label("failed"),
+            func.sum(case(((TestResult.status == 'Blocked') & not_archived, 1), else_=0)).label("blocked"),
             # KQT-15524: Skipped is a recorded outcome — surface it so the run
             # card can show it and exclude it from the untested remainder.
-            func.sum(case((TestResult.status == 'Skipped', 1), else_=0)).label("skipped"),
-            func.count(TestResult.id).label("total")
+            func.sum(case(((TestResult.status == 'Skipped') & not_archived, 1), else_=0)).label("skipped"),
+            func.sum(case((not_archived, 1), else_=0)).label("total"),
+            # Automation coverage: how many of this run's non-archived cases are
+            # Automated. The run-list card divides this by total to show the
+            # "自動化 %" without loading per-case rows. Requires the TestCase join
+            # below (a 1:1 on case_id, so it doesn't inflate the counts above).
+            automated_count(only_active=True).label("automated"),
         )
         .options(selectinload(TestRun.assignees))
         .outerjoin(TestResult, TestRun.id == TestResult.run_id)
+        .outerjoin(TestCase, TestResult.case_id == TestCase.id)
         .where(TestRun.project_id == project_id)
         .where(TestRun.status != ARCHIVED)
         .group_by(TestRun.id)
@@ -259,16 +273,17 @@ async def list_runs_by_project(project_id: int, db: AsyncSession = Depends(get_d
             derived_map.setdefault(run_id, []).append(user)
 
     response_list = []
-    for run_obj, passed, failed, blocked, skipped, total in rows:
+    for run_obj, passed, failed, blocked, skipped, total, automated in rows:
         passed = passed or 0
         failed = failed or 0
         blocked = blocked or 0
         skipped = skipped or 0
         total = total or 0
+        automated = automated or 0
         untested = total - passed - failed - blocked - skipped
         response_list.append(_build_response(
             run_obj, passed=passed, failed=failed, blocked=blocked,
-            skipped=skipped, untested=untested, total=total,
+            skipped=skipped, untested=untested, total=total, automated=automated,
             derived_assignees=derived_map.get(run_obj.id, []),
         ))
 

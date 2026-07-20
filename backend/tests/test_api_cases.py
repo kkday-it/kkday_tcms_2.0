@@ -5,29 +5,11 @@ Test Cases API 測試
 
 import allure
 import pytest
-import pytest_asyncio
 from httpx import AsyncClient
 
 from app.api.test_cases import EXTERNAL_ID_OFFSET, EXTERNAL_ID_PREFIX
 
 pytestmark = pytest.mark.asyncio
-
-
-@pytest_asyncio.fixture
-async def admin_auth():
-    """Satisfy the Bearer-token auth on write endpoints (require_role) without a
-    real token: override get_current_user to return an in-memory Admin user for
-    the duration of the test. Scoped per-test so it never leaks to other tests."""
-    from main import app
-    from app.api.deps import get_current_user
-    from app.models.user import User
-
-    async def _fake_admin() -> User:
-        return User(id=1, username="ci-admin", email="ci@test", role="Admin", is_active=True)
-
-    app.dependency_overrides[get_current_user] = _fake_admin
-    yield
-    app.dependency_overrides.pop(get_current_user, None)
 
 
 @allure.epic("TCMS API")
