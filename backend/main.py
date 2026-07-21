@@ -146,3 +146,43 @@ async def health_check():
 os.makedirs("uploads", exist_ok=True)
 
 app.include_router(api_router, prefix="/api/v1")
+
+# ── Serve the built frontend (single-container mode) ──────────────────────────
+# The Vite build (frontend/dist) is copied into FRONTEND_DIST at image-build time
+# by the root-level Dockerfile. When that directory is absent (e.g. the legacy
+# two-container image, or bare `uvicorn` dev), this block is skipped and the app
+# runs API-only — so the change is backward compatible.
+#
+# We serve via a normal catch-all route rather than app.mount(StaticFiles(...)):
+# with root_path="/tcms" set, Starlette mounts stop matching behind the reverse
+# proxy (the same issue documented for uploads above). A regular route shares the
+# API's routing path and resolves correctly at "/" and "/tcms" alike.
+FRONTEND_DIST = os.environ.get("FRONTEND_DIST", "static")
+
+if os.path.isdir(FRONTEND_DIST):
+    from fastapi import HTTPException
+    from fastapi.responses import FileResponse
+
+    _DIST_ROOT = os.path.realpath(FRONTEND_DIST)
+    _INDEX = os.path.join(_DIST_ROOT, "index.html")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        # /api/* is owned by the routers registered above; never fall through to
+        # the SPA (the routers match first, but guard defensively for 404s).
+        if full_path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="Not found")
+        # Serve a real asset (js/css/img) when it exists inside the dist dir;
+        # otherwise hand back index.html so client-side routing takes over.
+        candidate = os.path.realpath(os.path.join(_DIST_ROOT, full_path))
+        if (
+            full_path
+            and os.path.commonpath([_DIST_ROOT, candidate]) == _DIST_ROOT
+            and os.path.isfile(candidate)
+        ):
+            return FileResponse(candidate)
+        return FileResponse(_INDEX)
+
+    logger.info("Frontend static serving enabled from %s", _DIST_ROOT)
+else:
+    logger.info("No frontend dist at '%s' — running API-only.", FRONTEND_DIST)

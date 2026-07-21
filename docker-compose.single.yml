@@ -1,0 +1,38 @@
+# 單一容器版（FE+BE 整併）—— 與 docker-compose.yml（雙容器版）並存，方便 A/B。
+#   docker compose -f docker-compose.single.yml up -d --build
+#
+# 本機直連 port 測試（無 host nginx、不掛 /tcms）時，改用 root 路徑：
+#   VITE_API_URL=/api/v1 VITE_BASE_URL=/ ROOT_PATH= FRONTEND_BASE_URL=/ \
+#     docker compose -f docker-compose.single.yml up -d --build
+#   然後開 http://localhost:8085/
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # 掛在 /tcms 時的預設；本機直連測試時覆蓋成 /api/v1 與 /
+        VITE_API_URL: ${VITE_API_URL:-/tcms/api/v1}
+        VITE_BASE_URL: ${VITE_BASE_URL:-/tcms/}
+    container_name: tcms_app
+    restart: always
+    env_file:
+      - backend/.env
+    environment:
+      # 沿用雙容器版設定：走 remote qa_database、後端 ASGI root_path
+      - USE_LOCAL_DB=false
+      - ROOT_PATH=${ROOT_PATH-/tcms}
+      - FRONTEND_BASE_URL=${FRONTEND_BASE_URL:-/tcms/}
+    volumes:
+      - tcms_data:/app/data
+      - tcms_uploads:/app/uploads
+      - tcms_logs:/app/logs
+    ports:
+      # host nginx 的 /tcms 指向 8085 即可（同雙容器版前端 port）
+      - "8085:8000"
+
+volumes:
+  tcms_data:
+  tcms_uploads:
+  tcms_logs:
