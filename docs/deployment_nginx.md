@@ -1,31 +1,30 @@
-# TCMS 1.5 Deployment Configuration
+# TCMS Deployment Configuration
 
-This guide helps you integrate TCMS 1.5 into your existing Nginx infrastructure, following the pattern used for `Issue Analyst`.
+This guide helps you integrate TCMS into your existing Nginx infrastructure, following the pattern used for `Issue Analyst`.
 
-## 1. Update `docker-compose.yml`
+> **單一容器架構**：前端與後端已整併為單一容器，對外只暴露**一個 port（`8085`）**。
+> 前端靜態檔與 `/api/v1/*` 都由容器內的 FastAPI 提供，所以 host nginx 只需**一段 location**，
+> 不再需要把 `/assets`、`/api`、`/docs` 拆到不同 port。
 
-To match your naming convention (FE: 8085, BE: 19425), please update the `ports` section in your `docker-compose.yml`:
+## 1. `docker-compose.yml`
+
+單一 service `app`，對外 `8085 → 8000`：
 
 ```yaml
 services:
-  backend:
-    # ... other settings
+  app:
+    # ...
     ports:
-      - "19425:8000"  # Mapping host 19425 to container 8000
-
-  frontend:
-    # ... other settings
-    ports:
-      - "8085:80"     # Mapping host 8085 to container 80 (Nginx)
+      - "8085:8000"   # host 8085 → 容器內 uvicorn 8000（前端 + API 同一 port）
 ```
 
-## 2. Nginx Configuration Update
+## 2. Nginx Configuration
 
-Add the following section to your `/etc/nginx/sites-enabled/ai_studio_8080` file within the `server` block (listening on port 8081):
+Add the following to your `/etc/nginx/sites-enabled/ai_studio_8080` file within the `server` block (listening on port 8081):
 
 ```nginx
     # ========================================================
-    # V3: TCMS 1.5 專案設定 (Frontend: 8085, Backend: 19425)
+    # TCMS 專案設定（單一容器：前端 + API 同在 8085）
     # ========================================================
 
     # 自動補上斜線
@@ -33,44 +32,8 @@ Add the following section to your `/etc/nginx/sites-enabled/ai_studio_8080` file
         return 301 /tcms/;
     }
 
-    # 健康檢查 (TCMS) -> Port 19425
-    location = /tcms/api/v1/health {
-        proxy_pass http://127.0.0.1:19425/api/v1/health;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-    }
-
-    # 靜態資源 (TCMS) -> Port 8085
-    location ^~ /tcms/assets/ {
-        proxy_pass http://127.0.0.1:8085/assets/;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-
-    # FastAPI 文檔頁面 (TCMS) -> Port 19425
-    location = /tcms/docs {
-        proxy_pass http://127.0.0.1:19425/api/v1/docs;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-
-    # FastAPI API 路由 (TCMS) -> Port 19425
-    location ^~ /tcms/api/v1/ {
-        proxy_pass http://127.0.0.1:19425/api/v1/;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-
-    # SPA 客戶端 (TCMS) -> Port 8085 (Frontend)
+    # 前端 + API 全部走同一段：nginx 剝掉 /tcms 前綴後轉給容器，
+    # 容器內 FastAPI(root_path=/tcms) 同時 serve SPA 靜態檔與 /api/v1/*。
     location ^~ /tcms/ {
         rewrite ^/tcms/(.*)$ /$1 break;
         proxy_pass http://127.0.0.1:8085;
@@ -83,28 +46,14 @@ Add the following section to your `/etc/nginx/sites-enabled/ai_studio_8080` file
     }
 ```
 
-## 3. (Optional) Separate Port 8085 Access
+> 對照舊的雙容器版：以前要 5 段 location（`/tcms/api/v1/health`、`/tcms/assets/`、`/tcms/docs`、
+> `/tcms/api/v1/`、`/tcms/` 各自指向 8085 或 19425）。整併後全部收斂成上面這一段。
 
-If you also want to access TCMS directly via port 8085 (e.g., `http://autotest-service.sit.kkday.com:8085/`), you can add a separate server block:
+## 3. (Optional) 直接用 port 8085 存取
 
-```nginx
-server {
-    listen 8085;
-    server_name autotest-service.sit.kkday.com;
-
-    location / {
-        proxy_pass http://127.0.0.1:8085; # Frontend
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-    }
-
-    location /api/v1/ {
-        proxy_pass http://127.0.0.1:19425/api/v1/; # Backend
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-    }
-}
-```
+若也想直接 `http://autotest-service.sit.kkday.com:8085/` 存取（不透過 /tcms），
+該容器需以 root 模式 build（`VITE_BASE_URL=/`、`ROOT_PATH=`）。此時容器本身即在 `/` 提供
+前端與 `/api/v1/*`，不需要額外 nginx server block。
 
 > [!TIP]
-> After modifying the configuration, always run `sudo nginx -t` to check for syntax errors before reloading with `sudo systemctl reload nginx`.
+> 修改設定後務必 `sudo nginx -t` 檢查語法，再 `sudo systemctl reload nginx`。

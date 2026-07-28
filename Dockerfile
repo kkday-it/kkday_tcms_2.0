@@ -1,6 +1,6 @@
-# 單一容器：前端 build → 併入後端 image，由 FastAPI(StaticFiles catch-all) 一起 serve。
+# 單一容器：前端 build → 併入後端 image，由 FastAPI(catch-all route) 一起 serve。
 # build context 為 repo root（才能同時取用 frontend/ 與 backend/）：
-#   docker compose -f docker-compose.single.yml up -d --build
+#   docker compose up -d --build
 
 # ── Stage 1: 建置前端 (Vite) ──────────────────────────────────────────────────
 FROM node:20-alpine AS fe-build

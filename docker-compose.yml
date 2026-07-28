@@ -1,46 +1,37 @@
-# EC2 / 生產環境：使用 remote DB（get_secret key=qa_database）
-# 部署前：cp backend/.env.example backend/.env，填入 SECRET_SERVICE_URL、AUTOMATION_TOKEN
-# 本機開發：在 .env 設 USE_LOCAL_DB=true 並提供 DATABASE_URL（即 .env.example 預設）
+# 單一容器：前端(Vite build) 併入後端 image，由 FastAPI 一起 serve（見 root Dockerfile）。
+# 生產(掛 /tcms)：直接 `docker compose up -d --build`（VITE/ROOT_PATH 預設即 /tcms）。
+# 本機直連 port 測試（不掛 /tcms、開 http://localhost:8085/）：
+#   VITE_API_URL=/api/v1 VITE_BASE_URL=/ ROOT_PATH= FRONTEND_BASE_URL=/ \
+#     docker compose up -d --build
+# 隔離 DB（自帶 postgres，不連 remote qa_database）：
+#   docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d --build
 
 services:
-  backend:
+  app:
     build:
-      context: ./backend
+      context: .
       dockerfile: Dockerfile
-    container_name: tcms_backend
+      args:
+        VITE_API_URL: ${VITE_API_URL:-/tcms/api/v1}
+        VITE_BASE_URL: ${VITE_BASE_URL:-/tcms/}
+    container_name: tcms_app
     restart: always
     env_file:
       - backend/.env
     environment:
+      # remote qa_database（EC2/生產）；OAuth 等 secret 從 backend/.env 載入
       - USE_LOCAL_DB=false
-      # Google OAuth 2.0 (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET / GOOGLE_OAUTH_REDIRECT_URI)
-      # 統一從 backend/.env 載入,避免 secret 出現在 compose 檔內;見 backend/.env.example。
+      - ROOT_PATH=${ROOT_PATH-/tcms}
       - FRONTEND_BASE_URL=${FRONTEND_BASE_URL:-/tcms/}
     volumes:
       - tcms_data:/app/data
       - tcms_uploads:/app/uploads
       - tcms_logs:/app/logs
     ports:
-      - "19425:8000"
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-      args:
-        # 掛在 /tcms 時：建立 .env 含 VITE_API_URL=/tcms/api/v1 VITE_BASE_URL=/tcms/
-        VITE_API_URL: ${VITE_API_URL:-/tcms/api/v1}
-        VITE_BASE_URL: ${VITE_BASE_URL:-/tcms/}
-    container_name: tcms_frontend
-    restart: always
-    ports:
-      - "8085:80"
-    volumes:
-      - tcms_logs:/var/log/nginx
-    depends_on:
-      - backend
+      # host nginx 的 /tcms 指向此 port 即可（前端 + API 同一 port）
+      - "8085:8000"
 
 volumes:
   tcms_data:
   tcms_uploads:
-  tcms_logs:  # FE nginx + BE uvicorn 共用，供 tcms/fe-log、tcms/be-log 使用
+  tcms_logs:

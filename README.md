@@ -29,12 +29,12 @@ KKday 測試案例管理系統（Test Case Management System），提供 Test Ca
 | AI 整合 | Dify Knowledge Base API / 向量資料庫 |
 | 認證 | Google OAuth / 帳密登入 |
 
-服務 Port（本機與 Docker 一致）：
+服務 Port：
 
-| 服務 | Port |
+| 情境 | Port |
 |---|---|
-| Backend API | `19425` |
-| Frontend | `8085` |
+| **Docker 單容器**（部署形態） | `8085`（前端 + API 同一 port） |
+| 本機開發（雙 process） | Frontend `8085`(Vite) ／ Backend `19425`(uvicorn) |
 
 ---
 
@@ -83,6 +83,8 @@ Vite 啟動後已設定 proxy：`/api` → `http://localhost:19425`，不需要�
 - FE Log（公開）→ http://localhost:8085/fe-log
 - BE Log（公開）→ http://localhost:8085/be-log
 
+> 輔助腳本：`bash start.sh`（雙 process 開發，同上）／`bash start.single.sh`（單一 process，模擬整併後形態，前端 + API 同在 `:19425`）／`bash stop.sh` 停止。
+
 ---
 
 ## Docker 啟動
@@ -108,12 +110,17 @@ cp backend/.env.example backend/.env
 > backend 啟動 log 會印一次最終解析結果(`[Config] DB mode=...`)以利除錯。
 
 ```bash
-docker compose up -d
+docker compose up -d --build
 ```
 
-與本機模式使用相同 Port（`8085` / `19425`）。預設使用 remote DB（qa_database）。
+**單一容器**：前端(Vite build)併入後端 image，由 FastAPI 一起 serve，對外只開一個 port `8085`（前端 + API 同源）。預設使用 remote DB（qa_database）。
 
-> **EC2 子路徑部署**：`docker-compose.yml` 已將 `VITE_BASE_URL` 預設為 `/tcms/`，`VITE_API_URL` 預設為 `/tcms/api/v1`，直接 build 即可，**不需要額外設定 `.env`**。
+> **EC2 子路徑部署（/tcms）**：`docker-compose.yml` 已將 `VITE_BASE_URL` 預設 `/tcms/`、`VITE_API_URL` 預設 `/tcms/api/v1`、`ROOT_PATH` 預設 `/tcms`，直接 build 即可。host nginx 只需一段 `location /tcms/`（見 [docs/deployment_nginx.md](docs/deployment_nginx.md)）。
+>
+> **本機直連 port 測試**（開 http://localhost:8085/）：
+> ```bash
+> VITE_API_URL=/api/v1 VITE_BASE_URL=/ ROOT_PATH= FRONTEND_BASE_URL=/ docker compose up -d --build
+> ```
 
 ---
 
@@ -308,7 +315,7 @@ docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d db
 
 #### 步驟二：建立 Schema（Alembic 自動執行）
 
-Backend container 啟動時 `entrypoint.sh` 會自動執行：
+App container（單容器）啟動時 `entrypoint.sh` 會自動執行：
 
 ```bash
 alembic upgrade head   # 建立所有資料表（全新 DB）或套用 migration（已有資料）
@@ -317,13 +324,13 @@ alembic upgrade head   # 建立所有資料表（全新 DB）或套用 migration
 也可手動執行：
 
 ```bash
-docker compose exec backend alembic upgrade head
+docker compose exec app alembic upgrade head
 ```
 
 #### 步驟三：搬移現有 SQLite 資料
 
 ```bash
-# 在 backend container 內執行（或本機安裝 psycopg2 後執行）
+# 在 app container 內執行（或本機安裝 psycopg2 後執行）
 python scripts/migrate_sqlite_to_pg.py \
     --sqlite ./data/tcms_1_5.db \
     --pg     postgresql://tcms:password@localhost:5432/tcms
@@ -343,10 +350,10 @@ python scripts/migrate_sqlite_to_pg.py \
 DATABASE_URL=postgresql+asyncpg://tcms:password@db:5432/tcms
 ```
 
-重啟 backend：
+重啟 app：
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.postgres.yml restart backend
+docker compose -f docker-compose.yml -f docker-compose.postgres.yml restart app
 ```
 
 ### 現有 SQLite 部署的注意事項

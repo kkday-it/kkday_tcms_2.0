@@ -1,0 +1,21 @@
+# 單容器 build context 精簡：這些不該進 image（會在容器內重新安裝/產生）
+**/node_modules
+**/.venv
+**/.test_venv
+**/__pycache__
+**/*.pyc
+.git
+.github
+frontend/dist
+backend/data
+backend/uploads
+backend/logs
+backend/*.db
+backend/*.db-journal
+backend/*.db.bak
+backend/allure-results
+backend/allure-report
+logs
+*.log
+.env
+**/.env

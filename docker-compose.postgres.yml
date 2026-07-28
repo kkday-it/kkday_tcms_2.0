@@ -3,8 +3,8 @@
 #
 # 此 override 會：
 #   1. 啟動 PostgreSQL 16 container
-#   2. 將 backend 的 DATABASE_URL 替換為 PostgreSQL
-#   3. 讓 backend 等待 PostgreSQL 健康後才啟動
+#   2. 將 app 的 DATABASE_URL 替換為 PostgreSQL
+#   3. 讓 app 等待 PostgreSQL 健康後才啟動
 
 services:
   db:
@@ -25,7 +25,7 @@ services:
       timeout: 5s
       retries: 10
 
-  backend:
+  app:
     environment:
       - USE_LOCAL_DB=true
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-tcms}:${POSTGRES_PASSWORD:-tcms_password}@db:5432/${POSTGRES_DB:-tcms}
