@@ -434,37 +434,27 @@ export default function Repository() {
     const [previewingCaseId, setPreviewingCaseId] = useState<number | null>(null);
     const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
 
-    // KQT-15330: ?case=<id> opens the preview directly — used by TC-{id} links from test runs.
-    // Depend on the parsed string value (not searchParams identity) so unrelated query updates don't re-trigger.
+    // KQT-15330 + deep-link：?caseid=<KQT-T…> 或 ?case=<內部id>（test run 的 TC 連結）
+    // 都會直接打開對應 case 的 preview drawer。相依用解析後的字串值（非 searchParams
+    // identity），避免無關 query 變動重觸發。
     // Deep-link 進頁面：?caseid=<KQT-T…>（人可讀、分享用）優先；也相容既有的
-    // ?case=<內部 id>（test run 的 TC 連結）。解析出 case 後開 Drawer，並在網址未帶
-    // suite 時導到該 case 所屬 suite（Eden 的需求：自動到 suite 後展開對應 Drawer）。
+    // ?case=<內部 id>（test run 的 TC 連結）。兩者都丟給統一的 /cases/{ref} 端點解析
+    // （ref 可為 external_id 或內部 id），拿到 case 後開 Drawer，並在網址未帶 suite 時
+    // 導到該 case 所屬 suite（Eden 的需求：自動到 suite 後展開對應 Drawer）。
     const caseidParam = searchParams.get('caseid');
     const caseParam = searchParams.get('case');
     useEffect(() => {
+        const ref = caseidParam?.trim() || caseParam?.trim();
+        if (!ref) return;
         let cancelled = false;
-        const openAt = (id: number, suiteId?: number | null) => {
-            if (cancelled) return;
-            setPreviewingCaseId(id);
-            setIsPreviewOpen(true);
-            if (suiteId) setActiveSuiteId(prev => prev ?? suiteId);
-        };
-        const ext = caseidParam?.trim();
-        if (ext) {
-            // external_id（含 Zephyr 匯入 key）非全可由內部 id 算出，需後端反查。
-            api.get(`/cases/by-external/${encodeURIComponent(ext)}`)
-                .then(res => { if (res.data?.id) openAt(res.data.id, res.data.suite_id); })
-                .catch(() => { /* 查不到就維持原狀，不中斷頁面 */ });
-        } else {
-            const id = Number(caseParam);
-            if (Number.isFinite(id) && id > 0) {
-                setPreviewingCaseId(id);
+        api.get(`/cases/${encodeURIComponent(ref)}`)
+            .then(res => {
+                if (cancelled || !res.data?.id) return;
+                setPreviewingCaseId(res.data.id);
                 setIsPreviewOpen(true);
-                api.get(`/cases/${id}`)
-                    .then(res => { const s = res.data?.suite_id; if (!cancelled && s) setActiveSuiteId(prev => prev ?? s); })
-                    .catch(() => {});
-            }
-        }
+                if (res.data.suite_id) setActiveSuiteId(prev => prev ?? res.data.suite_id);
+            })
+            .catch(() => { /* 查不到就維持原狀，不中斷頁面 */ });
         return () => { cancelled = true; };
     }, [caseidParam, caseParam]);
 

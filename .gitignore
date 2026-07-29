@@ -21,3 +21,9 @@ backend/test_db.py
 .env
 .venv/
 node_modules/
+
+# Python / test artifacts
+__pycache__/
+*.pyc
+backend/allure-results/
+backend/allure-report/
