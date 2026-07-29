@@ -421,14 +421,37 @@ export default function Repository() {
 
     // KQT-15330: ?case=<id> opens the preview directly — used by TC-{id} links from test runs.
     // Depend on the parsed string value (not searchParams identity) so unrelated query updates don't re-trigger.
+    // Deep-link 進頁面：?caseid=<KQT-T…>（人可讀、分享用）優先；也相容既有的
+    // ?case=<內部 id>（test run 的 TC 連結）。解析出 case 後開 Drawer，並在網址未帶
+    // suite 時導到該 case 所屬 suite（Eden 的需求：自動到 suite 後展開對應 Drawer）。
+    const caseidParam = searchParams.get('caseid');
     const caseParam = searchParams.get('case');
     useEffect(() => {
-        if (!caseParam) return;
-        const id = Number(caseParam);
-        if (!Number.isFinite(id) || id <= 0) return;
-        setPreviewingCaseId(id);
-        setIsPreviewOpen(true);
-    }, [caseParam]);
+        let cancelled = false;
+        const openAt = (id: number, suiteId?: number | null) => {
+            if (cancelled) return;
+            setPreviewingCaseId(id);
+            setIsPreviewOpen(true);
+            if (suiteId) setActiveSuiteId(prev => prev ?? suiteId);
+        };
+        const ext = caseidParam?.trim();
+        if (ext) {
+            // external_id（含 Zephyr 匯入 key）非全可由內部 id 算出，需後端反查。
+            api.get(`/cases/by-external/${encodeURIComponent(ext)}`)
+                .then(res => { if (res.data?.id) openAt(res.data.id, res.data.suite_id); })
+                .catch(() => { /* 查不到就維持原狀，不中斷頁面 */ });
+        } else {
+            const id = Number(caseParam);
+            if (Number.isFinite(id) && id > 0) {
+                setPreviewingCaseId(id);
+                setIsPreviewOpen(true);
+                api.get(`/cases/${id}`)
+                    .then(res => { const s = res.data?.suite_id; if (!cancelled && s) setActiveSuiteId(prev => prev ?? s); })
+                    .catch(() => {});
+            }
+        }
+        return () => { cancelled = true; };
+    }, [caseidParam, caseParam]);
 
     // Users for batch owner (cached via useUsers)
     const { users } = useUsers();
@@ -636,9 +659,21 @@ export default function Repository() {
         setIsEditorOpen(true);
     };
 
-    const handlePreviewCase = (id: number) => {
-        setPreviewingCaseId(id);
+    const handlePreviewCase = (tc: { id: number; external_id?: string | null }) => {
+        setPreviewingCaseId(tc.id);
         setIsPreviewOpen(true);
+        // 開 Drawer 時把 case 寫進網址（保留現有 suite 參數），網址列即為可分享 deep-link。
+        // 優先用人可讀的 external_id（KQT-T…，Eden 要的格式）；無 external_id 的 case 退回內部 id。
+        // 用 replace 避免逐一點 case 灌爆瀏覽器歷史。
+        const ext = tc.external_id?.trim();
+        setSearchParams(prev => {
+            const next = new URLSearchParams(prev);
+            next.delete('case');
+            next.delete('caseid');
+            if (ext) next.set('caseid', ext);
+            else next.set('case', String(tc.id));
+            return next;
+        }, { replace: true });
     };
 
     const handleEditFromPreview = (id: number) => {
@@ -1101,9 +1136,10 @@ export default function Repository() {
                 isOpen={isPreviewOpen}
                 onClose={() => {
                     setIsPreviewOpen(false);
-                    if (searchParams.has('case')) {
+                    if (searchParams.has('case') || searchParams.has('caseid')) {
                         const next = new URLSearchParams(searchParams);
                         next.delete('case');
+                        next.delete('caseid');
                         setSearchParams(next, { replace: true });
                     }
                 }}
@@ -1554,7 +1590,7 @@ export default function Repository() {
                                                 tc={tc}
                                                 isSelected={selectedCases.has(tc.id)}
                                                 onToggle={() => toggleCase(tc.id)}
-                                                onPreview={() => handlePreviewCase(tc.id)}
+                                                onPreview={() => handlePreviewCase(tc)}
                                                 onDelete={(e) => handleDeleteCase(e, tc.id)}
                                             />
                                         ))}
