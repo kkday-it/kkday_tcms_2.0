@@ -501,7 +501,9 @@ async def resolve_case_id(case_ref: str, db: AsyncSession) -> int:
     以「是否純數字」區分兩者：external_id 一定含非數字前綴（`KQT-T…`，見 app.core.external_id），
     故 isdigit()=True 必為內部 id。若未來 external_id 規則改為可純數字，這裡要改判斷。
     """
-    if case_ref.isdigit():
+    # isascii()：str.isdigit() 對非 ASCII 數字（如「²」）也回 True，但 int() 會拋
+    # ValueError → 未捕捉的 500。加 isascii() 讓那類值改走 external_id 查詢 → 正常 404。
+    if case_ref.isascii() and case_ref.isdigit():
         return int(case_ref)
     result = await db.execute(select(TestCase.id).where(TestCase.external_id == case_ref))
     cid = result.scalar_one_or_none()
