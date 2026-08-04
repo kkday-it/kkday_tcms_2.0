@@ -492,6 +492,25 @@ async def batch_clone_cases(
     return [reloaded[cid] for cid in clone_ids if cid in reloaded]
 
 
+@router.get("/by-external/{external_id}", response_model=TestCaseResponse)
+async def get_case_by_external_id(external_id: str, db: AsyncSession = Depends(get_db)):
+    """以 external_id（KQT-T…）反查 case，供 repository 頁 ?caseid= 深連結解析 suite。
+
+    external_id 是 unique 欄位；Zephyr 匯入的 case 其 external_id 是原本的 KQT key，
+    並非由內部 id + offset 算出（見 app.core.external_id 說明），故必須查 DB。
+    """
+    result = await db.execute(
+        select(TestCase)
+        .options(selectinload(TestCase.steps))
+        .options(with_loader_criteria(TestStep, TestStep.status != ARCHIVED))
+        .where(TestCase.external_id == external_id)
+    )
+    case = result.scalar_one_or_none()
+    if not case:
+        raise HTTPException(status_code=404, detail="TestCase not found")
+    return case
+
+
 @router.get("/{case_id}", response_model=TestCaseResponse)
 async def get_case(case_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(

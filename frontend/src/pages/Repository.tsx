@@ -379,6 +379,21 @@ export default function Repository() {
     }, [suites]);
     const rootSuites = useMemo(() => suiteChildrenMap.get(null) ?? [], [suiteChildrenMap]);
 
+    // active suite 的祖先鏈（含自己）→ 用來自動展開左側資料夾樹，讓 deep-link
+    // (?caseid / ?suite) 進來時露出 case 所屬的那一層 folder。activeSuiteId 由
+    // ?suite= 同步、或 ?caseid= 反查後非同步設定，兩者都會觸發這裡重算 → 展開。
+    const suiteById = useMemo(() => new Map(suites.map(s => [s.id, s])), [suites]);
+    const activeSuitePath = useMemo(() => {
+        const ids = new Set<number>();
+        let cur = activeSuiteId != null ? suiteById.get(activeSuiteId) : undefined;
+        while (cur) {
+            if (ids.has(cur.id)) break;  // 防禦 parent_suite_id 成環時卡死 render
+            ids.add(cur.id);
+            cur = cur.parent_suite_id != null ? suiteById.get(cur.parent_suite_id) : undefined;
+        }
+        return ids;
+    }, [activeSuiteId, suiteById]);
+
     const [sidebarWidth, setSidebarWidth] = useState(288);
     const isResizing = useRef(false);
 
@@ -421,14 +436,37 @@ export default function Repository() {
 
     // KQT-15330: ?case=<id> opens the preview directly — used by TC-{id} links from test runs.
     // Depend on the parsed string value (not searchParams identity) so unrelated query updates don't re-trigger.
+    // Deep-link 進頁面：?caseid=<KQT-T…>（人可讀、分享用）優先；也相容既有的
+    // ?case=<內部 id>（test run 的 TC 連結）。解析出 case 後開 Drawer，並在網址未帶
+    // suite 時導到該 case 所屬 suite（Eden 的需求：自動到 suite 後展開對應 Drawer）。
+    const caseidParam = searchParams.get('caseid');
     const caseParam = searchParams.get('case');
     useEffect(() => {
-        if (!caseParam) return;
-        const id = Number(caseParam);
-        if (!Number.isFinite(id) || id <= 0) return;
-        setPreviewingCaseId(id);
-        setIsPreviewOpen(true);
-    }, [caseParam]);
+        let cancelled = false;
+        const openAt = (id: number, suiteId?: number | null) => {
+            if (cancelled) return;
+            setPreviewingCaseId(id);
+            setIsPreviewOpen(true);
+            if (suiteId) setActiveSuiteId(prev => prev ?? suiteId);
+        };
+        const ext = caseidParam?.trim();
+        if (ext) {
+            // external_id（含 Zephyr 匯入 key）非全可由內部 id 算出，需後端反查。
+            api.get(`/cases/by-external/${encodeURIComponent(ext)}`)
+                .then(res => { if (res.data?.id) openAt(res.data.id, res.data.suite_id); })
+                .catch(() => { /* 查不到就維持原狀，不中斷頁面 */ });
+        } else {
+            const id = Number(caseParam);
+            if (Number.isFinite(id) && id > 0) {
+                setPreviewingCaseId(id);
+                setIsPreviewOpen(true);
+                api.get(`/cases/${id}`)
+                    .then(res => { const s = res.data?.suite_id; if (!cancelled && s) setActiveSuiteId(prev => prev ?? s); })
+                    .catch(() => {});
+            }
+        }
+        return () => { cancelled = true; };
+    }, [caseidParam, caseParam]);
 
     // Users for batch owner (cached via useUsers)
     const { users } = useUsers();
@@ -636,9 +674,21 @@ export default function Repository() {
         setIsEditorOpen(true);
     };
 
-    const handlePreviewCase = (id: number) => {
-        setPreviewingCaseId(id);
+    const handlePreviewCase = (tc: { id: number; external_id?: string | null }) => {
+        setPreviewingCaseId(tc.id);
         setIsPreviewOpen(true);
+        // 開 Drawer 時把 case 寫進網址（保留現有 suite 參數），網址列即為可分享 deep-link。
+        // 優先用人可讀的 external_id（KQT-T…，Eden 要的格式）；無 external_id 的 case 退回內部 id。
+        // 用 replace 避免逐一點 case 灌爆瀏覽器歷史。
+        const ext = tc.external_id?.trim();
+        setSearchParams(prev => {
+            const next = new URLSearchParams(prev);
+            next.delete('case');
+            next.delete('caseid');
+            if (ext) next.set('caseid', ext);
+            else next.set('case', String(tc.id));
+            return next;
+        }, { replace: true });
     };
 
     const handleEditFromPreview = (id: number) => {
@@ -1077,6 +1127,7 @@ export default function Repository() {
                 onShareLink={handleShareSuiteLink}
                 copiedSuiteId={copiedSuiteId}
                 childrenNodes={childrenContent}
+                shouldExpand={activeSuitePath.has(suite.id)}
             />
         );
     };
@@ -1101,9 +1152,10 @@ export default function Repository() {
                 isOpen={isPreviewOpen}
                 onClose={() => {
                     setIsPreviewOpen(false);
-                    if (searchParams.has('case')) {
+                    if (searchParams.has('case') || searchParams.has('caseid')) {
                         const next = new URLSearchParams(searchParams);
                         next.delete('case');
+                        next.delete('caseid');
                         setSearchParams(next, { replace: true });
                     }
                 }}
@@ -1554,7 +1606,7 @@ export default function Repository() {
                                                 tc={tc}
                                                 isSelected={selectedCases.has(tc.id)}
                                                 onToggle={() => toggleCase(tc.id)}
-                                                onPreview={() => handlePreviewCase(tc.id)}
+                                                onPreview={() => handlePreviewCase(tc)}
                                                 onDelete={(e) => handleDeleteCase(e, tc.id)}
                                             />
                                         ))}

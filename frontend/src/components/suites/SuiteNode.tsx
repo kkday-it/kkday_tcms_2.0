@@ -25,6 +25,9 @@ interface SuiteNodeProps {
     onShareLink?: (id: number) => void;
     copiedSuiteId?: number | null;
     childrenNodes?: React.ReactNode;
+    // 當此節點在 active suite 的祖先鏈上時為 true → 自動展開，讓 deep-link
+    // (?caseid / ?suite) 能露出 case 所屬的資料夾。只展開、不強制收合。
+    shouldExpand?: boolean;
 }
 
 export default function SuiteNode({
@@ -39,11 +42,30 @@ export default function SuiteNode({
     onAddSubFolder,
     onShareLink,
     copiedSuiteId,
-    childrenNodes
+    childrenNodes,
+    shouldExpand
 }: SuiteNodeProps) {
     const [isExpanded, setIsExpanded] = useState(false);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
+
+    // Deep-link / 選中某個 suite 時，把它所在的資料夾鏈自動展開露出來（只展開，
+    // 不覆蓋使用者手動收合的其他分支）。shouldExpand 由父層依 active suite 的祖先鏈算出。
+    useEffect(() => {
+        if (shouldExpand) setIsExpanded(true);
+    }, [shouldExpand]);
+
+    // 成為 active（deep-link 目標）時，把此列捲進可視範圍。此節點要等祖先鏈展開才會
+    // mount，故 effect 觸發時祖先已展開、DOM 已就緒；用 rAF 等這批佈局完成後再捲，
+    // 取代先前的魔術延遲。
+    const rowRef = useRef<HTMLDivElement | null>(null);
+    useEffect(() => {
+        if (!isActive) return;
+        const raf = requestAnimationFrame(() => {
+            rowRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        });
+        return () => cancelAnimationFrame(raf);
+    }, [isActive]);
     // Hide write actions for non-Admin/QA — backend still enforces (PR-3).
     const writable = canWrite();
 
@@ -85,6 +107,7 @@ export default function SuiteNode({
                 ref={(node) => {
                     setDraggableRef(node);
                     setDroppableRef(node);
+                    rowRef.current = node;
                 }}
                 style={style}
                 {...attributes}
