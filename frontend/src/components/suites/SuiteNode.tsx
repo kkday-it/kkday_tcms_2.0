@@ -55,15 +55,16 @@ export default function SuiteNode({
         if (shouldExpand) setIsExpanded(true);
     }, [shouldExpand]);
 
-    // 成為 active（deep-link 目標）時，把此列捲進可視範圍。延遲一下，等祖先鏈
-    // 展開、DOM 佈局穩定後再捲，否則節點還沒可見會捲不到。
+    // 成為 active（deep-link 目標）時，把此列捲進可視範圍。此節點要等祖先鏈展開才會
+    // mount，故 effect 觸發時祖先已展開、DOM 已就緒；用 rAF 等這批佈局完成後再捲，
+    // 取代先前的魔術延遲。
     const rowRef = useRef<HTMLDivElement | null>(null);
     useEffect(() => {
         if (!isActive) return;
-        const t = setTimeout(() => {
+        const raf = requestAnimationFrame(() => {
             rowRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-        }, 150);
-        return () => clearTimeout(t);
+        });
+        return () => cancelAnimationFrame(raf);
     }, [isActive]);
     // Hide write actions for non-Admin/QA — backend still enforces (PR-3).
     const writable = canWrite();
