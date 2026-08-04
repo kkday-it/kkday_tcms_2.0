@@ -54,6 +54,17 @@ export default function SuiteNode({
     useEffect(() => {
         if (shouldExpand) setIsExpanded(true);
     }, [shouldExpand]);
+
+    // 成為 active（deep-link 目標）時，把此列捲進可視範圍。延遲一下，等祖先鏈
+    // 展開、DOM 佈局穩定後再捲，否則節點還沒可見會捲不到。
+    const rowRef = useRef<HTMLDivElement | null>(null);
+    useEffect(() => {
+        if (!isActive) return;
+        const t = setTimeout(() => {
+            rowRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }, 150);
+        return () => clearTimeout(t);
+    }, [isActive]);
     // Hide write actions for non-Admin/QA — backend still enforces (PR-3).
     const writable = canWrite();
 
@@ -95,6 +106,7 @@ export default function SuiteNode({
                 ref={(node) => {
                     setDraggableRef(node);
                     setDroppableRef(node);
+                    rowRef.current = node;
                 }}
                 style={style}
                 {...attributes}
