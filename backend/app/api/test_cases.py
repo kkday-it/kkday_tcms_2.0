@@ -492,27 +492,29 @@ async def batch_clone_cases(
     return [reloaded[cid] for cid in clone_ids if cid in reloaded]
 
 
-@router.get("/by-external/{external_id}", response_model=TestCaseResponse)
-async def get_case_by_external_id(external_id: str, db: AsyncSession = Depends(get_db)):
-    """以 external_id（KQT-T…）反查 case，供 repository 頁 ?caseid= 深連結解析 suite。
+async def resolve_case_id(case_ref: str, db: AsyncSession) -> int:
+    """把 URL 的 case ref 收斂成內部 id：純數字視為內部 id；否則當 external_id（KQT-T…）
+    查 DB unique 欄位（Zephyr 匯入 case 的 external_id 非由內部 id 算出，故查 DB）。查無 → 404。
 
-    external_id 是 unique 欄位；Zephyr 匯入的 case 其 external_id 是原本的 KQT key，
-    並非由內部 id + offset 算出（見 app.core.external_id 說明），故必須查 DB。
+    讓 /cases/{ref} 系列同時接受內部 id 與 external_id，對外可一律以 external_id 當 case 識別。
+
+    以「是否純數字」區分兩者：external_id 一定含非數字前綴（`KQT-T…`，見 app.core.external_id），
+    故 isdigit()=True 必為內部 id。若未來 external_id 規則改為可純數字，這裡要改判斷。
     """
-    result = await db.execute(
-        select(TestCase)
-        .options(selectinload(TestCase.steps))
-        .options(with_loader_criteria(TestStep, TestStep.status != ARCHIVED))
-        .where(TestCase.external_id == external_id)
-    )
-    case = result.scalar_one_or_none()
-    if not case:
+    # isascii()：str.isdigit() 對非 ASCII 數字（如「²」）也回 True，但 int() 會拋
+    # ValueError → 未捕捉的 500。加 isascii() 讓那類值改走 external_id 查詢 → 正常 404。
+    if case_ref.isascii() and case_ref.isdigit():
+        return int(case_ref)
+    result = await db.execute(select(TestCase.id).where(TestCase.external_id == case_ref))
+    cid = result.scalar_one_or_none()
+    if cid is None:
         raise HTTPException(status_code=404, detail="TestCase not found")
-    return case
+    return cid
 
 
-@router.get("/{case_id}", response_model=TestCaseResponse)
-async def get_case(case_id: int, db: AsyncSession = Depends(get_db)):
+@router.get("/{case_ref}", response_model=TestCaseResponse)
+async def get_case(case_ref: str, db: AsyncSession = Depends(get_db)):
+    case_id = await resolve_case_id(case_ref, db)
     result = await db.execute(
         select(TestCase)
         .options(selectinload(TestCase.steps))
@@ -524,8 +526,9 @@ async def get_case(case_id: int, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="TestCase not found")
     return case
 
-@router.put("/{case_id}", response_model=TestCaseResponse)
-async def update_case(case_id: int, case_in: TestCaseUpdate, db: AsyncSession = Depends(get_db), _actor: User = Depends(require_role("Admin", "QA"))):
+@router.put("/{case_ref}", response_model=TestCaseResponse)
+async def update_case(case_ref: str, case_in: TestCaseUpdate, db: AsyncSession = Depends(get_db), _actor: User = Depends(require_role("Admin", "QA"))):
+    case_id = await resolve_case_id(case_ref, db)
     # KQT-15246: only load active step rows. Without this filter every
     # archived row from prior edits would land in `existing_steps` and the
     # soft-delete loop below would redundantly re-stamp `status = "Archived"`
@@ -636,13 +639,14 @@ async def update_case(case_id: int, case_in: TestCaseUpdate, db: AsyncSession = 
     )
     return result.scalar_one()
 
-@router.delete("/{case_id}")
+@router.delete("/{case_ref}")
 async def delete_case(
-    case_id: int,
+    case_ref: str,
     request: Request,
     db: AsyncSession = Depends(get_db),
     actor: User = Depends(require_role("Admin", "QA")),
 ):
+    case_id = await resolve_case_id(case_ref, db)
     case = await db.get(TestCase, case_id)
     if not case:
         raise HTTPException(status_code=404, detail="TestCase not found")
@@ -667,13 +671,14 @@ async def delete_case(
     )
     return {"message": "TestCase archived successfully"}
 
-@router.post("/{case_id}/restore")
+@router.post("/{case_ref}/restore")
 async def restore_case(
-    case_id: int,
+    case_ref: str,
     request: Request,
     db: AsyncSession = Depends(get_db),
     actor: User = Depends(require_role("Admin", "QA")),
 ):
+    case_id = await resolve_case_id(case_ref, db)
     case = await db.get(TestCase, case_id)
     if not case:
         raise HTTPException(status_code=404, detail="TestCase not found")
@@ -705,8 +710,9 @@ async def restore_case(
     )
     return {"message": "TestCase restored successfully"}
 
-@router.get("/{case_id}/history", response_model=List[TestCaseHistoryResponse])
-async def get_case_history(case_id: int, db: AsyncSession = Depends(get_db)):
+@router.get("/{case_ref}/history", response_model=List[TestCaseHistoryResponse])
+async def get_case_history(case_ref: str, db: AsyncSession = Depends(get_db)):
+    case_id = await resolve_case_id(case_ref, db)
     result = await db.execute(
         select(TestCaseHistory)
         .options(selectinload(TestCaseHistory.user))
