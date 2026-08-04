@@ -387,6 +387,7 @@ export default function Repository() {
         const ids = new Set<number>();
         let cur = activeSuiteId != null ? suiteById.get(activeSuiteId) : undefined;
         while (cur) {
+            if (ids.has(cur.id)) break;  // 防禦 parent_suite_id 成環時卡死 render
             ids.add(cur.id);
             cur = cur.parent_suite_id != null ? suiteById.get(cur.parent_suite_id) : undefined;
         }
