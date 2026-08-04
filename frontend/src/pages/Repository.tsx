@@ -379,6 +379,20 @@ export default function Repository() {
     }, [suites]);
     const rootSuites = useMemo(() => suiteChildrenMap.get(null) ?? [], [suiteChildrenMap]);
 
+    // active suite 的祖先鏈（含自己）→ 用來自動展開左側資料夾樹，讓 deep-link
+    // (?caseid / ?suite) 進來時露出 case 所屬的那一層 folder。activeSuiteId 由
+    // ?suite= 同步、或 ?caseid= 反查後非同步設定，兩者都會觸發這裡重算 → 展開。
+    const suiteById = useMemo(() => new Map(suites.map(s => [s.id, s])), [suites]);
+    const activeSuitePath = useMemo(() => {
+        const ids = new Set<number>();
+        let cur = activeSuiteId != null ? suiteById.get(activeSuiteId) : undefined;
+        while (cur) {
+            ids.add(cur.id);
+            cur = cur.parent_suite_id != null ? suiteById.get(cur.parent_suite_id) : undefined;
+        }
+        return ids;
+    }, [activeSuiteId, suiteById]);
+
     const [sidebarWidth, setSidebarWidth] = useState(288);
     const isResizing = useRef(false);
 
@@ -1112,6 +1126,7 @@ export default function Repository() {
                 onShareLink={handleShareSuiteLink}
                 copiedSuiteId={copiedSuiteId}
                 childrenNodes={childrenContent}
+                shouldExpand={activeSuitePath.has(suite.id)}
             />
         );
     };
