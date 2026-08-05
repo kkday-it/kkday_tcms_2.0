@@ -381,11 +381,17 @@ export default function Repository() {
 
     const [sidebarWidth, setSidebarWidth] = useState(288);
     const isResizing = useRef(false);
+    const sidebarRef = useRef<HTMLDivElement>(null);
+    // sidebar 左緣（= nav rail 偏移）在拖曳中不動，故在 mousedown 抓一次即可，
+    // 避免每次 mousemove 都 getBoundingClientRect 觸發同步 reflow。
+    const dragLeft = useRef(0);
 
     useEffect(() => {
         const handleMouseMove = (e: MouseEvent) => {
             if (!isResizing.current) return;
-            setSidebarWidth(Math.max(200, Math.min(800, e.clientX)));
+            // 寬度相對 sidebar 容器左緣計算，而非絕對 e.clientX —— 否則左側 nav rail
+            // 的偏移會被算進寬度，往左拉時得先移超過偏移量才會變窄，感覺像「卡住拉不回來」。
+            setSidebarWidth(Math.max(200, Math.min(800, e.clientX - dragLeft.current)));
         };
 
         const handleMouseUp = () => {
@@ -407,6 +413,11 @@ export default function Repository() {
 
     const handleMouseDown = (e: React.MouseEvent) => {
         e.preventDefault();
+        // 抓一次 sidebar 左緣供整段拖曳重用。若 ref 尚未掛載就不啟動 resize
+        // （顯露異常，而非退回「絕對 clientX」的舊 buggy 行為）。
+        const left = sidebarRef.current?.getBoundingClientRect().left;
+        if (left == null) return;
+        dragLeft.current = left;
         isResizing.current = true;
         document.body.style.cursor = 'ew-resize';
         document.body.style.userSelect = 'none';
@@ -1136,6 +1147,7 @@ export default function Repository() {
             />
             {/* Suites Tree Sidebar */}
             <div
+                ref={sidebarRef}
                 className="bg-slate-50 border-r border-slate-200 h-full flex flex-col relative shrink-0"
                 style={{ width: `${sidebarWidth}px` }}
             >
