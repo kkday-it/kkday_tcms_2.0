@@ -381,11 +381,15 @@ export default function Repository() {
 
     const [sidebarWidth, setSidebarWidth] = useState(288);
     const isResizing = useRef(false);
+    const sidebarRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         const handleMouseMove = (e: MouseEvent) => {
             if (!isResizing.current) return;
-            setSidebarWidth(Math.max(200, Math.min(800, e.clientX)));
+            // 寬度相對 sidebar 容器左緣計算，而非絕對 e.clientX —— 否則左側 nav rail
+            // 的偏移會被算進寬度，往左拉時得先移超過偏移量才會變窄，感覺像「卡住拉不回來」。
+            const left = sidebarRef.current?.getBoundingClientRect().left ?? 0;
+            setSidebarWidth(Math.max(200, Math.min(800, e.clientX - left)));
         };
 
         const handleMouseUp = () => {
@@ -1136,6 +1140,7 @@ export default function Repository() {
             />
             {/* Suites Tree Sidebar */}
             <div
+                ref={sidebarRef}
                 className="bg-slate-50 border-r border-slate-200 h-full flex flex-col relative shrink-0"
                 style={{ width: `${sidebarWidth}px` }}
             >
